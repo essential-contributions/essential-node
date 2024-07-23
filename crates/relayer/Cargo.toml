@@ -1,0 +1,8 @@
+[package]
+name = "essential-relayer"
+version = "0.1.0"
+description = "Relay blocks and contracts from L1 to node"
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true

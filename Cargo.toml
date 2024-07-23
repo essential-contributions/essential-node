@@ -1,0 +1,17 @@
+[workspace]
+members = [
+    "crates/*"
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+authors = ["Essential Contributions <contact@essentialcontributions.com>"]
+homepage = "https://essential.builders/"
+repository = "https://github.com/essential-contributions/essential-node"
+
+[workspace.dependencies]
+
+essential-node = { path = "crates/node", version = "0.1.0" }
+essential-node-db = { path = "crates/node-db", version = "0.1.0" }
+essential-relayer = { path = "crates/relayer", version = "0.1.0" }
