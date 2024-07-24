@@ -1,0 +1,96 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nix:
+    permissions:
+      id-token: "write" # added for magic-nix-cache-action
+      contents: "read"  # added for magic-nix-cache-action
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        command: [
+            "flake check --print-build-logs --no-update-lock-file",
+            "build --print-build-logs --no-update-lock-file .#essential-rest-server",
+          ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@v10
+      - uses: DeterminateSystems/magic-nix-cache-action@v4
+      - run: nix ${{ matrix.command }}
+
+  nix-fmt-check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: DeterminateSystems/nix-installer-action@v10
+    - uses: DeterminateSystems/magic-nix-cache-action@v4
+    - run: nix fmt -- --check ./
+
+  cargo:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: "write" # added for magic-nix-cache-action
+      contents: "read"  # added for magic-nix-cache-action
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - command: check --locked --all
+          - command: clippy --locked --all -- -D warnings
+          - command: fmt --all -- --check
+          - command: test --locked --all
+          - command: test --no-default-features --locked --all
+          - command: test --all-features --locked --all -- --nocapture
+    steps:
+    - uses: actions/checkout@v3
+    - uses: DeterminateSystems/nix-installer-action@v10
+    - uses: DeterminateSystems/magic-nix-cache-action@v4
+    - env:
+        TMPDIR: ${{ runner.temp }}
+      run: nix develop --command cargo ${{ matrix.command }}
+
+  cargo-toml-lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: DeterminateSystems/nix-installer-action@v10
+    - uses: DeterminateSystems/magic-nix-cache-action@v4
+    - run: nix shell nixpkgs#cargo-toml-lint nixpkgs#findutils --command git ls-files | grep Cargo.toml$ | xargs --verbose -n 1 $(which cargo-toml-lint)
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: 
+      [
+        nix,
+        nix-fmt-check,
+        cargo,
+        cargo-toml-lint,
+      ]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: katyo/publish-crates@v2
+        id: publish-crates
+        with:
+          registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          # dry-run: ${{ github.event_name != 'push' }}
+          dry-run: true
+          ignore-unpublished-changes: true
+      - name: List published crates
+        if: ${{ steps.publish-crates.outputs.published != '' }}
+        run: |
+          LIST="${{ join(fromJSON(steps.publish-crates.outputs.published).*.name, ', ') }}"
+          echo "Published crates: $LIST"

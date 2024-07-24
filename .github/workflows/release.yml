@@ -1,0 +1,59 @@
+name: release 
+
+on:
+    push:
+      tags:
+        - "v*.*.*"
+        - "v*.*.*-*"
+
+jobs:
+  build:
+    permissions:
+      id-token: "write" # added for magic-nix-cache-action
+      contents: "read"  # added for magic-nix-cache-action
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v10
+      - name: Cache Nix
+        uses: DeterminateSystems/magic-nix-cache-action@v4
+      - run: nix build --print-build-logs --no-update-lock-file .#essential-node-api
+      - uses: actions/upload-artifact@v4
+        with:
+          name: essential-node-api-${{ matrix.os }}
+          path: ./result/bin/essential-node-api
+
+  release:
+    permissions:
+      contents: write
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifact Ubuntu
+        uses: actions/download-artifact@v4
+        with:
+            name: essential-node-api-ubuntu-latest
+            path: ${{ github.workspace }}/bin/ubuntu-latest
+      - name: Download Artifact Macos
+        uses: actions/download-artifact@v4
+        with:
+            name: essential-node-api-macos-latest
+            path: ${{ github.workspace }}/bin/macos-latest
+      - run: |
+          mv ${{ github.workspace }}/bin/macos-latest/essential-node-api ${{ github.workspace }}/bin/macos-latest/essential-node-api-macos-latest
+          mv ${{ github.workspace }}/bin/ubuntu-latest/essential-node-api ${{ github.workspace }}/bin/ubuntu-latest/essential-node-api-ubuntu-latest
+          chmod 755 ${{ github.workspace }}/bin/macos-latest/essential-node-api-macos-latest
+          chmod 755 ${{ github.workspace }}/bin/ubuntu-latest/essential-node-api-ubuntu-latest
+          find ${{ github.workspace }}/bin
+      - name: Release 
+        uses: softprops/action-gh-release@v2
+        with:
+            files: |
+                ${{ github.workspace }}/bin/ubuntu-latest/essential-node-api-ubuntu-latest
+                ${{ github.workspace }}/bin/macos-latest/essential-node-api-macos-latest
