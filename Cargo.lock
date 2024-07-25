@@ -13,6 +13,13 @@ version = "0.1.0"
 [[package]]
 name = "essential-node-db"
 version = "0.1.0"
+dependencies = [
+ "essential-node-db-sql",
+]
+
+[[package]]
+name = "essential-node-db-sql"
+version = "0.1.0"
 
 [[package]]
 name = "essential-relayer"

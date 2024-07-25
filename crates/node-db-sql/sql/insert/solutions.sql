@@ -1,0 +1,1 @@
+INSERT OR IGNORE INTO solutions (content_hash, solution) VALUES (?, ?)

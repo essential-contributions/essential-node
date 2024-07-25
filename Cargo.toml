@@ -11,7 +11,7 @@ homepage = "https://essential.builders/"
 repository = "https://github.com/essential-contributions/essential-node"
 
 [workspace.dependencies]
-
 essential-node = { path = "crates/node", version = "0.1.0" }
+essential-node-db-sql = { path = "crates/node-db-sql", version = "0.1.0" }
 essential-node-db = { path = "crates/node-db", version = "0.1.0" }
 essential-relayer = { path = "crates/relayer", version = "0.1.0" }
