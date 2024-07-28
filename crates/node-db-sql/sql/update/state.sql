@@ -1,5 +1,5 @@
 INSERT INTO state (contract_id, key, value)
-SELECT id, ?, ?
-FROM contracts
-WHERE content_hash = ?
+SELECT id, :key, :value
+FROM contract
+WHERE content_hash = :contract_hash
 ON CONFLICT (contract_id, key) DO UPDATE SET value = EXCLUDED.value;

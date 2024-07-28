@@ -1,10 +1,10 @@
 SELECT
-    predicates.predicate
+    predicate.predicate
 FROM
-    contract_pairing
-    JOIN contracts ON contract_pairing.contract_id = contracts.id
-    JOIN predicates ON contract_pairing.predicate_id = predicates.id
+    contract_predicate
+    JOIN contract ON contract_predicate.contract_id = contract.id
+    JOIN predicate ON contract_predicate.predicate_id = predicate.id
 WHERE
-    contracts.content_hash = ?
+    contract.content_hash = ?
 ORDER BY
-    contract_pairing.id ASC;
+    contract_predicate.id ASC;

@@ -1,22 +1,14 @@
 SELECT
-    solved.block_id,
-    solutions.solution,
+    block.number,
     block.created_at_seconds,
-    block.created_at_nanos
+    block.created_at_nanos,
+    solution.solution
 FROM
-    solved
-    JOIN solutions ON solved.content_hash = solutions.content_hash
-    JOIN block ON solved.block_id = block.id
+    block
+    LEFT JOIN block_solution ON block.number = block_solution.block_number
+    LEFT JOIN solution ON block_solution.content_hash = solution.content_hash
 WHERE
-    block_id IN (
-        SELECT
-            id
-        FROM
-            block
-        ORDER BY
-            id ASC
-        LIMIT
-            :page_size OFFSET :page_number * :page_size
-    )
+    block.number >= :start_block AND block.number < :end_block
 ORDER BY
-    block_id ASC;
+    block.number ASC,
+    block_solution.solution_index ASC

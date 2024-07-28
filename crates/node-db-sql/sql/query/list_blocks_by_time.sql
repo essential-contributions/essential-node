@@ -1,37 +1,30 @@
 SELECT
-    solved.block_id,
-    solutions.solution,
+    block.number,
     block.created_at_seconds,
-    block.created_at_nanos
+    block.created_at_nanos,
+    solution.solution
+
 FROM
-    solved
-    JOIN solutions ON solved.content_hash = solutions.content_hash
-    JOIN block ON solved.block_id = block.id
+    block
+    LEFT JOIN block_solution ON block.number = block_solution.block_number
+    LEFT JOIN solution ON block_solution.content_hash = solution.content_hash
 WHERE
-    block_id IN (
-        SELECT
-            id
-        FROM
-            block
-        WHERE
-            (
-                created_at_seconds > :start_seconds
-                OR (
-                    created_at_seconds = :start_seconds
-                    AND created_at_nanos >= :start_nanos
-                )
-            )
-            AND (
-                created_at_seconds < :end_seconds
-                OR (
-                    created_at_seconds = :end_seconds
-                    AND created_at_nanos <= :end_nanos
-                )
-            )
-        ORDER BY
-            id ASC
-        LIMIT
-            :page_size OFFSET :page_number * :page_size
+    (
+        block.created_at_seconds > :start_seconds
+        OR (
+            block.created_at_seconds = :start_seconds
+            AND block.created_at_nanos >= :start_nanos
+        )
+    )
+    AND (
+        block.created_at_seconds < :end_seconds
+        OR (
+            block.created_at_seconds = :end_seconds
+            AND block.created_at_nanos <= :end_nanos
+        )
     )
 ORDER BY
-    block_id ASC;
+    block.number ASC,
+    block_solution.solution_index ASC
+LIMIT
+    :page_size OFFSET :page_number * :page_size;

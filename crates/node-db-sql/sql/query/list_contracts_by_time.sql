@@ -1,15 +1,15 @@
 SELECT
-    contract_pairing.contract_id,
-    predicates.predicate
+    contract_predicate.contract_id,
+    predicate.predicate
 FROM
-    predicates
-    JOIN contract_pairing ON predicates.id = contract_pairing.predicate_id
+    predicate
+    JOIN contract_predicate ON predicate.id = contract_predicate.predicate_id
 WHERE
-    contract_pairing.contract_id IN (
+    contract_predicate.contract_id IN (
         SELECT
             id
         FROM
-            contracts
+            contract
         WHERE
             (
                 created_at_seconds > :start_seconds
@@ -29,5 +29,5 @@ WHERE
             :page_size OFFSET :page_size * :page_number
     )
 ORDER BY
-    contract_pairing.contract_id,
-    contract_pairing.id;
+    contract_predicate.contract_id,
+    contract_predicate.id;

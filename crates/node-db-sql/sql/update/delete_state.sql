@@ -3,10 +3,10 @@ DELETE FROM
 WHERE
     contract_id = (
         SELECT
-            contracts.id
+            contract.id
         FROM
-            contracts
+            contract
         WHERE
-            contracts.content_hash = ?
+            contract.content_hash = :contract_hash
     )
-    AND KEY = ?;
+    AND KEY = :key;

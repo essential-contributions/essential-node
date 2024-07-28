@@ -1,6 +1,6 @@
 SELECT
     solution
 FROM
-    solutions
+    solution
 WHERE
     content_hash = ?

@@ -1,4 +1,4 @@
 SELECT state.value
 FROM state
-JOIN contracts ON state.contract_id = contracts.id
-WHERE contracts.content_hash = ? AND state.key = ?;
+JOIN contract ON state.contract_id = contract.id
+WHERE contract.content_hash = ? AND state.key = ?;
