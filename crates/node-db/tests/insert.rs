@@ -1,5 +1,8 @@
+//! Basic tests for testing insertion behaviour.
+
 use essential_hash::content_addr;
 use essential_node_db as node_db;
+use essential_types::predicate::Predicate;
 use rusqlite::Connection;
 use std::time::Duration;
 
@@ -19,18 +22,18 @@ fn test_insert_block() {
     node_db::insert_block(&conn, &block).unwrap();
 
     // Verify that the block was inserted correctly
-    let query = "SELECT number, created_at_seconds, created_at_nanos FROM block WHERE number = 1";
+    let query = "SELECT number, timestamp_secs, timestamp_nanos FROM block WHERE number = 1";
     let mut stmt = conn.prepare(query).unwrap();
     let mut rows = stmt.query(()).unwrap();
 
     let row = rows.next().unwrap().unwrap();
     let id: i64 = row.get(0).expect("number");
-    let created_at_seconds: i64 = row.get(1).expect("created_at_seconds");
-    let created_at_nanos: i32 = row.get(2).expect("created_at_nanos");
+    let timestamp_secs: u64 = row.get(1).expect("timestamp_secs");
+    let timestamp_nanos: u32 = row.get(2).expect("timestamp_nanos");
+    let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
 
     assert_eq!(id, block.number as i64);
-    assert_eq!(created_at_seconds, block.timestamp.as_secs() as i64);
-    assert_eq!(created_at_nanos, block.timestamp.subsec_nanos() as i32);
+    assert_eq!(timestamp, block.timestamp);
 
     // Verify that the solutions were inserted correctly
     for solution in &block.solutions {
@@ -42,5 +45,60 @@ fn test_insert_block() {
         let row = rows.next().unwrap().unwrap();
         let solution_data: String = row.get(0).unwrap();
         assert_eq!(solution_data, solution_blob);
+    }
+}
+
+#[test]
+fn test_insert_contract() {
+    // Create an in-memory SQLite database.
+    let conn = Connection::open_in_memory().unwrap();
+
+    // Create the necessary tables.
+    node_db::create_tables(&conn).unwrap();
+
+    let seed = 42;
+    let contract = util::test_contract(seed);
+
+    // Insert the sample contract.
+    let block_n = 69;
+    node_db::insert_contract(&conn, &contract, block_n).expect("Failed to insert contract");
+
+    // Verify the contract was inserted correctly.
+    let mut stmt = conn
+        .prepare("SELECT content_hash, salt, da_block_number FROM contract")
+        .unwrap();
+    let (contract_ca_blob, salt_blob, da_block_number) = stmt
+        .query_row((), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, u64>(2)?,
+            ))
+        })
+        .unwrap();
+    let expected_contract_ca = essential_hash::contract_addr::from_contract(&contract);
+    assert_eq!(
+        expected_contract_ca,
+        node_db::decode(&contract_ca_blob).unwrap()
+    );
+
+    // Check the block number.
+    assert_eq!(block_n, da_block_number);
+
+    // Check the salt.
+    let salt: [u8; 32] = node_db::decode(&salt_blob).unwrap();
+    assert_eq!(contract.salt, salt);
+
+    // Verify the predicates were inserted correctly.
+    let mut stmt = conn
+        .prepare("SELECT predicate FROM predicate ORDER BY id")
+        .unwrap();
+    let rows = stmt
+        .query_map((), |row| Ok(row.get::<_, String>(0)?))
+        .unwrap();
+    for (row, expected_pred) in rows.into_iter().zip(&contract.predicates) {
+        let pred_blob = row.unwrap();
+        let pred: Predicate = node_db::decode(&pred_blob).unwrap();
+        assert_eq!(&pred, expected_pred);
     }
 }

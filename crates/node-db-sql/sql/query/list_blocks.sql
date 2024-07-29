@@ -1,7 +1,7 @@
 SELECT
     block.number,
-    block.created_at_seconds,
-    block.created_at_nanos,
+    block.timestamp_secs,
+    block.timestamp_nanos,
     solution.solution
 FROM
     block

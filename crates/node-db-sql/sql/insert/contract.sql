@@ -1,9 +1,4 @@
 INSERT
-    OR IGNORE INTO contract (
-        content_hash,
-        salt,
-        created_at_seconds,
-        created_at_nanos
-    )
+    OR IGNORE INTO contract (salt, content_hash, da_block_number)
 VALUES
-    (:content_hash, :salt, :created_at_seconds, :created_at_nanos)
+    (:salt, :content_hash, :da_block_number)

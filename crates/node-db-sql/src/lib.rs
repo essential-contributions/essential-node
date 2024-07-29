@@ -40,7 +40,7 @@ pub mod insert {
 
 /// Statements for making queries.
 pub mod query {
-    decl_const_sql_str!(GET_CONTRACT, "query/get_contract.sql");
+    decl_const_sql_str!(GET_CONTRACT_PREDICATES, "query/get_contract_predicates.sql");
     decl_const_sql_str!(GET_CONTRACT_SALT, "query/get_contract_salt.sql");
     decl_const_sql_str!(GET_PREDICATE, "query/get_predicate.sql");
     decl_const_sql_str!(GET_SOLUTION, "query/get_solution.sql");
@@ -60,7 +60,7 @@ pub mod update {
 pub mod table {
     use crate::create;
 
-    /// A table along with its create statement.
+    /// A table's name along with its create statement.
     #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
     pub struct Table {
         /// The name of the table as declared in the create statement.

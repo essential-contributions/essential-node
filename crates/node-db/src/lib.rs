@@ -64,8 +64,8 @@ pub fn insert_block(conn: &Connection, block: &Block) -> rusqlite::Result<()> {
         sql::insert::BLOCK,
         named_params! {
             ":number": block.number,
-            ":created_at_seconds": secs,
-            ":created_at_nanos": nanos,
+            ":timestamp_secs": secs,
+            ":timestamp_nanos": nanos,
         },
     )?;
 
@@ -104,9 +104,7 @@ pub fn insert_block(conn: &Connection, block: &Block) -> rusqlite::Result<()> {
 pub fn insert_contract(
     conn: &Connection,
     contract: &Contract,
-    // TODO: Provide the block header in which the contract first appeared
-    // instead of the timestamp?
-    timestamp: Duration,
+    da_block_number: u64,
 ) -> rusqlite::Result<()> {
     // Collect the predicate content addresses.
     let predicate_cas: Vec<_> = contract.predicates.iter().map(content_addr).collect();
@@ -120,15 +118,12 @@ pub fn insert_contract(
     // Encode the data into hex blobs.
     let contract_ca_blob = encode(&contract_ca);
     let salt_blob = encode(&contract.salt);
-    let secs = timestamp.as_secs();
-    let nanos = timestamp.subsec_nanos();
     conn.execute(
         sql::insert::CONTRACT,
         named_params! {
             ":content_hash": contract_ca_blob,
             ":salt": salt_blob,
-            ":created_at_seconds": secs,
-            ":created_at_nanos": nanos,
+            ":da_block_number": da_block_number,
         },
     )?;
 
@@ -207,6 +202,17 @@ pub fn get_contract_salt(
     get_contract_salt_by_ca_blob(conn, &ca_blob)
 }
 
+fn get_contract_salt_by_ca_blob(
+    conn: &Connection,
+    ca_blob: &str,
+) -> Result<Option<Hash>, QueryError> {
+    const SALT: usize = 0;
+    let mut stmt = conn.prepare(sql::query::GET_CONTRACT_SALT)?;
+    let salt_blob: String = stmt.query_row([ca_blob], |row| row.get(SALT))?;
+    let hash = decode(&salt_blob)?;
+    Ok(hash)
+}
+
 /// Fetches a contract's predicates by its content address.
 pub fn get_contract_predicates(
     conn: &Connection,
@@ -216,13 +222,33 @@ pub fn get_contract_predicates(
     get_contract_predicates_by_ca_blob(conn, &ca_blob)
 }
 
+fn get_contract_predicates_by_ca_blob(
+    conn: &Connection,
+    ca_blob: &str,
+) -> Result<Option<Vec<Predicate>>, QueryError> {
+    let mut stmt = conn.prepare(sql::query::GET_CONTRACT_PREDICATES)?;
+    const PREDICATE: usize = 0;
+    let mut pred_blobs = stmt.query_map([ca_blob], |row| row.get::<_, String>(PREDICATE))?;
+    let mut predicates: Vec<Predicate> = vec![];
+    while let Some(pred_blob) = pred_blobs.next() {
+        predicates.push(decode(&pred_blob?)?);
+    }
+    Ok(Some(predicates))
+}
+
 /// Fetches a contract by its content address.
 pub fn get_contract(
     conn: &Connection,
     ca: &ContentAddress,
 ) -> Result<Option<Contract>, QueryError> {
     let ca_blob = encode(ca);
-    get_contract_by_ca_blob(conn, &ca_blob)
+    let Some(salt) = get_contract_salt_by_ca_blob(conn, &ca_blob)? else {
+        return Ok(None);
+    };
+    let Some(predicates) = get_contract_predicates_by_ca_blob(conn, &ca_blob)? else {
+        return Ok(None);
+    };
+    Ok(Some(Contract { salt, predicates }))
 }
 
 /// Fetches a predicate by its content hash.
@@ -230,14 +256,22 @@ pub fn get_predicate(
     conn: &Connection,
     ca: &ContentAddress,
 ) -> Result<Option<Predicate>, QueryError> {
+    const PREDICATE: usize = 0;
     let ca_blob = encode(ca);
-    get_predicate_by_ca_blob(conn, &ca_blob)
+    let mut stmt = conn.prepare(sql::query::GET_PREDICATE)?;
+    let pred_blob: String = stmt.query_row([ca_blob], |row| row.get(PREDICATE))?;
+    let predicate = decode(&pred_blob)?;
+    Ok(predicate)
 }
 
 /// Fetches a solution by its content hash.
 pub fn get_solution(conn: &Connection, ca: &ContentAddress) -> Result<Option<Vec<u8>>, QueryError> {
+    const SOLUTION: usize = 0;
     let ca_blob = encode(ca);
-    get_solution_by_ca_blob(conn, &ca_blob)
+    let mut stmt = conn.prepare(sql::query::GET_SOLUTION)?;
+    let solution_blob: String = stmt.query_row([ca_blob], |row| row.get(SOLUTION))?;
+    let solution = decode(&solution_blob)?;
+    Ok(solution)
 }
 
 /// Fetches the state value by contract content hash and key.
@@ -246,9 +280,13 @@ pub fn get_state_value(
     contract_ca: &ContentAddress,
     key: &Key,
 ) -> Result<Option<Vec<u8>>, QueryError> {
+    const VALUE: usize = 0;
     let contract_ca_blob = encode(contract_ca);
     let key_blob = encode(key);
-    get_state_value_by_blobs(conn, &contract_ca_blob, &key_blob)
+    let mut stmt = conn.prepare(sql::query::GET_STATE)?;
+    let value_blob: String = stmt.query_row([contract_ca_blob, key_blob], |row| row.get(VALUE))?;
+    let value = decode(&value_blob)?;
+    Ok(value)
 }
 
 /// Lists all blocks in the given range.
@@ -261,14 +299,14 @@ pub fn list_blocks(conn: &Connection, block_range: Range<u64>) -> Result<Vec<Blo
         },
         |row| {
             const BLOCK_NUMBER: usize = 0;
-            const CREATED_AT_SECONDS: usize = 1;
-            const CREATED_AT_NANOS: usize = 2;
+            const TIMESTAMP_SECS: usize = 1;
+            const TIMESTAMP_NANOS: usize = 2;
             const SOLUTION: usize = 3;
             let block_number: u64 = row.get(BLOCK_NUMBER)?;
-            let created_at_seconds: u64 = row.get(CREATED_AT_SECONDS)?;
-            let created_at_nanos: u32 = row.get(CREATED_AT_NANOS)?;
+            let timestamp_secs: u64 = row.get(TIMESTAMP_SECS)?;
+            let timestamp_nanos: u32 = row.get(TIMESTAMP_NANOS)?;
             let solution_blob: String = row.get(SOLUTION)?;
-            let timestamp = Duration::new(created_at_seconds, created_at_nanos);
+            let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
             Ok((block_number, timestamp, solution_blob))
         },
     )?;
@@ -303,31 +341,30 @@ pub fn list_blocks(conn: &Connection, block_range: Range<u64>) -> Result<Vec<Blo
 /// Lists blocks and their solutions within a specific time range with pagination.
 pub fn list_blocks_by_time(
     conn: &Connection,
-    start: Duration,
-    end: Duration,
+    range: Range<Duration>,
     page_size: i64,
     page_number: i64,
 ) -> Result<Vec<Block>, QueryError> {
-    const BLOCK_NUMBER: usize = 0;
-    const CREATED_AT_SECONDS: usize = 1;
-    const CREATED_AT_NANOS: usize = 2;
-    const SOLUTION: usize = 3;
     let mut stmt = conn.prepare(sql::query::LIST_BLOCKS_BY_TIME)?;
     let mut rows = stmt.query_map(
         named_params! {
-            ":start_seconds": start.as_secs(),
-            ":start_nanos": start.subsec_nanos(),
-            ":end_seconds": end.as_secs(),
-            ":end_nanos": end.subsec_nanos(),
+            ":start_secs": range.start.as_secs(),
+            ":start_nanos": range.start.subsec_nanos(),
+            ":end_secs": range.end.as_secs(),
+            ":end_nanos": range.end.subsec_nanos(),
             ":page_size": page_size,
             ":page_number": page_number,
         },
         |row| {
+            const BLOCK_NUMBER: usize = 0;
+            const TIMESTAMP_SECS: usize = 1;
+            const TIMESTAMP_NANOS: usize = 2;
+            const SOLUTION: usize = 3;
             let block_number: u64 = row.get(BLOCK_NUMBER)?;
-            let created_at_seconds: u64 = row.get(CREATED_AT_SECONDS)?;
-            let created_at_nanos: u32 = row.get(CREATED_AT_NANOS)?;
+            let timestamp_secs: u64 = row.get(TIMESTAMP_SECS)?;
+            let timestamp_nanos: u32 = row.get(TIMESTAMP_NANOS)?;
             let solution_blob: String = row.get(SOLUTION)?;
-            let timestamp = Duration::new(created_at_seconds, created_at_nanos);
+            let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
             Ok((block_number, timestamp, solution_blob))
         },
     )?;
@@ -359,76 +396,67 @@ pub fn list_blocks_by_time(
     Ok(blocks)
 }
 
-// Helper Functions
-
-fn get_contract_salt_by_ca_blob(
+/// Lists contracts and their predicates within a given DA block range.
+///
+/// Returns each non-empty DA block number in the range alongside a
+/// `Vec<Contract>` containing the contracts appearing in that block.
+pub fn list_contracts(
     conn: &Connection,
-    ca_blob: &str,
-) -> Result<Option<Hash>, QueryError> {
-    const SALT: usize = 0;
-    let mut stmt = conn.prepare(sql::query::GET_CONTRACT_SALT)?;
-    let salt_blob: String = stmt.query_row([ca_blob], |row| row.get(SALT))?;
-    let hash = decode(&salt_blob)?;
-    Ok(hash)
-}
+    block_range: Range<u64>,
+) -> Result<Vec<(u64, Vec<Contract>)>, QueryError> {
+    let mut stmt = conn.prepare(sql::query::LIST_CONTRACTS)?;
+    let mut rows = stmt.query_map(
+        named_params! {
+            ":start_block": block_range.start,
+            ":end_block": block_range.end,
+        },
+        |row| {
+            const BLOCK_NUMBER: usize = 0;
+            const SALT: usize = 1;
+            const CONTENT_HASH: usize = 2;
+            const PREDICATE: usize = 3;
+            let block_num: u64 = row.get(BLOCK_NUMBER)?;
+            let contract_ca_blob: String = row.get(CONTENT_HASH)?;
+            let salt_blob: String = row.get(SALT)?;
+            let pred_blob: String = row.get(PREDICATE)?;
+            Ok((block_num, contract_ca_blob, salt_blob, pred_blob))
+        },
+    )?;
 
-fn get_contract_predicates_by_ca_blob(
-    conn: &Connection,
-    ca_blob: &str,
-) -> Result<Option<Vec<Predicate>>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::GET_CONTRACT)?;
-    const PREDICATE: usize = 0;
-    let mut pred_blobs = stmt.query_map([ca_blob], |row| row.get::<_, String>(PREDICATE))?;
-    let mut predicates: Vec<Predicate> = vec![];
-    while let Some(pred_blob) = pred_blobs.next() {
-        predicates.push(decode(&pred_blob?)?);
+    // Query yields in order of block number and predicate ID.
+    let mut blocks: Vec<(u64, Vec<Contract>)> = vec![];
+    let mut last_block_num: Option<u64> = None;
+    let mut last_contract_ca = None;
+    while let Some(res) = rows.next() {
+        let (da_block_num, ca_blob, salt_blob, pred_blob): (u64, String, String, String) = res?;
+        let contract_ca: ContentAddress = decode(&ca_blob)?;
+        let salt: Hash = decode(&salt_blob)?;
+
+        // Fetch the block entry associated with the given block number or insert if new.
+        let block = match last_block_num {
+            Some(n) if n == da_block_num => blocks.last_mut().expect("block entry must exist"),
+            _ => {
+                last_block_num = Some(da_block_num);
+                last_contract_ca = None;
+                blocks.push((da_block_num, vec![]));
+                blocks.last_mut().expect("block entry must exist")
+            }
+        };
+
+        // Fetch the contract associated with the CA or insert if new.
+        let contract = match last_contract_ca {
+            Some(ref ca) if ca == &contract_ca => block.1.last_mut().expect("entry must exist"),
+            _ => {
+                last_contract_ca = Some(contract_ca);
+                let predicates = vec![];
+                block.1.push(Contract { salt, predicates });
+                block.1.last_mut().expect("entry must exist")
+            }
+        };
+
+        let pred: Predicate = decode(&pred_blob)?;
+        contract.predicates.push(pred);
     }
-    Ok(Some(predicates))
-}
 
-fn get_contract_by_ca_blob(
-    conn: &Connection,
-    ca_blob: &str,
-) -> Result<Option<Contract>, QueryError> {
-    let Some(salt) = get_contract_salt_by_ca_blob(conn, ca_blob)? else {
-        return Ok(None);
-    };
-    let Some(predicates) = get_contract_predicates_by_ca_blob(conn, ca_blob)? else {
-        return Ok(None);
-    };
-    Ok(Some(Contract { salt, predicates }))
-}
-
-fn get_predicate_by_ca_blob(
-    conn: &Connection,
-    ca_blob: &str,
-) -> Result<Option<Predicate>, QueryError> {
-    const PREDICATE: usize = 0;
-    let mut stmt = conn.prepare(sql::query::GET_PREDICATE)?;
-    let pred_blob: String = stmt.query_row([ca_blob], |row| row.get(PREDICATE))?;
-    let predicate = decode(&pred_blob)?;
-    Ok(predicate)
-}
-
-fn get_solution_by_ca_blob(
-    conn: &Connection,
-    ca_blob: &str,
-) -> Result<Option<Vec<u8>>, QueryError> {
-    const SOLUTION: usize = 0;
-    let mut stmt = conn.prepare(sql::query::GET_SOLUTION)?;
-    let solution_blob: String = stmt.query_row([ca_blob], |row| row.get(SOLUTION))?;
-    let solution = decode(&solution_blob)?;
-    Ok(solution)
-}
-
-fn get_state_value_by_blobs(
-    conn: &Connection,
-    contract_ca_blob: &str,
-    key_blob: &str,
-) -> Result<Option<Vec<u8>>, QueryError> {
-    const VALUE: usize = 0;
-    let mut stmt = conn.prepare(sql::query::GET_STATE)?;
-    let value_blob: String = stmt.query_row([contract_ca_blob, key_blob], |row| row.get(VALUE))?;
-    let value = decode(&value_blob)?;
-    Ok(value)
+    Ok(blocks)
 }

@@ -1,18 +1,13 @@
--- Step 1: Retrieve the unique contract_id values
-WITH unique_contract_ids AS (
-    SELECT DISTINCT contract_id
-    FROM contract_predicate
-    ORDER BY contract_id
-    LIMIT :page_size OFFSET :page_size * :page_number
-)
--- Step 2: Retrieve predicates for the contracts in the range
 SELECT
-    isp.contract_id,
-    i.predicate
+    contract.da_block_number,
+    contract.salt,
+    contract.content_hash,
+    predicate.predicate
 FROM
-    contract_predicate isp
-    JOIN unique_contract_ids usi ON isp.contract_id = usi.contract_id
-    JOIN predicates i ON isp.predicate_id = i.id
+    contract
+    LEFT JOIN contract_predicate ON contract.id = contract_predicate.contract_id
+    LEFT JOIN predicate ON contract_predicate.predicate_id = predicate.id
+WHERE
+    contract.da_block_number >= :start_block AND contract.da_block_number < :end_block
 ORDER BY
-    isp.contract_id,
-    isp.id;
+    contract.da_block_number ASC, contract_predicate.id ASC;

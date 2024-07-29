@@ -1,7 +1,7 @@
 SELECT
     block.number,
-    block.created_at_seconds,
-    block.created_at_nanos,
+    block.timestamp_secs,
+    block.timestamp_nanos,
     solution.solution
 
 FROM
@@ -10,17 +10,17 @@ FROM
     LEFT JOIN solution ON block_solution.content_hash = solution.content_hash
 WHERE
     (
-        block.created_at_seconds > :start_seconds
+        block.timestamp_secs > :start_secs
         OR (
-            block.created_at_seconds = :start_seconds
-            AND block.created_at_nanos >= :start_nanos
+            block.timestamp_secs = :start_secs
+            AND block.timestamp_nanos >= :start_nanos
         )
     )
     AND (
-        block.created_at_seconds < :end_seconds
+        block.timestamp_secs < :end_secs
         OR (
-            block.created_at_seconds = :end_seconds
-            AND block.created_at_nanos <= :end_nanos
+            block.timestamp_secs = :end_secs
+            AND block.timestamp_nanos <= :end_nanos
         )
     )
 ORDER BY
