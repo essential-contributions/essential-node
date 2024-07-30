@@ -6,3 +6,12 @@ edition.workspace = true
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
+
+[dependencies]
+essential-hash = { workspace = true }
+essential-node-db-sql = { workspace = true }
+essential-types = { workspace = true }
+postcard = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }

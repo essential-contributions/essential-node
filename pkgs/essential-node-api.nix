@@ -4,6 +4,7 @@
 , darwin
 , pkg-config
 , rustPlatform
+, sqlite
 }:
 let
   src = builtins.path {
@@ -41,7 +42,9 @@ rustPlatform.buildRustPackage {
     pkg-config
   ];
 
-  buildInputs = lib.optionals stdenv.isLinux [
+  buildInputs = [
+    sqlite
+  ] ++ lib.optionals stdenv.isLinux [
   ] ++ lib.optionals stdenv.isDarwin [
     darwin.apple_sdk.frameworks.SystemConfiguration
   ];
