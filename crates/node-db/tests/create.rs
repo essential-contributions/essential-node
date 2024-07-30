@@ -3,8 +3,10 @@ use rusqlite::Connection;
 
 #[test]
 fn create_tables() {
-    let conn = Connection::open_in_memory().expect("Failed to create in-memory database");
-    node_db::create_tables(&conn).expect("Failed to create tables");
+    let mut conn = Connection::open_in_memory().unwrap();
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    tx.commit().unwrap();
 
     // Verify that each table exists by querying the SQLite master table
     for table in node_db::sql::table::ALL {

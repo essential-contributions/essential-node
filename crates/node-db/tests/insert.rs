@@ -10,16 +10,17 @@ mod util;
 
 #[test]
 fn test_insert_block() {
-    // Create an in-memory SQLite database
-    let conn = Connection::open_in_memory().unwrap();
-
-    // Create the necessary tables
-    node_db::create_tables(&conn).unwrap();
-
+    // Test block that we'll insert.
     let block = util::test_block(1, Duration::from_secs(1));
 
-    // Insert the block into the database
-    node_db::insert_block(&conn, &block).unwrap();
+    // Create an in-memory SQLite database
+    let mut conn = Connection::open_in_memory().unwrap();
+
+    // Create the necessary tables and insert the block.
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    node_db::insert_block(&tx, &block).unwrap();
+    tx.commit().unwrap();
 
     // Verify that the block was inserted correctly
     let query = "SELECT number, timestamp_secs, timestamp_nanos FROM block WHERE number = 1";
@@ -50,18 +51,19 @@ fn test_insert_block() {
 
 #[test]
 fn test_insert_contract() {
-    // Create an in-memory SQLite database.
-    let conn = Connection::open_in_memory().unwrap();
-
-    // Create the necessary tables.
-    node_db::create_tables(&conn).unwrap();
-
+    // The test contract that we'll insert.
     let seed = 42;
     let contract = util::test_contract(seed);
-
-    // Insert the sample contract.
     let block_n = 69;
-    node_db::insert_contract(&conn, &contract, block_n).expect("Failed to insert contract");
+
+    // Create an in-memory SQLite database.
+    let mut conn = Connection::open_in_memory().unwrap();
+
+    // Create the necessary tables and insert the contract.
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    node_db::insert_contract(&tx, &contract, block_n).expect("Failed to insert contract");
+    tx.commit().unwrap();
 
     // Verify the contract was inserted correctly.
     let mut stmt = conn

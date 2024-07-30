@@ -16,7 +16,7 @@ use essential_types::{
     contract::Contract, predicate::Predicate, solution::Solution, Block, ContentAddress, Hash, Key,
     Value,
 };
-use rusqlite::{named_params, Connection};
+use rusqlite::{named_params, Connection, Transaction};
 use serde::{Deserialize, Serialize};
 use std::{ops::Range, time::Duration};
 
@@ -45,9 +45,9 @@ where
 }
 
 /// Create all tables.
-pub fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
+pub fn create_tables(tx: &Transaction) -> rusqlite::Result<()> {
     for table in sql::table::ALL {
-        conn.execute(table.create, ())?;
+        tx.execute(table.create, ())?;
     }
     Ok(())
 }
@@ -56,11 +56,11 @@ pub fn create_tables(conn: &Connection) -> rusqlite::Result<()> {
 ///
 /// 1. Insert an entry into the blocks table.
 /// 2. Insert each of its solutions into the solution and block_solution tables.
-pub fn insert_block(conn: &Connection, block: &Block) -> rusqlite::Result<()> {
+pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
     // Insert the header.
     let secs = block.timestamp.as_secs();
     let nanos = block.timestamp.subsec_nanos() as u64;
-    conn.execute(
+    tx.execute(
         sql::insert::BLOCK,
         named_params! {
             ":number": block.number,
@@ -75,7 +75,7 @@ pub fn insert_block(conn: &Connection, block: &Block) -> rusqlite::Result<()> {
 
         // Insert the solution.
         let solution_blob = encode(solution);
-        conn.execute(
+        tx.execute(
             sql::insert::SOLUTION,
             named_params! {
                 ":content_hash": ca_blob,
@@ -84,7 +84,7 @@ pub fn insert_block(conn: &Connection, block: &Block) -> rusqlite::Result<()> {
         )?;
 
         // Create a mapping between the block and the solution.
-        conn.execute(
+        tx.execute(
             sql::insert::BLOCK_SOLUTION,
             named_params! {
                 ":block_number": block.number,
@@ -102,7 +102,7 @@ pub fn insert_block(conn: &Connection, block: &Block) -> rusqlite::Result<()> {
 /// 1. Insert it into the contracts table.
 /// 2. For each predicate, add entries to the predicate and contract_predicate tables.
 pub fn insert_contract(
-    conn: &Connection,
+    tx: &Transaction,
     contract: &Contract,
     da_block_number: u64,
 ) -> rusqlite::Result<()> {
@@ -118,7 +118,7 @@ pub fn insert_contract(
     // Encode the data into hex blobs.
     let contract_ca_blob = encode(&contract_ca);
     let salt_blob = encode(&contract.salt);
-    conn.execute(
+    tx.execute(
         sql::insert::CONTRACT,
         named_params! {
             ":content_hash": contract_ca_blob,
@@ -133,7 +133,7 @@ pub fn insert_contract(
 
         // Insert the predicate.
         let pred_ca_blob = encode(pred_ca);
-        conn.execute(
+        tx.execute(
             sql::insert::PREDICATE,
             named_params! {
                 ":content_hash": &pred_ca_blob,
@@ -142,7 +142,7 @@ pub fn insert_contract(
         )?;
 
         // Insert the pairing.
-        conn.execute(
+        tx.execute(
             sql::insert::CONTRACT_PREDICATE,
             named_params! {
                 ":contract_hash": &contract_ca_blob,
