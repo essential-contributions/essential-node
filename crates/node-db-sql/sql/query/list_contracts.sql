@@ -5,8 +5,8 @@ SELECT
     predicate.predicate
 FROM
     contract
-    LEFT JOIN contract_predicate ON contract.id = contract_predicate.contract_id
-    LEFT JOIN predicate ON contract_predicate.predicate_id = predicate.id
+    JOIN contract_predicate ON contract.id = contract_predicate.contract_id
+    JOIN predicate ON contract_predicate.predicate_id = predicate.id
 WHERE
     contract.da_block_number >= :start_block AND contract.da_block_number < :end_block
 ORDER BY
