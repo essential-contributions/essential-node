@@ -1,13 +1,12 @@
 #![allow(dead_code)]
 
-use std::time::Duration;
-
 use essential_types::{
     contract::Contract,
     predicate::Predicate,
     solution::{Solution, SolutionData},
     Block, ConstraintBytecode, PredicateAddress, StateReadBytecode, Word,
 };
+use std::time::Duration;
 
 pub fn test_blocks(n: u64) -> Vec<Block> {
     (0..n)
@@ -75,13 +74,13 @@ pub fn test_predicate(seed: Word) -> Predicate {
 // Resulting bytecode is invalid, but this is just for testing DB behaviour, not validation.
 pub fn test_state_reads(seed: Word) -> Vec<StateReadBytecode> {
     let n = (1 + seed % 3) as usize;
-    let b = (seed % std::u8::MAX as Word) as u8;
+    let b = (seed % u8::MAX as Word) as u8;
     vec![vec![b; 10]; n]
 }
 
 // Resulting bytecode is invalid, but this is just for testing DB behaviour, not validation.
 pub fn test_constraints(seed: Word) -> Vec<ConstraintBytecode> {
     let n = (1 + seed % 3) as usize;
-    let b = (seed % std::u8::MAX as Word) as u8;
+    let b = (seed % u8::MAX as Word) as u8;
     vec![vec![b; 10]; n]
 }
