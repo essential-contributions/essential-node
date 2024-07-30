@@ -1,3 +1,5 @@
+#![warn(missing_docs)]
+
 //! The node's DB interface and sqlite implementation.
 //!
 //! The core capability of the node is to:
@@ -448,4 +450,16 @@ pub fn list_contracts(
     }
 
     Ok(blocks)
+}
+
+#[cfg(feature = "async")]
+/// Call a database function from an async context.
+pub async fn call<F, C, E, R>(conn: C, f: F) -> Result<R, E>
+where
+    F: FnOnce(C) -> Result<R, E> + Send + 'static,
+    R: Send + 'static,
+    E: From<tokio::task::JoinError> + Send + 'static,
+    C: Send + 'static,
+{
+    tokio::task::spawn_blocking(move || f(conn)).await?
 }

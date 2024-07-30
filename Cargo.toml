@@ -21,3 +21,4 @@ postcard = { version = "1.0.8", features = ["alloc"] }
 rusqlite = "0.32"
 serde = "1"
 thiserror = "1"
+tokio = "1.39.2"

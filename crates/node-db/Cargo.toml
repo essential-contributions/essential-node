@@ -15,3 +15,8 @@ postcard = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true, optional = true, features = ["rt"] }
+
+[features]
+default = ["async"]
+async = ["dep:tokio"]
