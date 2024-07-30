@@ -1,5 +1,5 @@
 use essential_node_db as node_db;
-use essential_types::{contract::Contract, PredicateAddress, Word};
+use essential_types::{contract::Contract, Word};
 use rusqlite::Connection;
 use std::time::Duration;
 
@@ -94,11 +94,8 @@ fn test_get_predicate() {
 
     // Fetch the first predicate.
     let predicate = &contract.predicates[0];
-    let pred_addr = PredicateAddress {
-        contract: essential_hash::contract_addr::from_contract(&contract),
-        predicate: essential_hash::content_addr(predicate),
-    };
-    let fetched_pred = node_db::get_predicate(&conn, &pred_addr).unwrap().unwrap();
+    let pred_ca = essential_hash::content_addr(predicate);
+    let fetched_pred = node_db::get_predicate(&conn, &pred_ca).unwrap().unwrap();
 
     assert_eq!(predicate, &fetched_pred);
 }

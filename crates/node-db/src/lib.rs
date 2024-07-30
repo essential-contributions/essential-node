@@ -1,13 +1,13 @@
 //! The node's DB interface and sqlite implementation.
 //!
-//! The core capability of the node is to receive blocks and their data from an
-//! L1 relayer and derive state from these solutions.
+//! The core capability of the node is to:
 //!
-//! To satisfy these capabilities, the node requires the following DB interactions.
+//! 1. Receive blocks from an L1 relayer and derive state from their solutions.
+//! 2. Receive contracts from the p2p network so that they're available for validation.
 //!
-//! 1. Write blocks and their data received from the relayer.
-//! 2. Read blocks and their data to derive state.
-//! 3. Write state.
+//! As a part of satisfying these requirements, this crate provides the basic
+//! functions required for safely creating the necessary tables and inserting/
+//! querying/updating them as necessary.
 
 pub use error::{DecodeError, QueryError};
 use essential_hash::content_addr;
@@ -15,7 +15,7 @@ use essential_hash::content_addr;
 pub use essential_node_db_sql as sql;
 use essential_types::{
     contract::Contract, predicate::Predicate, solution::Solution, Block, ContentAddress, Hash, Key,
-    PredicateAddress, Value,
+    Value,
 };
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
@@ -53,8 +53,8 @@ pub fn create_tables(tx: &Transaction) -> rusqlite::Result<()> {
 
 /// For the given block:
 ///
-/// 1. Insert an entry into the blocks table.
-/// 2. Insert each of its solutions into the solution and block_solution tables.
+/// 1. Insert an entry into the `block` table.
+/// 2. Insert each of its solutions into the `solution` and `block_solution` tables.
 pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
     // Insert the header.
     let secs = block.timestamp.as_secs();
@@ -98,8 +98,8 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
 
 /// For the given contract:
 ///
-/// 1. Insert it into the contracts table.
-/// 2. For each predicate, add entries to the predicate and contract_predicate tables.
+/// 1. Insert it into the `contract` table.
+/// 2. For each predicate, add entries to the `predicate` and `contract_predicate` tables.
 pub fn insert_contract(
     tx: &Transaction,
     contract: &Contract,
@@ -153,7 +153,7 @@ pub fn insert_contract(
     Ok(())
 }
 
-/// Updates the state for a given contract content hash and key.
+/// Updates the state for a given contract content address and key.
 pub fn update_state(
     conn: &Connection,
     contract_ca: &ContentAddress,
@@ -174,7 +174,7 @@ pub fn update_state(
     Ok(())
 }
 
-/// Deletes the state for a given contract content hash and key.
+/// Deletes the state for a given contract content address and key.
 pub fn delete_state(
     conn: &Connection,
     contract_ca: &ContentAddress,
@@ -192,7 +192,7 @@ pub fn delete_state(
     Ok(())
 }
 
-/// Fetches a contract's salt by its content address.
+/// Fetches the salt of the contract with the given content address.
 pub fn get_contract_salt(
     conn: &Connection,
     ca: &ContentAddress,
@@ -212,7 +212,7 @@ fn get_contract_salt_by_ca_blob(
     Ok(salt_blob.as_deref().map(decode).transpose()?)
 }
 
-/// Fetches a contract's predicates by its content address.
+/// Fetches the predicates of the contract with the given content address.
 pub fn get_contract_predicates(
     conn: &Connection,
     ca: &ContentAddress,
@@ -249,18 +249,16 @@ pub fn get_contract(
     Ok(Some(Contract { salt, predicates }))
 }
 
-/// Fetches a predicate by its content hash.
+/// Fetches a predicate by its predicate content address.
 pub fn get_predicate(
     conn: &Connection,
-    addr: &PredicateAddress,
+    predicate_ca: &ContentAddress,
 ) -> Result<Option<Predicate>, QueryError> {
-    let contract_ca_blob = encode(&addr.contract);
-    let predicate_ca_blob = encode(&addr.predicate);
+    let predicate_ca_blob = encode(predicate_ca);
     let mut stmt = conn.prepare(sql::query::GET_PREDICATE)?;
     let pred_blob: Option<Vec<u8>> = stmt
         .query_row(
             named_params! {
-                ":contract_hash": contract_ca_blob,
                 ":predicate_hash": predicate_ca_blob,
             },
             |row| row.get("predicate"),
@@ -269,7 +267,7 @@ pub fn get_predicate(
     Ok(pred_blob.as_deref().map(decode).transpose()?)
 }
 
-/// Fetches a solution by its content hash.
+/// Fetches a solution by its content address.
 pub fn get_solution(
     conn: &Connection,
     ca: &ContentAddress,
@@ -282,7 +280,7 @@ pub fn get_solution(
     Ok(solution_blob.as_deref().map(decode).transpose()?)
 }
 
-/// Fetches the state value by contract content hash and key.
+/// Fetches the state value for the given contract content address and key pair.
 pub fn get_state_value(
     conn: &Connection,
     contract_ca: &ContentAddress,
