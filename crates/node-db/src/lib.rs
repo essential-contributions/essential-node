@@ -11,6 +11,7 @@
 
 pub use error::{DecodeError, QueryError};
 use essential_hash::content_addr;
+#[doc(inline)]
 pub use essential_node_db_sql as sql;
 use essential_types::{
     contract::Contract, predicate::Predicate, solution::Solution, Block, ContentAddress, Hash, Key,
