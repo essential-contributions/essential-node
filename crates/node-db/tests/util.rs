@@ -55,7 +55,11 @@ pub fn test_pred_addr() -> PredicateAddress {
 pub fn test_contract(seed: Word) -> Contract {
     let n = (1 + seed % 2) as usize;
     Contract {
-        predicates: vec![test_predicate(seed); n],
+        // Make sure each predicate is unique, or contract will have a different
+        // number of entries after insertion when multiple predicates have same CA.
+        predicates: (0..n)
+            .map(|ix| test_predicate(seed * (1 + ix as i64)))
+            .collect(),
         salt: essential_types::convert::u8_32_from_word_4([seed; 4]),
     }
 }

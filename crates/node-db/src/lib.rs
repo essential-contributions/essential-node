@@ -14,9 +14,9 @@ use essential_hash::content_addr;
 pub use essential_node_db_sql as sql;
 use essential_types::{
     contract::Contract, predicate::Predicate, solution::Solution, Block, ContentAddress, Hash, Key,
-    Value,
+    PredicateAddress, Value,
 };
-use rusqlite::{named_params, Connection, Transaction};
+use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use std::{ops::Range, time::Duration};
 
@@ -208,9 +208,8 @@ fn get_contract_salt_by_ca_blob(
 ) -> Result<Option<Hash>, QueryError> {
     const SALT: usize = 0;
     let mut stmt = conn.prepare(sql::query::GET_CONTRACT_SALT)?;
-    let salt_blob: String = stmt.query_row([ca_blob], |row| row.get(SALT))?;
-    let hash = decode(&salt_blob)?;
-    Ok(hash)
+    let salt_blob: Option<String> = stmt.query_row([ca_blob], |row| row.get(SALT)).optional()?;
+    Ok(salt_blob.as_deref().map(decode).transpose()?)
 }
 
 /// Fetches a contract's predicates by its content address.
@@ -254,24 +253,36 @@ pub fn get_contract(
 /// Fetches a predicate by its content hash.
 pub fn get_predicate(
     conn: &Connection,
-    ca: &ContentAddress,
+    addr: &PredicateAddress,
 ) -> Result<Option<Predicate>, QueryError> {
     const PREDICATE: usize = 0;
-    let ca_blob = encode(ca);
+    let contract_ca_blob = encode(&addr.contract);
+    let predicate_ca_blob = encode(&addr.predicate);
     let mut stmt = conn.prepare(sql::query::GET_PREDICATE)?;
-    let pred_blob: String = stmt.query_row([ca_blob], |row| row.get(PREDICATE))?;
-    let predicate = decode(&pred_blob)?;
-    Ok(predicate)
+    let pred_blob: Option<String> = stmt
+        .query_row(
+            named_params! {
+                ":contract_hash": contract_ca_blob,
+                ":predicate_hash": predicate_ca_blob,
+            },
+            |row| row.get(PREDICATE),
+        )
+        .optional()?;
+    Ok(pred_blob.as_deref().map(decode).transpose()?)
 }
 
 /// Fetches a solution by its content hash.
-pub fn get_solution(conn: &Connection, ca: &ContentAddress) -> Result<Option<Vec<u8>>, QueryError> {
+pub fn get_solution(
+    conn: &Connection,
+    ca: &ContentAddress,
+) -> Result<Option<Solution>, QueryError> {
     const SOLUTION: usize = 0;
     let ca_blob = encode(ca);
     let mut stmt = conn.prepare(sql::query::GET_SOLUTION)?;
-    let solution_blob: String = stmt.query_row([ca_blob], |row| row.get(SOLUTION))?;
-    let solution = decode(&solution_blob)?;
-    Ok(solution)
+    let solution_blob: Option<String> = stmt
+        .query_row([ca_blob], |row| row.get(SOLUTION))
+        .optional()?;
+    Ok(solution_blob.as_deref().map(decode).transpose()?)
 }
 
 /// Fetches the state value by contract content hash and key.
@@ -279,14 +290,16 @@ pub fn get_state_value(
     conn: &Connection,
     contract_ca: &ContentAddress,
     key: &Key,
-) -> Result<Option<Vec<u8>>, QueryError> {
+) -> Result<Option<Value>, QueryError> {
+    use rusqlite::OptionalExtension;
     const VALUE: usize = 0;
     let contract_ca_blob = encode(contract_ca);
     let key_blob = encode(key);
     let mut stmt = conn.prepare(sql::query::GET_STATE)?;
-    let value_blob: String = stmt.query_row([contract_ca_blob, key_blob], |row| row.get(VALUE))?;
-    let value = decode(&value_blob)?;
-    Ok(value)
+    let value_blob: Option<String> = stmt
+        .query_row([contract_ca_blob, key_blob], |row| row.get(VALUE))
+        .optional()?;
+    Ok(value_blob.as_deref().map(decode).transpose()?)
 }
 
 /// Lists all blocks in the given range.

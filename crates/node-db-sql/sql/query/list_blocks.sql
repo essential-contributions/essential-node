@@ -6,7 +6,7 @@ SELECT
 FROM
     block
     LEFT JOIN block_solution ON block.number = block_solution.block_number
-    LEFT JOIN solution ON block_solution.content_hash = solution.content_hash
+    LEFT JOIN solution ON block_solution.solution_id = solution.id
 WHERE
     block.number >= :start_block AND block.number < :end_block
 ORDER BY
