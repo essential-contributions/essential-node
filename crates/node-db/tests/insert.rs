@@ -44,7 +44,7 @@ fn test_insert_block() {
         let mut stmt = conn.prepare(query).unwrap();
         let mut rows = stmt.query(&[&ca_blob]).unwrap();
         let row = rows.next().unwrap().unwrap();
-        let solution_data: String = row.get(0).unwrap();
+        let solution_data: Vec<u8> = row.get(0).unwrap();
         assert_eq!(solution_data, solution_blob);
     }
 }
@@ -72,8 +72,8 @@ fn test_insert_contract() {
     let (contract_ca_blob, salt_blob, da_block_number) = stmt
         .query_row((), |row| {
             Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
+                row.get::<_, Vec<u8>>(0)?,
+                row.get::<_, Vec<u8>>(1)?,
                 row.get::<_, u64>(2)?,
             ))
         })
@@ -96,7 +96,7 @@ fn test_insert_contract() {
         .prepare("SELECT predicate FROM predicate ORDER BY id")
         .unwrap();
     let rows = stmt
-        .query_map((), |row| Ok(row.get::<_, String>(0)?))
+        .query_map((), |row| Ok(row.get::<_, Vec<u8>>(0)?))
         .unwrap();
     for (row, expected_pred) in rows.into_iter().zip(&contract.predicates) {
         let pred_blob = row.unwrap();

@@ -22,26 +22,24 @@ use std::{ops::Range, time::Duration};
 
 mod error;
 
-/// Encodes the given value into a hex-string blob.
+/// Encodes the given value into a blob.
 ///
-/// Serializes the value using postcard before encoding the bytes as an uppercase hex-string.
-pub fn encode<T>(value: &T) -> String
+/// This serializes the value using postcard.
+pub fn encode<T>(value: &T) -> Vec<u8>
 where
     T: Serialize,
 {
-    let value = postcard::to_allocvec(value).expect("postcard serialization cannot fail");
-    hex::encode_upper(value)
+    postcard::to_allocvec(value).expect("postcard serialization cannot fail")
 }
 
-/// Decodes the given hex-string blob into a value of type `T`.
+/// Decodes the given blob into a value of type `T`.
 ///
-/// Decodes the hex-string into bytes, before deserializing into a value of `T` with `postcard`.
-pub fn decode<T>(value: &str) -> Result<T, DecodeError>
+/// This deserializes the bytes into a value of `T` with `postcard`.
+pub fn decode<T>(value: &[u8]) -> Result<T, DecodeError>
 where
     T: for<'de> Deserialize<'de>,
 {
-    let value = hex::decode(value)?;
-    Ok(postcard::from_bytes(&value)?)
+    Ok(postcard::from_bytes(value)?)
 }
 
 /// Create all tables.
@@ -204,11 +202,11 @@ pub fn get_contract_salt(
 
 fn get_contract_salt_by_ca_blob(
     conn: &Connection,
-    ca_blob: &str,
+    ca_blob: &[u8],
 ) -> Result<Option<Hash>, QueryError> {
     const SALT: usize = 0;
     let mut stmt = conn.prepare(sql::query::GET_CONTRACT_SALT)?;
-    let salt_blob: Option<String> = stmt.query_row([ca_blob], |row| row.get(SALT)).optional()?;
+    let salt_blob: Option<Vec<u8>> = stmt.query_row([ca_blob], |row| row.get(SALT)).optional()?;
     Ok(salt_blob.as_deref().map(decode).transpose()?)
 }
 
@@ -223,11 +221,11 @@ pub fn get_contract_predicates(
 
 fn get_contract_predicates_by_ca_blob(
     conn: &Connection,
-    ca_blob: &str,
+    ca_blob: &[u8],
 ) -> Result<Option<Vec<Predicate>>, QueryError> {
     let mut stmt = conn.prepare(sql::query::GET_CONTRACT_PREDICATES)?;
     const PREDICATE: usize = 0;
-    let pred_blobs = stmt.query_map([ca_blob], |row| row.get::<_, String>(PREDICATE))?;
+    let pred_blobs = stmt.query_map([ca_blob], |row| row.get::<_, Vec<u8>>(PREDICATE))?;
     let mut predicates: Vec<Predicate> = vec![];
     for pred_blob in pred_blobs {
         predicates.push(decode(&pred_blob?)?);
@@ -259,7 +257,7 @@ pub fn get_predicate(
     let contract_ca_blob = encode(&addr.contract);
     let predicate_ca_blob = encode(&addr.predicate);
     let mut stmt = conn.prepare(sql::query::GET_PREDICATE)?;
-    let pred_blob: Option<String> = stmt
+    let pred_blob: Option<Vec<u8>> = stmt
         .query_row(
             named_params! {
                 ":contract_hash": contract_ca_blob,
@@ -279,7 +277,7 @@ pub fn get_solution(
     const SOLUTION: usize = 0;
     let ca_blob = encode(ca);
     let mut stmt = conn.prepare(sql::query::GET_SOLUTION)?;
-    let solution_blob: Option<String> = stmt
+    let solution_blob: Option<Vec<u8>> = stmt
         .query_row([ca_blob], |row| row.get(SOLUTION))
         .optional()?;
     Ok(solution_blob.as_deref().map(decode).transpose()?)
@@ -296,7 +294,7 @@ pub fn get_state_value(
     let contract_ca_blob = encode(contract_ca);
     let key_blob = encode(key);
     let mut stmt = conn.prepare(sql::query::GET_STATE)?;
-    let value_blob: Option<String> = stmt
+    let value_blob: Option<Vec<u8>> = stmt
         .query_row([contract_ca_blob, key_blob], |row| row.get(VALUE))
         .optional()?;
     Ok(value_blob.as_deref().map(decode).transpose()?)
@@ -318,7 +316,7 @@ pub fn list_blocks(conn: &Connection, block_range: Range<u64>) -> Result<Vec<Blo
             let block_number: u64 = row.get(BLOCK_NUMBER)?;
             let timestamp_secs: u64 = row.get(TIMESTAMP_SECS)?;
             let timestamp_nanos: u32 = row.get(TIMESTAMP_NANOS)?;
-            let solution_blob: String = row.get(SOLUTION)?;
+            let solution_blob: Vec<u8> = row.get(SOLUTION)?;
             let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
             Ok((block_number, timestamp, solution_blob))
         },
@@ -328,7 +326,7 @@ pub fn list_blocks(conn: &Connection, block_range: Range<u64>) -> Result<Vec<Blo
     let mut blocks: Vec<Block> = vec![];
     let mut last_block_number = None;
     for res in rows {
-        let (block_number, timestamp, solution_blob): (u64, Duration, String) = res?;
+        let (block_number, timestamp, solution_blob): (u64, Duration, Vec<u8>) = res?;
 
         // Fetch the block associated with the block number, inserting it first if new.
         let block = match last_block_number {
@@ -376,7 +374,7 @@ pub fn list_blocks_by_time(
             let block_number: u64 = row.get(BLOCK_NUMBER)?;
             let timestamp_secs: u64 = row.get(TIMESTAMP_SECS)?;
             let timestamp_nanos: u32 = row.get(TIMESTAMP_NANOS)?;
-            let solution_blob: String = row.get(SOLUTION)?;
+            let solution_blob: Vec<u8> = row.get(SOLUTION)?;
             let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
             Ok((block_number, timestamp, solution_blob))
         },
@@ -386,7 +384,7 @@ pub fn list_blocks_by_time(
     let mut blocks: Vec<Block> = vec![];
     let mut last_block_number: Option<u64> = None;
     for res in rows {
-        let (block_number, timestamp, solution_blob): (u64, Duration, String) = res?;
+        let (block_number, timestamp, solution_blob): (u64, Duration, Vec<u8>) = res?;
 
         // Fetch the block associated with the block number, inserting it first if new.
         let block = match last_block_number {
@@ -429,9 +427,9 @@ pub fn list_contracts(
             const CONTENT_HASH: usize = 2;
             const PREDICATE: usize = 3;
             let block_num: u64 = row.get(BLOCK_NUMBER)?;
-            let contract_ca_blob: String = row.get(CONTENT_HASH)?;
-            let salt_blob: String = row.get(SALT)?;
-            let pred_blob: String = row.get(PREDICATE)?;
+            let contract_ca_blob: Vec<u8> = row.get(CONTENT_HASH)?;
+            let salt_blob: Vec<u8> = row.get(SALT)?;
+            let pred_blob: Vec<u8> = row.get(PREDICATE)?;
             Ok((block_num, contract_ca_blob, salt_blob, pred_blob))
         },
     )?;
@@ -441,7 +439,7 @@ pub fn list_contracts(
     let mut last_block_num: Option<u64> = None;
     let mut last_contract_ca = None;
     for res in rows {
-        let (da_block_num, ca_blob, salt_blob, pred_blob): (u64, String, String, String) = res?;
+        let (da_block_num, ca_blob, salt_blob, pred_blob): (u64, Vec<u8>, Vec<u8>, Vec<u8>) = res?;
         let contract_ca: ContentAddress = decode(&ca_blob)?;
         let salt: Hash = decode(&salt_blob)?;
 

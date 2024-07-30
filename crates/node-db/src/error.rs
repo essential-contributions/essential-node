@@ -2,14 +2,8 @@ use thiserror::Error;
 
 /// Any error that might occur during decoding of a type returned by the DB.
 #[derive(Debug, Error)]
-pub enum DecodeError {
-    /// Failed to decode the hex string to bytes.
-    #[error("hex decoding failed: {0}")]
-    Hex(#[from] hex::FromHexError),
-    /// Failed to deserialize from the decoded bytes.
-    #[error("deserialization failed: {0}")]
-    Postcard(#[from] postcard::Error),
-}
+#[error("decoding failed due to postcard deserialization error: {0}")]
+pub struct DecodeError(#[from] pub postcard::Error);
 
 /// A database or decoding error returned by a query.
 #[derive(Debug, Error)]
