@@ -69,29 +69,27 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
     )?;
 
     // Insert all solutions.
+    let mut stmt_solution = tx.prepare(sql::insert::SOLUTION)?;
+    let mut stmt_block_solution = tx.prepare(sql::insert::BLOCK_SOLUTION)?;
     for (ix, solution) in block.solutions.iter().enumerate() {
         let ca_blob = encode(&content_addr(solution));
 
         // Insert the solution.
         let solution_blob = encode(solution);
-        tx.execute(
-            sql::insert::SOLUTION,
-            named_params! {
-                ":content_hash": ca_blob,
-                ":solution": solution_blob,
-            },
-        )?;
+        stmt_solution.execute(named_params! {
+            ":content_hash": ca_blob,
+            ":solution": solution_blob,
+        })?;
 
         // Create a mapping between the block and the solution.
-        tx.execute(
-            sql::insert::BLOCK_SOLUTION,
-            named_params! {
-                ":block_number": block.number,
-                ":solution_hash": ca_blob,
-                ":solution_index": ix,
-            },
-        )?;
+        stmt_block_solution.execute(named_params! {
+            ":block_number": block.number,
+            ":solution_hash": ca_blob,
+            ":solution_index": ix,
+        })?;
     }
+    stmt_solution.finalize()?;
+    stmt_block_solution.finalize()?;
 
     Ok(())
 }
@@ -127,27 +125,23 @@ pub fn insert_contract(
     )?;
 
     // Insert the predicates and their pairings.
+    let mut stmt_predicate = tx.prepare(sql::insert::PREDICATE)?;
+    let mut stmt_contract_predicate = tx.prepare(sql::insert::CONTRACT_PREDICATE)?;
     for (pred, pred_ca) in contract.predicates.iter().zip(&predicate_cas) {
         let pred_blob = encode(pred);
 
         // Insert the predicate.
         let pred_ca_blob = encode(pred_ca);
-        tx.execute(
-            sql::insert::PREDICATE,
-            named_params! {
-                ":content_hash": &pred_ca_blob,
-                ":predicate": pred_blob,
-            },
-        )?;
+        stmt_predicate.execute(named_params! {
+            ":content_hash": &pred_ca_blob,
+            ":predicate": pred_blob,
+        })?;
 
         // Insert the pairing.
-        tx.execute(
-            sql::insert::CONTRACT_PREDICATE,
-            named_params! {
-                ":contract_hash": &contract_ca_blob,
-                ":predicate_hash": &pred_ca_blob,
-            },
-        )?;
+        stmt_contract_predicate.execute(named_params! {
+            ":contract_hash": &contract_ca_blob,
+            ":predicate_hash": &pred_ca_blob,
+        })?;
     }
 
     Ok(())
