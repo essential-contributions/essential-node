@@ -130,7 +130,6 @@ dependencies = [
  "essential-hash",
  "essential-node-db-sql",
  "essential-types",
- "hex",
  "postcard",
  "rusqlite",
  "serde",
