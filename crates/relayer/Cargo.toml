@@ -6,3 +6,11 @@ edition.workspace = true
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
+
+[dependencies]
+essential-node-db.workspace = true
+essential-types.workspace = true
+futures.workspace = true
+rusqlite.workspace = true
+reqwest.workspace = true
+tokio-util.workspace = true
