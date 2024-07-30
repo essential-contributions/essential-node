@@ -42,7 +42,7 @@ fn test_insert_block() {
         let solution_blob = node_db::encode(solution);
         let query = "SELECT solution FROM solution WHERE content_hash = ?";
         let mut stmt = conn.prepare(query).unwrap();
-        let mut rows = stmt.query(&[&ca_blob]).unwrap();
+        let mut rows = stmt.query([&ca_blob]).unwrap();
         let row = rows.next().unwrap().unwrap();
         let solution_data: Vec<u8> = row.get(0).unwrap();
         assert_eq!(solution_data, solution_blob);
@@ -95,9 +95,7 @@ fn test_insert_contract() {
     let mut stmt = conn
         .prepare("SELECT predicate FROM predicate ORDER BY id")
         .unwrap();
-    let rows = stmt
-        .query_map((), |row| Ok(row.get::<_, Vec<u8>>(0)?))
-        .unwrap();
+    let rows = stmt.query_map((), |row| row.get::<_, Vec<u8>>(0)).unwrap();
     for (row, expected_pred) in rows.into_iter().zip(&contract.predicates) {
         let pred_blob = row.unwrap();
         let pred: Predicate = node_db::decode(&pred_blob).unwrap();

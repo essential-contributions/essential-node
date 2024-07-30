@@ -16,7 +16,7 @@ fn create_tables() {
         );
         let result: String = conn
             .query_row(&query, (), |row| row.get(0))
-            .expect(&format!("Table {} does not exist", table.name));
+            .unwrap_or_else(|_| panic!("Table {} does not exist", table.name));
         assert_eq!(
             result, table.name,
             "Table {} was not created successfully",
