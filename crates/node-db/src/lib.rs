@@ -227,9 +227,9 @@ fn get_contract_predicates_by_ca_blob(
 ) -> Result<Option<Vec<Predicate>>, QueryError> {
     let mut stmt = conn.prepare(sql::query::GET_CONTRACT_PREDICATES)?;
     const PREDICATE: usize = 0;
-    let mut pred_blobs = stmt.query_map([ca_blob], |row| row.get::<_, String>(PREDICATE))?;
+    let pred_blobs = stmt.query_map([ca_blob], |row| row.get::<_, String>(PREDICATE))?;
     let mut predicates: Vec<Predicate> = vec![];
-    while let Some(pred_blob) = pred_blobs.next() {
+    for pred_blob in pred_blobs {
         predicates.push(decode(&pred_blob?)?);
     }
     Ok(Some(predicates))
@@ -305,7 +305,7 @@ pub fn get_state_value(
 /// Lists all blocks in the given range.
 pub fn list_blocks(conn: &Connection, block_range: Range<u64>) -> Result<Vec<Block>, QueryError> {
     let mut stmt = conn.prepare(sql::query::LIST_BLOCKS)?;
-    let mut rows = stmt.query_map(
+    let rows = stmt.query_map(
         named_params! {
             ":start_block": block_range.start,
             ":end_block": block_range.end,
@@ -327,7 +327,7 @@ pub fn list_blocks(conn: &Connection, block_range: Range<u64>) -> Result<Vec<Blo
     // Query yields in order of block number and solution index.
     let mut blocks: Vec<Block> = vec![];
     let mut last_block_number = None;
-    while let Some(res) = rows.next() {
+    for res in rows {
         let (block_number, timestamp, solution_blob): (u64, Duration, String) = res?;
 
         // Fetch the block associated with the block number, inserting it first if new.
@@ -359,7 +359,7 @@ pub fn list_blocks_by_time(
     page_number: i64,
 ) -> Result<Vec<Block>, QueryError> {
     let mut stmt = conn.prepare(sql::query::LIST_BLOCKS_BY_TIME)?;
-    let mut rows = stmt.query_map(
+    let rows = stmt.query_map(
         named_params! {
             ":start_secs": range.start.as_secs(),
             ":start_nanos": range.start.subsec_nanos(),
@@ -385,7 +385,7 @@ pub fn list_blocks_by_time(
     // Query yields in order of block number and solution index.
     let mut blocks: Vec<Block> = vec![];
     let mut last_block_number: Option<u64> = None;
-    while let Some(res) = rows.next() {
+    for res in rows {
         let (block_number, timestamp, solution_blob): (u64, Duration, String) = res?;
 
         // Fetch the block associated with the block number, inserting it first if new.
@@ -418,7 +418,7 @@ pub fn list_contracts(
     block_range: Range<u64>,
 ) -> Result<Vec<(u64, Vec<Contract>)>, QueryError> {
     let mut stmt = conn.prepare(sql::query::LIST_CONTRACTS)?;
-    let mut rows = stmt.query_map(
+    let rows = stmt.query_map(
         named_params! {
             ":start_block": block_range.start,
             ":end_block": block_range.end,
@@ -440,7 +440,7 @@ pub fn list_contracts(
     let mut blocks: Vec<(u64, Vec<Contract>)> = vec![];
     let mut last_block_num: Option<u64> = None;
     let mut last_contract_ca = None;
-    while let Some(res) = rows.next() {
+    for res in rows {
         let (da_block_num, ca_blob, salt_blob, pred_blob): (u64, String, String, String) = res?;
         let contract_ca: ContentAddress = decode(&ca_blob)?;
         let salt: Hash = decode(&salt_blob)?;
