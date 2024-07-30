@@ -112,7 +112,7 @@ pub fn insert_contract(
         &contract.salt,
     );
 
-    // Encode the data into hex blobs.
+    // Encode the data into blobs.
     let contract_ca_blob = encode(&contract_ca);
     let salt_blob = encode(&contract.salt);
     tx.execute(
