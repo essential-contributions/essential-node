@@ -8,9 +8,17 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
+essential-hash.workspace = true
 essential-node-db.workspace = true
 essential-types.workspace = true
 futures.workspace = true
 rusqlite.workspace = true
 reqwest.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
 tokio-util.workspace = true
+
+[dev-dependencies]
+essential-sign.workspace = true
+secp256k1.workspace = true

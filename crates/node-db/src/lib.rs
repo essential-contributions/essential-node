@@ -1,3 +1,5 @@
+#![warn(missing_docs)]
+
 //! The node's DB interface and sqlite implementation.
 //!
 //! The core capability of the node is to:
@@ -147,6 +149,30 @@ pub fn insert_contract(
     Ok(())
 }
 
+/// Inserts the new progress for syncing contracts.
+///
+/// Note even though this is an insert,
+/// it will overwrite the previous progress.
+/// This is because we need to initialize the first progress.
+pub fn insert_contract_progress(
+    conn: &Connection,
+    logical_clock: u64,
+    contract_ca: &ContentAddress,
+) -> rusqlite::Result<()> {
+    let contract_ca_blob = encode(contract_ca);
+
+    // Cast to i64 to match the type of the column.
+    let logical_clock = logical_clock as i64;
+    conn.execute(
+        sql::insert::CONTRACT_PROGRESS,
+        named_params! {
+            ":logical_clock": logical_clock,
+            ":content_hash": contract_ca_blob,
+        },
+    )?;
+    Ok(())
+}
+
 /// Updates the state for a given contract content address and key.
 pub fn update_state(
     conn: &Connection,
@@ -241,6 +267,24 @@ pub fn get_contract(
         return Ok(None);
     };
     Ok(Some(Contract { salt, predicates }))
+}
+
+/// Fetches the contract progress.
+pub fn get_contract_progress(
+    conn: &Connection,
+) -> Result<Option<(u64, ContentAddress)>, QueryError> {
+    let Some((logical_clock, content_hash)) = conn
+        .query_row(sql::query::GET_CONTRACT_PROGRESS, [], |row| {
+            let logical_clock: i64 = row.get("logical_clock")?;
+            let content_hash: Vec<u8> = row.get("content_hash")?;
+            Ok((logical_clock as u64, content_hash))
+        })
+        .optional()?
+    else {
+        return Ok(None);
+    };
+    let content_hash = decode(&content_hash)?;
+    Ok(Some((logical_clock, content_hash)))
 }
 
 /// Fetches a predicate by its predicate content address.

@@ -2,6 +2,7 @@
 { cargo-toml-lint
 , clippy
 , essential-node-api
+, essential-rest-server
 , mkShell
 , rust-analyzer
 , rustfmt
@@ -15,6 +16,7 @@ mkShell {
   buildInputs = [
     cargo-toml-lint
     clippy
+    essential-rest-server
     rust-analyzer
     rustfmt
     cargo
