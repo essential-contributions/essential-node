@@ -156,17 +156,17 @@ pub fn insert_contract(
 /// This is because we need to initialize the first progress.
 pub fn insert_contract_progress(
     conn: &Connection,
-    logical_clock: u64,
+    l2_block_number: u64,
     contract_ca: &ContentAddress,
 ) -> rusqlite::Result<()> {
     let contract_ca_blob = encode(contract_ca);
 
     // Cast to i64 to match the type of the column.
-    let logical_clock = logical_clock as i64;
+    let l2_block_number = l2_block_number as i64;
     conn.execute(
         sql::insert::CONTRACT_PROGRESS,
         named_params! {
-            ":logical_clock": logical_clock,
+            ":l2_block_number": l2_block_number,
             ":content_hash": contract_ca_blob,
         },
     )?;
@@ -273,18 +273,18 @@ pub fn get_contract(
 pub fn get_contract_progress(
     conn: &Connection,
 ) -> Result<Option<(u64, ContentAddress)>, QueryError> {
-    let Some((logical_clock, content_hash)) = conn
+    let Some((l2_block_number, content_hash)) = conn
         .query_row(sql::query::GET_CONTRACT_PROGRESS, [], |row| {
-            let logical_clock: i64 = row.get("logical_clock")?;
+            let l2_block_number: i64 = row.get("l2_block_number")?;
             let content_hash: Vec<u8> = row.get("content_hash")?;
-            Ok((logical_clock as u64, content_hash))
+            Ok((l2_block_number as u64, content_hash))
         })
         .optional()?
     else {
         return Ok(None);
     };
     let content_hash = decode(&content_hash)?;
-    Ok(Some((logical_clock, content_hash)))
+    Ok(Some((l2_block_number, content_hash)))
 }
 
 /// Fetches a predicate by its predicate content address.
@@ -332,6 +332,24 @@ pub fn get_state_value(
         .query_row([contract_ca_blob, key_blob], |row| row.get("value"))
         .optional()?;
     Ok(value_blob.as_deref().map(decode).transpose()?)
+}
+
+/// Fetches the latest block number.
+pub fn get_latest_block_number(conn: &Connection) -> Result<Option<u64>, QueryError> {
+    Ok(
+        conn.query_row(sql::query::GET_LATEST_BLOCK_NUMBER, [], |row| {
+            row.get::<_, Option<u64>>("number")
+        })?,
+    )
+}
+
+/// Fetches the latest block.
+pub fn get_latest_block(conn: &Transaction) -> Result<Option<Block>, QueryError> {
+    let Some(block_number) = get_latest_block_number(conn)? else {
+        return Ok(None);
+    };
+    let blocks = list_blocks(conn, block_number..block_number.saturating_add(1))?;
+    Ok(blocks.into_iter().next())
 }
 
 /// Lists all blocks in the given range.

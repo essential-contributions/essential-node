@@ -113,20 +113,20 @@ fn test_insert_contract_progress() {
     tx.commit().unwrap();
 
     let mut stmt = conn
-        .prepare("SELECT id, logical_clock, content_hash FROM contract_progress")
+        .prepare("SELECT id, l2_block_number, content_hash FROM contract_progress")
         .unwrap();
     let mut result = stmt
         .query_map((), |row| {
             Ok((
                 row.get::<_, u64>("id")?,
-                row.get::<_, u64>("logical_clock")?,
+                row.get::<_, u64>("l2_block_number")?,
                 row.get::<_, Vec<u8>>("content_hash")?,
             ))
         })
         .unwrap();
-    let (id, logical_clock, content_hash) = result.next().unwrap().unwrap();
+    let (id, l2_block_number, content_hash) = result.next().unwrap().unwrap();
     assert_eq!(id, 1);
-    assert_eq!(logical_clock, 0);
+    assert_eq!(l2_block_number, 0);
     assert_eq!(
         node_db::decode::<ContentAddress>(&content_hash).unwrap(),
         ContentAddress([0; 32])

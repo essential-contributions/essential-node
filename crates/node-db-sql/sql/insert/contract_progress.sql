@@ -1,4 +1,4 @@
 INSERT
-    OR REPLACE INTO contract_progress (id, logical_clock, content_hash)
+    OR REPLACE INTO contract_progress (id, l2_block_number, content_hash)
 VALUES
-    (1, :logical_clock, :content_hash)
+    (1, :l2_block_number, :content_hash)

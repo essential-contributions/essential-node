@@ -45,6 +45,7 @@ pub mod query {
     decl_const_sql_str!(GET_CONTRACT_PREDICATES, "query/get_contract_predicates.sql");
     decl_const_sql_str!(GET_CONTRACT_PROGRESS, "query/get_contract_progress.sql");
     decl_const_sql_str!(GET_CONTRACT_SALT, "query/get_contract_salt.sql");
+    decl_const_sql_str!(GET_LATEST_BLOCK_NUMBER, "query/get_latest_block_number.sql");
     decl_const_sql_str!(GET_PREDICATE, "query/get_predicate.sql");
     decl_const_sql_str!(GET_SOLUTION, "query/get_solution.sql");
     decl_const_sql_str!(GET_STATE, "query/get_state.sql");

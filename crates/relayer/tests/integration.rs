@@ -1,4 +1,4 @@
-use essential_relayer::Relayer;
+use essential_relayer::{DataSyncError, Relayer};
 use essential_types::{
     contract::{Contract, SignedContract},
     predicate::{Directive, Predicate},
@@ -13,7 +13,7 @@ use tokio::{
 
 #[tokio::test]
 async fn test_sync_contracts() {
-    let (server_address, _child) = setup_server().await;
+    let (server_address, mut child) = setup_server().await;
 
     let client = ClientBuilder::new()
         .http2_prior_knowledge()
@@ -26,10 +26,11 @@ async fn test_sync_contracts() {
 
     let mut flags = OpenFlags::default();
     flags.insert(OpenFlags::SQLITE_OPEN_SHARED_CACHE);
-    let mut conn = rusqlite::Connection::open_with_flags("file::memory:", flags).unwrap();
-    let tx = conn.transaction().unwrap();
+    let mut contracts_conn = rusqlite::Connection::open_with_flags("file::memory:", flags).unwrap();
+    let tx = contracts_conn.transaction().unwrap();
     essential_node_db::create_tables(&tx).unwrap();
     tx.commit().unwrap();
+    let blocks_conn = rusqlite::Connection::open_with_flags("file::memory:", flags).unwrap();
     let test_conn = rusqlite::Connection::open_with_flags("file::memory:", flags).unwrap();
 
     let predicate = Predicate {
@@ -54,12 +55,18 @@ async fn test_sync_contracts() {
     assert!(r.status().is_success(), "{}", r.text().await.unwrap());
 
     let relayer = Relayer::new(server_address.as_str()).unwrap();
-    let handle = relayer.run(conn).unwrap();
+    let handle = relayer
+        .run(
+            contracts_conn,
+            blocks_conn,
+            tokio::sync::watch::channel(()).0,
+        )
+        .unwrap();
 
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     let result = essential_node_db::list_contracts(&test_conn, 0..3).unwrap();
     assert_eq!(result.len(), 1);
-    assert_eq!(result[0].0, 1);
+    assert_eq!(result[0].0, 0);
     assert_eq!(result[0].1.len(), 1);
     assert_eq!(result[0].1[0].salt, [0; 32]);
 
@@ -74,7 +81,7 @@ async fn test_sync_contracts() {
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     let result = essential_node_db::list_contracts(&test_conn, 0..3).unwrap();
     assert_eq!(result.len(), 2);
-    assert_eq!(result[1].0, 2);
+    assert_eq!(result[1].0, 1);
     assert_eq!(result[1].1.len(), 1);
     assert_eq!(result[1].1[0].salt, [1; 32]);
 
@@ -89,28 +96,62 @@ async fn test_sync_contracts() {
             .unwrap();
         assert!(r.status().is_success(), "{}", r.text().await.unwrap());
     }
-    let conn = rusqlite::Connection::open_with_flags("file::memory:", flags).unwrap();
+    let contracts_conn = rusqlite::Connection::open_with_flags("file::memory:", flags).unwrap();
+    let blocks_conn = rusqlite::Connection::open_with_flags("file::memory:", flags).unwrap();
 
     let relayer = Relayer::new(server_address.as_str()).unwrap();
-    let handle = relayer.run(conn).unwrap();
+    let handle = relayer
+        .run(
+            contracts_conn,
+            blocks_conn,
+            tokio::sync::watch::channel(()).0,
+        )
+        .unwrap();
 
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     let result = essential_node_db::list_contracts(&test_conn, 0..205).unwrap();
     assert_eq!(result.len(), 200);
 
-    assert_eq!(result[1].0, 2);
+    assert_eq!(result[1].0, 1);
     assert_eq!(result[1].1.len(), 1);
     assert_eq!(result[1].1[0].salt, [1; 32]);
 
-    assert_eq!(result[2].0, 3);
+    assert_eq!(result[2].0, 2);
     assert_eq!(result[2].1.len(), 1);
-    assert_eq!(result[2].1[0].salt, [3; 32]);
+    assert_eq!(result[2].1[0].salt, [2; 32]);
 
-    assert_eq!(result[199].0, 200);
+    assert_eq!(result[199].0, 199);
     assert_eq!(result[199].1.len(), 1);
     assert_eq!(result[199].1[0].salt, [199; 32]);
 
     handle.close().await.unwrap();
+    child.kill().await.unwrap();
+
+    let (server_address, _child) = setup_server().await;
+
+    let contracts_conn = rusqlite::Connection::open_with_flags("file::memory:", flags).unwrap();
+    let blocks_conn = rusqlite::Connection::open_with_flags("file::memory:", flags).unwrap();
+
+    let relayer = Relayer::new(server_address.as_str()).unwrap();
+    let handle = relayer
+        .run(
+            contracts_conn,
+            blocks_conn,
+            tokio::sync::watch::channel(()).0,
+        )
+        .unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    let r = handle.close().await;
+    assert!(
+        matches!(
+            r,
+            Err(essential_relayer::Error::DataSyncFailed(
+                DataSyncError::ContractMismatch(199, _, None)
+            ))
+        ),
+        "{:?}",
+        r
+    );
 }
 
 pub async fn setup_server() -> (String, Child) {

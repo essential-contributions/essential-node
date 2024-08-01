@@ -281,6 +281,7 @@ dependencies = [
  "reqwest",
  "rusqlite",
  "secp256k1",
+ "serde",
  "serde_json",
  "thiserror",
  "tokio",

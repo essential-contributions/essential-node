@@ -31,12 +31,12 @@ async fn test_sync_contracts() {
         }),
     ]);
 
-    sync_contracts(conn, 0, stream).await.unwrap();
+    sync_contracts(conn, None, stream).await.unwrap();
 
     let result = essential_node_db::list_contracts(&test_conn, 0..3).unwrap();
     assert_eq!(result.len(), 2);
-    assert_eq!(result[0].0, 1);
-    assert_eq!(result[1].0, 2);
+    assert_eq!(result[0].0, 0);
+    assert_eq!(result[1].0, 1);
 
     assert_eq!(result[0].1.len(), 1);
     assert_eq!(result[1].1.len(), 1);
@@ -51,7 +51,7 @@ async fn test_sync_contracts() {
     assert_eq!(
         result,
         ContractProgress {
-            logical_clock: 2,
+            l2_block_number: 1,
             last_contract: essential_hash::contract_addr::from_contract(&Contract {
                 predicates: vec![predicate.clone()],
                 salt: [1; 32],

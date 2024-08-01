@@ -88,9 +88,9 @@ fn test_get_contract_progress() {
     tx.commit().unwrap();
 
     // Fetch the contract progress.
-    let (logical_clock, hash) = node_db::get_contract_progress(&conn).unwrap().unwrap();
+    let (l2_block_number, hash) = node_db::get_contract_progress(&conn).unwrap().unwrap();
 
-    assert_eq!(logical_clock, 42);
+    assert_eq!(l2_block_number, 42);
     assert_eq!(hash, ContentAddress([42; 32]));
 }
 

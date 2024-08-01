@@ -1,5 +1,5 @@
 SELECT
-    logical_clock,
+    l2_block_number,
     content_hash
 FROM
     contract_progress
