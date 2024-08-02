@@ -3,8 +3,22 @@ use essential_types::ContentAddress;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
+pub(crate) type InternalResult<T> = std::result::Result<T, InternalError>;
 
 #[derive(Debug, Error)]
+pub(crate) enum InternalError {
+    /// A critical error occurred.
+    #[error("a critical error occurred: {0}")]
+    Critical(#[from] Error),
+    /// A recoverable error occurred.
+    #[error("a recoverable error occurred: {0}")]
+    Recoverable(#[from] RecoverableError),
+}
+
+pub(crate) type CriticalError = Error;
+
+#[derive(Debug, Error)]
+/// An error occurred in the relayer that is not recoverable.
 pub enum Error {
     /// A DB error occurred.
     #[error("a DB error occurred: {0}")]
@@ -15,27 +29,37 @@ pub enum Error {
     /// Failed to query the db.
     #[error("an error occurred when querying the db: {0}")]
     DbQueryFailed(#[from] QueryError),
-    /// Stream from server failed.
-    #[error("an error occurred in the stream from the server: {0}")]
-    Stream(#[from] std::io::Error),
-    /// Failed to make a request to the server.
-    #[error("an error occurred in a request to the server: {0}")]
-    BadServerResponse(reqwest::StatusCode),
     /// Failed to parse a server url.
     #[error("an error occurred when parsing the server url")]
     UrlParse,
-    /// Http client error.
-    #[error("an error occurred in the http client: {0}")]
-    HttpClient(#[from] reqwest::Error),
     /// An overflow occurred.
     #[error("an overflow occurred when converting a number")]
     Overflow,
     /// A data sync error occurred.
     #[error("a data sync error occurred: {0}")]
     DataSyncFailed(#[from] DataSyncError),
+    /// An error occurred while building the http client.
+    #[error("an error occurred while building the http client: {0}")]
+    HttpClientBuild(reqwest::Error),
+}
+
+#[derive(Debug, Error)]
+pub(crate) enum RecoverableError {
+    /// Stream from server failed.
+    #[error("an error occurred in the stream from the server: {0}")]
+    Stream(#[from] std::io::Error),
+    /// Failed to make a request to the server.
+    #[error("an error occurred in a request to the server: {0}")]
+    BadServerResponse(reqwest::StatusCode),
+    /// Http client error.
+    #[error("an error occurred in the http client: {0}")]
+    HttpClient(#[from] reqwest::Error),
     /// A new block was not sequentially after the last block.
     #[error("a new block was not sequentially after the last block. Got: {0}, expected: {1}")]
     NonSequentialBlock(u64, u64),
+    /// The stream returned an error.
+    #[error("the stream returned an error: {0}")]
+    StreamError(String),
 }
 
 #[derive(Debug, Error)]
@@ -55,5 +79,11 @@ fn display_address(addr: &Option<ContentAddress>) -> String {
     match addr {
         Some(addr) => format!("{}", addr),
         None => "None".to_string(),
+    }
+}
+
+impl From<std::io::Error> for InternalError {
+    fn from(e: std::io::Error) -> Self {
+        InternalError::Recoverable(RecoverableError::Stream(e))
     }
 }

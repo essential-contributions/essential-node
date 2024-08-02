@@ -9,7 +9,10 @@ use tokio_util::{
     io::StreamReader,
 };
 
-use crate::{DataSyncError, Error};
+use crate::{
+    error::{CriticalError, InternalError, InternalResult, RecoverableError},
+    DataSyncError,
+};
 
 use super::{BlockProgress, ContractProgress};
 
@@ -19,7 +22,7 @@ pub async fn stream_contracts(
     url: &Url,
     client: &Client,
     progress: Option<ContractProgress>,
-) -> Result<impl Stream<Item = Result<Contract, Error>>, Error> {
+) -> InternalResult<impl Stream<Item = InternalResult<Contract>>> {
     let next_contract_num = match &progress {
         Some(p) => p.l2_block_number.saturating_add(1),
         None => 0,
@@ -27,15 +30,19 @@ pub async fn stream_contracts(
     let page = next_contract_num / SERVER_PAGE_SIZE;
 
     let num_skip = next_contract_num % SERVER_PAGE_SIZE;
-    let num_skip: usize = num_skip.try_into().map_err(|_| Error::Overflow)?;
+    let num_skip: usize = num_skip.try_into().map_err(|_| CriticalError::Overflow)?;
 
     let mut url = url
         .join("/subscribe-contracts")
-        .map_err(|_| Error::UrlParse)?;
+        .map_err(|_| CriticalError::UrlParse)?;
     url.query_pairs_mut().append_pair("page", &page.to_string());
-    let response = client.get(url).send().await?;
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(RecoverableError::from)?;
     if !response.status().is_success() {
-        return Err(Error::BadServerResponse(response.status()));
+        return Err(RecoverableError::BadServerResponse(response.status()).into());
     }
 
     let stream = StreamReader::new(
@@ -54,18 +61,24 @@ pub async fn stream_blocks(
     url: &Url,
     client: &Client,
     progress: Option<BlockProgress>,
-) -> Result<impl Stream<Item = Result<Block, Error>>, Error> {
+) -> InternalResult<impl Stream<Item = InternalResult<Block>>> {
     let next_block_num = match &progress {
         Some(p) => p.last_block_number.saturating_add(1),
         None => 0,
     };
 
-    let mut url = url.join("/subscribe-blocks").map_err(|_| Error::UrlParse)?;
+    let mut url = url
+        .join("/subscribe-blocks")
+        .map_err(|_| CriticalError::UrlParse)?;
     url.query_pairs_mut()
         .append_pair("block", &next_block_num.to_string());
-    let response = client.get(url).send().await?;
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(RecoverableError::from)?;
     if !response.status().is_success() {
-        return Err(Error::BadServerResponse(response.status()));
+        return Err(RecoverableError::BadServerResponse(response.status()).into());
     }
 
     let stream = StreamReader::new(
@@ -82,25 +95,31 @@ pub(crate) async fn check_for_contract_mismatch(
     url: &Url,
     client: &Client,
     progress: &Option<ContractProgress>,
-) -> crate::Result<()> {
+) -> InternalResult<()> {
     let Some(progress) = progress else {
         return Ok(());
     };
     let page = progress.l2_block_number / SERVER_PAGE_SIZE;
 
     let index = progress.l2_block_number % SERVER_PAGE_SIZE;
-    let index: usize = index.try_into().map_err(|_| Error::Overflow)?;
+    let index: usize = index.try_into().map_err(|_| CriticalError::Overflow)?;
 
-    let mut url = url.join("/list-contracts").map_err(|_| Error::UrlParse)?;
+    let mut url = url
+        .join("/list-contracts")
+        .map_err(|_| CriticalError::UrlParse)?;
     url.query_pairs_mut().append_pair("page", &page.to_string());
 
-    let response = client.get(url).send().await?;
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(RecoverableError::from)?;
     if !response.status().is_success() {
-        return Err(Error::BadServerResponse(response.status()));
+        return Err(RecoverableError::BadServerResponse(response.status()).into());
     }
 
-    let contracts: Vec<Contract> = response.json().await?;
-    check_contract_fork(index, &contracts, progress)
+    let contracts: Vec<Contract> = response.json().await.map_err(RecoverableError::from)?;
+    Ok(check_contract_fork(index, &contracts, progress)?)
 }
 
 fn check_contract_fork(
@@ -112,19 +131,23 @@ fn check_contract_fork(
         Some(contract) => {
             let contract_hash = essential_hash::contract_addr::from_contract(contract);
             if contract_hash != progress.last_contract {
-                return Err(Error::DataSyncFailed(DataSyncError::ContractMismatch(
-                    progress.l2_block_number,
-                    progress.last_contract.clone(),
-                    Some(contract_hash),
-                )));
+                return Err(CriticalError::DataSyncFailed(
+                    DataSyncError::ContractMismatch(
+                        progress.l2_block_number,
+                        progress.last_contract.clone(),
+                        Some(contract_hash),
+                    ),
+                ));
             }
         }
         None => {
-            return Err(Error::DataSyncFailed(DataSyncError::ContractMismatch(
-                progress.l2_block_number,
-                progress.last_contract.clone(),
-                None,
-            )));
+            return Err(CriticalError::DataSyncFailed(
+                DataSyncError::ContractMismatch(
+                    progress.l2_block_number,
+                    progress.last_contract.clone(),
+                    None,
+                ),
+            ));
         }
     }
 
@@ -135,22 +158,28 @@ pub(crate) async fn check_for_block_fork(
     url: &Url,
     client: &Client,
     progress: &Option<BlockProgress>,
-) -> crate::Result<()> {
+) -> InternalResult<()> {
     let Some(progress) = progress else {
         return Ok(());
     };
 
-    let mut url = url.join("/list-blocks").map_err(|_| Error::UrlParse)?;
+    let mut url = url
+        .join("/list-blocks")
+        .map_err(|_| CriticalError::UrlParse)?;
     url.query_pairs_mut()
         .append_pair("block", &progress.last_block_number.to_string());
 
-    let response = client.get(url).send().await?;
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(RecoverableError::from)?;
     if !response.status().is_success() {
-        return Err(Error::BadServerResponse(response.status()));
+        return Err(RecoverableError::BadServerResponse(response.status()).into());
     }
 
-    let blocks: Vec<Block> = response.json().await?;
-    check_block_fork(&blocks, progress)
+    let blocks: Vec<Block> = response.json().await.map_err(RecoverableError::from)?;
+    Ok(check_block_fork(&blocks, progress)?)
 }
 
 fn check_block_fork(blocks: &[Block], progress: &BlockProgress) -> crate::Result<()> {
@@ -158,7 +187,7 @@ fn check_block_fork(blocks: &[Block], progress: &BlockProgress) -> crate::Result
         Some(block) => {
             let block_hash = essential_hash::content_addr(block);
             if block_hash != progress.last_block_hash {
-                return Err(Error::DataSyncFailed(DataSyncError::Fork(
+                return Err(CriticalError::DataSyncFailed(DataSyncError::Fork(
                     progress.last_block_number,
                     progress.last_block_hash.clone(),
                     Some(block_hash),
@@ -166,7 +195,7 @@ fn check_block_fork(blocks: &[Block], progress: &BlockProgress) -> crate::Result
             }
         }
         None => {
-            return Err(Error::DataSyncFailed(DataSyncError::ContractMismatch(
+            return Err(CriticalError::DataSyncFailed(DataSyncError::Fork(
                 progress.last_block_number,
                 progress.last_block_hash.clone(),
                 None,
@@ -190,7 +219,7 @@ where
     T: serde::de::DeserializeOwned,
 {
     type Item = T;
-    type Error = Error;
+    type Error = InternalError;
 
     fn decode(&mut self, buf: &mut bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         let end = buf
@@ -206,12 +235,19 @@ where
                 };
                 let s = s.trim_start_matches("data: ").trim();
                 let data = serde_json::from_str::<T>(s);
-                buf.advance(end + 2);
-                let Ok(data) = data else {
-                    // TODO: Handle incoming errors in the stream.
-                    return Ok(None);
+                let r = match data {
+                    Ok(data) => Ok(Some(data)),
+                    Err(_) => {
+                        // Keep-alive
+                        if s == ":" {
+                            Ok(None)
+                        } else {
+                            Err(RecoverableError::StreamError(s.to_string()).into())
+                        }
+                    }
                 };
-                Ok(Some(data))
+                buf.advance(end + 2);
+                r
             }
             None => Ok(None),
         }

@@ -31,7 +31,9 @@ async fn test_sync_contracts() {
         }),
     ]);
 
-    sync_contracts(conn, None, stream).await.unwrap();
+    sync_contracts(conn, None, watch::channel(()).0, stream)
+        .await
+        .unwrap();
 
     let result = essential_node_db::list_contracts(&test_conn, 0..3).unwrap();
     assert_eq!(result.len(), 2);

@@ -1,6 +1,13 @@
+use std::borrow::BorrowMut;
+use std::future::Future;
+
+use error::InternalError;
+use error::InternalResult;
 use futures::StreamExt;
+use handle::Handle;
 use reqwest::{ClientBuilder, Url};
 
+use error::CriticalError;
 pub use error::DataSyncError;
 pub use error::Error;
 pub use error::Result;
@@ -9,11 +16,13 @@ use sync::stream_contracts;
 use sync::sync_blocks;
 use sync::sync_contracts;
 use sync::WithConn;
-use tokio::sync::oneshot;
 use tokio::sync::watch;
 
 mod error;
+mod handle;
 mod sync;
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug, Clone)]
 pub struct Relayer {
@@ -21,51 +30,67 @@ pub struct Relayer {
     client: reqwest::Client,
 }
 
-pub struct Handle {
-    close_contracts: Option<oneshot::Sender<()>>,
-    close_blocks: Option<oneshot::Sender<()>>,
-    join_contracts: Option<tokio::task::JoinHandle<Result<()>>>,
-    join_blocks: Option<tokio::task::JoinHandle<Result<()>>>,
+pub trait GetConn {
+    type Error;
+    type Connection: BorrowMut<rusqlite::Connection> + Send + 'static;
+
+    fn get(
+        &self,
+    ) -> impl Future<Output = std::result::Result<Self::Connection, Self::Error>> + Send;
 }
 
 impl Relayer {
     pub fn new(endpoint: impl TryInto<Url>) -> Result<Self> {
-        let endpoint = endpoint.try_into().map_err(|_| Error::UrlParse)?;
-        let client = ClientBuilder::new().http2_prior_knowledge().build()?;
+        let endpoint = endpoint.try_into().map_err(|_| CriticalError::UrlParse)?;
+        let client = ClientBuilder::new()
+            .http2_prior_knowledge()
+            .build()
+            .map_err(CriticalError::HttpClientBuild)?;
         Ok(Self { endpoint, client })
     }
 
-    pub fn run(
+    pub fn run<C, E>(
         self,
-        contracts_conn: rusqlite::Connection,
-        blocks_conn: rusqlite::Connection,
-        notify: watch::Sender<()>,
-    ) -> Result<Handle> {
-        let (close_contracts, contracts_shutdown) = oneshot::channel();
-        let (close_blocks, blocks_shutdown) = oneshot::channel();
+        get_conn: C,
+        new_contract: watch::Sender<()>,
+        new_block: watch::Sender<()>,
+    ) -> Result<Handle>
+    where
+        C: GetConn<Error = E> + Clone + Send + 'static,
+        Error: From<E>,
+    {
         let relayer = self.clone();
-        let join_contracts = tokio::spawn(async move {
-            relayer
-                .run_contracts(contracts_conn, contracts_shutdown)
-                .await
-        });
-        let join_blocks =
-            tokio::spawn(
-                async move { self.run_blocks(blocks_conn, blocks_shutdown, notify).await },
-            );
-        Ok(Handle {
-            close_contracts: Some(close_contracts),
-            close_blocks: Some(close_blocks),
-            join_contracts: Some(join_contracts),
-            join_blocks: Some(join_blocks),
-        })
+        let conn = get_conn.clone();
+        let contracts = move |shutdown: watch::Receiver<()>| {
+            let conn = conn.clone();
+            let relayer = relayer.clone();
+            let notify = new_contract.clone();
+            async move {
+                let c = conn.get().await.map_err(CriticalError::from)?;
+                relayer.run_contracts(c, shutdown, notify).await
+            }
+        };
+        let blocks = move |shutdown: watch::Receiver<()>| {
+            let conn = get_conn.clone();
+            let relayer = self.clone();
+            let notify = new_block.clone();
+            async move {
+                let c = conn.get().await.map_err(CriticalError::from)?;
+                relayer.run_blocks(c, shutdown, notify).await
+            }
+        };
+        run(contracts, blocks)
     }
 
-    async fn run_contracts(
+    async fn run_contracts<C>(
         &self,
-        conn: rusqlite::Connection,
-        shutdown: oneshot::Receiver<()>,
-    ) -> Result<()> {
+        conn: C,
+        mut shutdown: watch::Receiver<()>,
+        notify: watch::Sender<()>,
+    ) -> InternalResult<()>
+    where
+        C: BorrowMut<rusqlite::Connection> + Send + 'static,
+    {
         let WithConn {
             conn,
             value: progress,
@@ -73,15 +98,21 @@ impl Relayer {
         sync::check_for_contract_mismatch(&self.endpoint, &self.client, &progress).await?;
         let l2_block_number = progress.as_ref().map(|p| p.l2_block_number);
         let stream = stream_contracts(&self.endpoint, &self.client, progress).await?;
-        sync_contracts(conn, l2_block_number, stream.take_until(shutdown)).await
+        let close = async move {
+            let _ = shutdown.changed().await;
+        };
+        sync_contracts(conn, l2_block_number, notify, stream.take_until(close)).await
     }
 
-    async fn run_blocks(
+    async fn run_blocks<C>(
         &self,
-        conn: rusqlite::Connection,
-        shutdown: oneshot::Receiver<()>,
+        conn: C,
+        mut shutdown: watch::Receiver<()>,
         notify: watch::Sender<()>,
-    ) -> Result<()> {
+    ) -> InternalResult<()>
+    where
+        C: BorrowMut<rusqlite::Connection> + Send + 'static,
+    {
         let WithConn {
             conn,
             value: progress,
@@ -89,63 +120,66 @@ impl Relayer {
         sync::check_for_block_fork(&self.endpoint, &self.client, &progress).await?;
         let last_block_number = progress.as_ref().map(|p| p.last_block_number);
         let stream = stream_blocks(&self.endpoint, &self.client, progress).await?;
-        sync_blocks(conn, last_block_number, notify, stream.take_until(shutdown)).await
+        let close = async move {
+            let _ = shutdown.changed().await;
+        };
+        sync_blocks(conn, last_block_number, notify, stream.take_until(close)).await
     }
 }
 
-impl Handle {
-    pub async fn close(mut self) -> Result<()> {
-        let Some((close_contracts, join_contracts)) = self
-            .close_contracts
-            .take()
-            .and_then(|tx| Some((tx, self.join_contracts.take()?)))
-        else {
-            return Ok(());
-        };
-
-        let Some((close_blocks, join_blocks)) = self
-            .close_blocks
-            .take()
-            .and_then(|tx| Some((tx, self.join_blocks.take()?)))
-        else {
-            return Ok(());
-        };
-        let close_con_err = close_contracts.send(()).is_err();
-        let close_block_err = close_blocks.send(()).is_err();
-        if close_con_err || close_block_err {
-            let cr = if join_contracts.is_finished() {
-                match join_contracts.await {
-                    Ok(r) => r,
-                    Err(_) => Ok(()),
+fn run<C, B, CFut, BFut>(mut contracts: C, mut blocks: B) -> Result<Handle>
+where
+    C: FnMut(watch::Receiver<()>) -> CFut + Send + 'static,
+    CFut: Future<Output = InternalResult<()>> + Send,
+    B: FnMut(watch::Receiver<()>) -> BFut + Send + 'static,
+    BFut: Future<Output = InternalResult<()>> + Send,
+{
+    let (close_contracts, contracts_shutdown) = watch::channel(());
+    let (close_blocks, blocks_shutdown) = watch::channel(());
+    let join_contracts = tokio::spawn(async move {
+        loop {
+            let r = contracts(contracts_shutdown.clone()).await;
+            match r {
+                // Stream has ended, return from the task
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    // Return error if it's critical or
+                    // continue if it's recoverable
+                    handle_error(e)?;
                 }
-            } else {
-                Ok(())
-            };
-            let br = if join_blocks.is_finished() {
-                match join_blocks.await {
-                    Ok(r) => r,
-                    Err(_) => Ok(()),
-                }
-            } else {
-                Ok(())
-            };
-            return cr.and(br);
+            }
         }
-
-        let Ok(cr) = join_contracts.await else {
-            return Ok(());
-        };
-        let Ok(br) = join_blocks.await else {
-            return Ok(());
-        };
-        cr.and(br)
-    }
+    });
+    let join_blocks = tokio::spawn(async move {
+        loop {
+            let r = blocks(blocks_shutdown.clone()).await;
+            match r {
+                // Stream has ended, return from the task
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    // Return error if it's critical or
+                    // continue if it's recoverable
+                    handle_error(e)?;
+                }
+            }
+        }
+    });
+    Ok(Handle::new(
+        join_contracts,
+        join_blocks,
+        close_contracts,
+        close_blocks,
+    ))
 }
 
-impl Drop for Handle {
-    fn drop(&mut self) {
-        if let Some(tx) = self.close_contracts.take() {
-            let _ = tx.send(());
+/// Exit on critical errors, log recoverable errors
+fn handle_error(e: InternalError) -> Result<()> {
+    match e {
+        InternalError::Critical(e) => Err(e),
+        InternalError::Recoverable(e) => {
+            // TODO: Change to tracing
+            eprintln!("Recoverable error: {}", e);
+            Ok(())
         }
     }
 }
