@@ -156,12 +156,25 @@ async fn test_sync() {
 
     let relayer = Relayer::new(server_address.as_str()).unwrap();
     let (block_notify, _new_block) = tokio::sync::watch::channel(());
-    let (contract_notify, mut new_contract) = tokio::sync::watch::channel(());
+    let (contract_notify, _new_contract) = tokio::sync::watch::channel(());
     let handle = relayer.run(Conn, contract_notify, block_notify).unwrap();
 
-    wait_for(&mut new_contract).await;
-
-    let result = essential_node_db::list_contracts(&test_conn, 0..205).unwrap();
+    let start = tokio::time::Instant::now();
+    let mut result: Vec<(u64, Vec<Contract>)>;
+    loop {
+        if start.elapsed() > tokio::time::Duration::from_secs(10) {
+            panic!("timeout");
+        }
+        let Ok(r) = essential_node_db::list_contracts(&test_conn, 0..205) else {
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            continue;
+        };
+        result = r;
+        if result.len() >= 200 {
+            break;
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    }
     assert_eq!(result.len(), 200);
 
     assert_eq!(result[1].0, 1);
@@ -245,17 +258,6 @@ impl GetConn for Conn {
         flags.insert(OpenFlags::SQLITE_OPEN_SHARED_CACHE);
         let r = rusqlite::Connection::open_with_flags("file::memory:", flags).map_err(Into::into);
         futures::future::ready(r)
-    }
-}
-
-async fn wait_for(notify: &mut tokio::sync::watch::Receiver<()>) {
-    loop {
-        if tokio::time::timeout(tokio::time::Duration::from_millis(10), notify.changed())
-            .await
-            .is_err()
-        {
-            break;
-        }
     }
 }
 
