@@ -7,12 +7,11 @@ use futures::{Stream, TryFutureExt};
 use tokio::sync::watch;
 use tokio::task::spawn_blocking;
 
-pub(crate) use streams::check_for_block_fork;
-pub(crate) use streams::check_for_contract_mismatch;
 pub(crate) use streams::stream_blocks;
 pub(crate) use streams::stream_contracts;
 
-use crate::error::{InternalResult, RecoverableError};
+use crate::error::{CriticalError, InternalResult, RecoverableError};
+use crate::DataSyncError;
 
 mod streams;
 #[cfg(test)]
@@ -73,7 +72,7 @@ where
 
 pub async fn sync_contracts<C, S>(
     conn: C,
-    l2_block_number: Option<u64>,
+    progress: &Option<ContractProgress>,
     notify: watch::Sender<()>,
     stream: S,
 ) -> InternalResult<()>
@@ -81,8 +80,16 @@ where
     C: BorrowMut<rusqlite::Connection> + Send + 'static,
     S: Stream<Item = InternalResult<Contract>>,
 {
-    let mut l2_block_number = match l2_block_number {
-        Some(l2_block_number) => l2_block_number.saturating_add(1),
+    tokio::pin!(stream);
+    if let Some(progress) = progress {
+        let last = stream.try_next().await?;
+        check_contract_fork(&last, progress)?;
+    }
+
+    let mut l2_block_number = match progress {
+        Some(ContractProgress {
+            l2_block_number, ..
+        }) => l2_block_number.saturating_add(1),
         None => 0,
     };
 
@@ -98,7 +105,7 @@ where
 
 pub async fn sync_blocks<C, S>(
     conn: C,
-    last_block_number: Option<u64>,
+    progress: &Option<BlockProgress>,
     notify: watch::Sender<()>,
     stream: S,
 ) -> InternalResult<()>
@@ -106,8 +113,16 @@ where
     C: BorrowMut<rusqlite::Connection> + Send + 'static,
     S: Stream<Item = InternalResult<Block>>,
 {
-    let mut block_number = match last_block_number {
-        Some(last_block_number) => last_block_number.saturating_add(1),
+    tokio::pin!(stream);
+    if let Some(progress) = progress {
+        let last = stream.try_next().await?;
+        check_block_fork(&last, progress)?;
+    }
+
+    let mut block_number = match progress {
+        Some(BlockProgress {
+            last_block_number, ..
+        }) => last_block_number.saturating_add(1),
         None => 0,
     };
 
@@ -167,6 +182,61 @@ where
         Ok(conn)
     })
     .await?
+}
+
+fn check_contract_fork(
+    contract: &Option<Contract>,
+    progress: &ContractProgress,
+) -> crate::Result<()> {
+    match contract {
+        Some(contract) => {
+            let contract_hash = essential_hash::contract_addr::from_contract(contract);
+            if contract_hash != progress.last_contract {
+                return Err(CriticalError::DataSyncFailed(
+                    DataSyncError::ContractMismatch(
+                        progress.l2_block_number,
+                        progress.last_contract.clone(),
+                        Some(contract_hash),
+                    ),
+                ));
+            }
+        }
+        None => {
+            return Err(CriticalError::DataSyncFailed(
+                DataSyncError::ContractMismatch(
+                    progress.l2_block_number,
+                    progress.last_contract.clone(),
+                    None,
+                ),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn check_block_fork(block: &Option<Block>, progress: &BlockProgress) -> crate::Result<()> {
+    match block {
+        Some(block) => {
+            let block_hash = essential_hash::content_addr(block);
+            if block_hash != progress.last_block_hash {
+                return Err(CriticalError::DataSyncFailed(DataSyncError::Fork(
+                    progress.last_block_number,
+                    progress.last_block_hash.clone(),
+                    Some(block_hash),
+                )));
+            }
+        }
+        None => {
+            return Err(CriticalError::DataSyncFailed(DataSyncError::Fork(
+                progress.last_block_number,
+                progress.last_block_hash.clone(),
+                None,
+            )));
+        }
+    }
+
+    Ok(())
 }
 
 impl Default for ContractProgress {

@@ -9,10 +9,7 @@ use tokio_util::{
     io::StreamReader,
 };
 
-use crate::{
-    error::{CriticalError, InternalError, InternalResult, RecoverableError},
-    DataSyncError,
-};
+use crate::error::{CriticalError, InternalError, InternalResult, RecoverableError};
 
 use super::{BlockProgress, ContractProgress};
 
@@ -21,16 +18,17 @@ const SERVER_PAGE_SIZE: u64 = 100;
 pub async fn stream_contracts(
     url: &Url,
     client: &Client,
-    progress: Option<ContractProgress>,
+    progress: &Option<ContractProgress>,
 ) -> InternalResult<impl Stream<Item = InternalResult<Contract>>> {
-    let next_contract_num = match &progress {
-        Some(p) => p.l2_block_number.saturating_add(1),
-        None => 0,
+    let (page, index) = match progress {
+        Some(p) => {
+            let page = p.l2_block_number / SERVER_PAGE_SIZE;
+            let index = p.l2_block_number % SERVER_PAGE_SIZE;
+            let index: usize = index.try_into().map_err(|_| CriticalError::Overflow)?;
+            (page, index)
+        }
+        None => (0, 0),
     };
-    let page = next_contract_num / SERVER_PAGE_SIZE;
-
-    let num_skip = next_contract_num % SERVER_PAGE_SIZE;
-    let num_skip: usize = num_skip.try_into().map_err(|_| CriticalError::Overflow)?;
 
     let mut url = url
         .join("/subscribe-contracts")
@@ -52,7 +50,7 @@ pub async fn stream_contracts(
     );
     let stream = FramedRead::new(stream, SseDecoder::<Contract>::new());
 
-    let stream = stream.skip(num_skip);
+    let stream = stream.skip(index);
 
     Ok(stream)
 }
@@ -60,18 +58,18 @@ pub async fn stream_contracts(
 pub async fn stream_blocks(
     url: &Url,
     client: &Client,
-    progress: Option<BlockProgress>,
+    progress: &Option<BlockProgress>,
 ) -> InternalResult<impl Stream<Item = InternalResult<Block>>> {
-    let next_block_num = match &progress {
-        Some(p) => p.last_block_number.saturating_add(1),
-        None => 0,
-    };
+    let last_block_number = progress
+        .as_ref()
+        .map(|p| p.last_block_number)
+        .unwrap_or_default();
 
     let mut url = url
         .join("/subscribe-blocks")
         .map_err(|_| CriticalError::UrlParse)?;
     url.query_pairs_mut()
-        .append_pair("block", &next_block_num.to_string());
+        .append_pair("block", &last_block_number.to_string());
     let response = client
         .get(url)
         .send()
@@ -89,121 +87,6 @@ pub async fn stream_blocks(
     let stream = FramedRead::new(stream, SseDecoder::<Block>::new());
 
     Ok(stream)
-}
-
-pub(crate) async fn check_for_contract_mismatch(
-    url: &Url,
-    client: &Client,
-    progress: &Option<ContractProgress>,
-) -> InternalResult<()> {
-    let Some(progress) = progress else {
-        return Ok(());
-    };
-    let page = progress.l2_block_number / SERVER_PAGE_SIZE;
-
-    let index = progress.l2_block_number % SERVER_PAGE_SIZE;
-    let index: usize = index.try_into().map_err(|_| CriticalError::Overflow)?;
-
-    let mut url = url
-        .join("/list-contracts")
-        .map_err(|_| CriticalError::UrlParse)?;
-    url.query_pairs_mut().append_pair("page", &page.to_string());
-
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(RecoverableError::from)?;
-    if !response.status().is_success() {
-        return Err(RecoverableError::BadServerResponse(response.status()).into());
-    }
-
-    let contracts: Vec<Contract> = response.json().await.map_err(RecoverableError::from)?;
-    Ok(check_contract_fork(index, &contracts, progress)?)
-}
-
-fn check_contract_fork(
-    index: usize,
-    contracts: &[Contract],
-    progress: &ContractProgress,
-) -> crate::Result<()> {
-    match contracts.get(index) {
-        Some(contract) => {
-            let contract_hash = essential_hash::contract_addr::from_contract(contract);
-            if contract_hash != progress.last_contract {
-                return Err(CriticalError::DataSyncFailed(
-                    DataSyncError::ContractMismatch(
-                        progress.l2_block_number,
-                        progress.last_contract.clone(),
-                        Some(contract_hash),
-                    ),
-                ));
-            }
-        }
-        None => {
-            return Err(CriticalError::DataSyncFailed(
-                DataSyncError::ContractMismatch(
-                    progress.l2_block_number,
-                    progress.last_contract.clone(),
-                    None,
-                ),
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-pub(crate) async fn check_for_block_fork(
-    url: &Url,
-    client: &Client,
-    progress: &Option<BlockProgress>,
-) -> InternalResult<()> {
-    let Some(progress) = progress else {
-        return Ok(());
-    };
-
-    let mut url = url
-        .join("/list-blocks")
-        .map_err(|_| CriticalError::UrlParse)?;
-    url.query_pairs_mut()
-        .append_pair("block", &progress.last_block_number.to_string());
-
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(RecoverableError::from)?;
-    if !response.status().is_success() {
-        return Err(RecoverableError::BadServerResponse(response.status()).into());
-    }
-
-    let blocks: Vec<Block> = response.json().await.map_err(RecoverableError::from)?;
-    Ok(check_block_fork(&blocks, progress)?)
-}
-
-fn check_block_fork(blocks: &[Block], progress: &BlockProgress) -> crate::Result<()> {
-    match blocks.first() {
-        Some(block) => {
-            let block_hash = essential_hash::content_addr(block);
-            if block_hash != progress.last_block_hash {
-                return Err(CriticalError::DataSyncFailed(DataSyncError::Fork(
-                    progress.last_block_number,
-                    progress.last_block_hash.clone(),
-                    Some(block_hash),
-                )));
-            }
-        }
-        None => {
-            return Err(CriticalError::DataSyncFailed(DataSyncError::Fork(
-                progress.last_block_number,
-                progress.last_block_hash.clone(),
-                None,
-            )));
-        }
-    }
-
-    Ok(())
 }
 
 struct SseDecoder<T>(PhantomData<T>);

@@ -95,13 +95,11 @@ impl Relayer {
             conn,
             value: progress,
         } = sync::get_contract_progress(conn).await?;
-        sync::check_for_contract_mismatch(&self.endpoint, &self.client, &progress).await?;
-        let l2_block_number = progress.as_ref().map(|p| p.l2_block_number);
-        let stream = stream_contracts(&self.endpoint, &self.client, progress).await?;
+        let stream = stream_contracts(&self.endpoint, &self.client, &progress).await?;
         let close = async move {
             let _ = shutdown.changed().await;
         };
-        sync_contracts(conn, l2_block_number, notify, stream.take_until(close)).await
+        sync_contracts(conn, &progress, notify, stream.take_until(close)).await
     }
 
     async fn run_blocks<C>(
@@ -117,13 +115,11 @@ impl Relayer {
             conn,
             value: progress,
         } = sync::get_block_progress(conn).await?;
-        sync::check_for_block_fork(&self.endpoint, &self.client, &progress).await?;
-        let last_block_number = progress.as_ref().map(|p| p.last_block_number);
-        let stream = stream_blocks(&self.endpoint, &self.client, progress).await?;
+        let stream = stream_blocks(&self.endpoint, &self.client, &progress).await?;
         let close = async move {
             let _ = shutdown.changed().await;
         };
-        sync_blocks(conn, last_block_number, notify, stream.take_until(close)).await
+        sync_blocks(conn, &progress, notify, stream.take_until(close)).await
     }
 }
 

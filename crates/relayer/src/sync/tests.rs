@@ -1,6 +1,8 @@
 use essential_types::predicate::{Directive, Predicate};
 use rusqlite::OpenFlags;
 
+use crate::error::InternalError;
+
 use super::*;
 
 #[tokio::test]
@@ -31,7 +33,7 @@ async fn test_sync_contracts() {
         }),
     ]);
 
-    sync_contracts(conn, None, watch::channel(()).0, stream)
+    sync_contracts(conn, &None, watch::channel(()).0, stream)
         .await
         .unwrap();
 
@@ -60,4 +62,65 @@ async fn test_sync_contracts() {
             })
         }
     );
+
+    let stream = futures::stream::iter(vec![
+        Ok(Contract {
+            predicates: vec![predicate.clone()],
+            salt: [4; 32],
+        }),
+        Ok(Contract {
+            predicates: vec![predicate.clone()],
+            salt: [5; 32],
+        }),
+    ]);
+
+    let progress = Some(ContractProgress {
+        l2_block_number: 1,
+        last_contract: essential_hash::contract_addr::from_contract(&Contract {
+            predicates: vec![predicate.clone()],
+            salt: [1; 32],
+        }),
+    });
+
+    let conn = rusqlite::Connection::open_with_flags("file::memory:", flags).unwrap();
+
+    let e = sync_contracts(conn, &progress, watch::channel(()).0, stream)
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        e,
+        InternalError::Critical(CriticalError::DataSyncFailed(
+            DataSyncError::ContractMismatch(1, _, _)
+        ))
+    ));
+
+    let stream = futures::stream::iter(vec![
+        Ok(Contract {
+            predicates: vec![predicate.clone()],
+            salt: [1; 32],
+        }),
+        Ok(Contract {
+            predicates: vec![predicate.clone()],
+            salt: [3; 32],
+        }),
+        Ok(Contract {
+            predicates: vec![predicate.clone()],
+            salt: [4; 32],
+        }),
+    ]);
+
+    let progress = Some(ContractProgress {
+        l2_block_number: 1,
+        last_contract: essential_hash::contract_addr::from_contract(&Contract {
+            predicates: vec![predicate.clone()],
+            salt: [1; 32],
+        }),
+    });
+
+    let conn = rusqlite::Connection::open_with_flags("file::memory:", flags).unwrap();
+
+    sync_contracts(conn, &progress, watch::channel(()).0, stream)
+        .await
+        .unwrap();
 }
