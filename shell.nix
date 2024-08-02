@@ -8,6 +8,7 @@
 , rustfmt
 , cargo
 , rustc
+, openssl
 }:
 mkShell {
   inputsFrom = [
@@ -21,5 +22,7 @@ mkShell {
     rustfmt
     cargo
     rustc
+    openssl
+    openssl.dev
   ];
 }

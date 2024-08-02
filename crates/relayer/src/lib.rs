@@ -68,6 +68,8 @@ impl Relayer {
     ///
     /// Streams are spawned and run in the background.
     /// A handle is returned that can be used to close or join the streams.
+    ///
+    /// The two watch channels are used to notify the caller when new data has been synced.
     pub fn run<C, E>(
         self,
         get_conn: C,
