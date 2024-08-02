@@ -1,0 +1,13 @@
+[package]
+name = "rusqlite-pool"
+version = "0.0.0"
+description = "A minimal connection pool for rusqlite."
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+crossbeam = { workspace = true }
+rusqlite = { workspace = true }
+tokio = { workspace = true, default-features = false, features = ["sync"], optional = true }

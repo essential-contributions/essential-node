@@ -6,3 +6,12 @@ edition.workspace = true
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
+
+[dependencies]
+essential-node-db = { workspace = true }
+essential-types = { workspace = true }
+num_cpus = { workspace = true }
+rusqlite = { workspace = true }
+rusqlite-pool = { workspace = true, features = ["tokio"] }
+thiserror = { workspace = true }
+tokio = { workspace = true }
