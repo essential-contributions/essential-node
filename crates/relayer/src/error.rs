@@ -2,9 +2,13 @@ use essential_node_db::QueryError;
 use essential_types::ContentAddress;
 use thiserror::Error;
 
+/// The result type for the relayer.
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// The result type for internal errors.
 pub(crate) type InternalResult<T> = std::result::Result<T, InternalError>;
 
+/// Critical or recoverable errors that can occur in the relayer.
 #[derive(Debug, Error)]
 pub(crate) enum InternalError {
     /// A critical error occurred.
@@ -15,10 +19,12 @@ pub(crate) enum InternalError {
     Recoverable(#[from] RecoverableError),
 }
 
+/// Alias for a critical error.
 pub(crate) type CriticalError = Error;
 
-#[derive(Debug, Error)]
 /// An error occurred in the relayer that is not recoverable.
+/// These causes the relayer to exit a spawned task.
+#[derive(Debug, Error)]
 pub enum Error {
     /// A DB error occurred.
     #[error("a DB error occurred: {0}")]
@@ -43,6 +49,8 @@ pub enum Error {
     HttpClientBuild(reqwest::Error),
 }
 
+/// An error that can be recovered from.
+/// The stream will restart after logging a recoverable error.
 #[derive(Debug, Error)]
 pub(crate) enum RecoverableError {
     /// Stream from server failed.

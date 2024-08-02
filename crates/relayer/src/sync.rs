@@ -17,23 +17,34 @@ mod streams;
 #[cfg(test)]
 mod tests;
 
+/// The progress of the contract sync.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ContractProgress {
+    /// The last L2 block number that was synced
+    /// that contained any contract deployments.
     pub l2_block_number: u64,
+    /// The address of the last contract that was synced
+    /// from this block.
     pub last_contract: ContentAddress,
 }
 
+/// The progress of the block sync.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockProgress {
+    /// The last l2 block number that was synced.
     pub last_block_number: u64,
+    /// The address of the last block that was synced.
+    /// Used to check for forks.
     pub last_block_hash: ContentAddress,
 }
 
-pub struct WithConn<C, T> {
+/// Helper struct to return the connection with a value.
+pub(crate) struct WithConn<C, T> {
     pub conn: C,
     pub value: T,
 }
 
+/// Get the last contract progress from the database.
 pub async fn get_contract_progress<C>(
     conn: C,
 ) -> crate::Result<WithConn<C, Option<ContractProgress>>>
@@ -50,6 +61,7 @@ where
     .await?
 }
 
+/// Get the last block progress from the database.
 pub async fn get_block_progress<C>(mut conn: C) -> crate::Result<WithConn<C, Option<BlockProgress>>>
 where
     C: BorrowMut<rusqlite::Connection> + Send + 'static,
@@ -70,6 +82,10 @@ where
     .await?
 }
 
+/// Sync contracts from the provided stream.
+///
+/// The first contract in the stream must be the last
+/// contract that was synced unless progress is None.
 pub async fn sync_contracts<C, S>(
     conn: C,
     progress: &Option<ContractProgress>,
@@ -81,11 +97,26 @@ where
     S: Stream<Item = InternalResult<Contract>>,
 {
     tokio::pin!(stream);
+
+    // The first contract in the stream must be the last
+    // synced contract.
+    //
+    // If there is progress, check that the last contract
+    // matches or return an error.
+    //
+    // This contract is skipped as it is already in the database.
     if let Some(progress) = progress {
+        // Wait to get the first contract from the stream.
         let last = stream.try_next().await?;
+
+        // Check that the contract matches the progress.
         check_contract_fork(&last, progress)?;
     }
 
+    // Get the `l2_block_number` for the next contract.
+    //
+    // Note this is specific to the server implementation.
+    // In the future this will be changed.
     let mut l2_block_number = match progress {
         Some(ContractProgress {
             l2_block_number, ..
@@ -95,14 +126,26 @@ where
 
     stream
         .try_fold(conn, move |conn, contract| {
+            // The `l2_block_number` for this contract.
             let this_l2_block_number = l2_block_number;
+
+            // Increment the `l2_block_number` for the next contract.
+            //
+            // Note this is specific to the server implementation.
+            // In the future this will be changed.
             l2_block_number += 1;
+
+            // Write the contract to the database.
             write_contract(conn, contract, this_l2_block_number, notify.clone()).map_err(Into::into)
         })
         .await?;
     Ok(())
 }
 
+/// Sync blocks from the provided stream.
+///
+/// The first block in the stream must be the last
+/// block that was synced unless progress is None.
 pub async fn sync_blocks<C, S>(
     conn: C,
     progress: &Option<BlockProgress>,
@@ -114,11 +157,23 @@ where
     S: Stream<Item = InternalResult<Block>>,
 {
     tokio::pin!(stream);
+
+    // The first block in the stream must be the last
+    // synced block.
+    //
+    // If there is progress, check that the last block
+    // matches or return an error.
+    //
+    // This block is skipped as it is already in the database.
     if let Some(progress) = progress {
+        // Wait to get the first block from the stream.
         let last = stream.try_next().await?;
+
+        // Check that the block matches the progress.
         check_block_fork(&last, progress)?;
     }
 
+    // Increment the block number to get the next block's number.
     let mut block_number = match progress {
         Some(BlockProgress {
             last_block_number, ..
@@ -128,15 +183,22 @@ where
 
     stream
         .try_fold(conn, move |conn, block| {
+            // Check this block is the expect `N + 1`.
             let sequential_block = block.number == block_number;
+
+            // Increment the block number for the next block.
             block_number = block.number.saturating_add(1);
+
             let notify = notify.clone();
             async move {
+                // If the block is not sequential, return an error.
                 if !sequential_block {
                     return Err(
                         RecoverableError::NonSequentialBlock(block_number, block.number).into(),
                     );
                 }
+
+                // Write the block to the database.
                 let conn = write_block(conn, block).await?;
 
                 // Best effort to notify of new block
@@ -148,6 +210,7 @@ where
     Ok(())
 }
 
+/// Write a contract and progress atomically to the database.
 async fn write_contract<C>(
     mut conn: C,
     contract: Contract,
@@ -158,9 +221,15 @@ where
     C: BorrowMut<rusqlite::Connection> + Send + 'static,
 {
     let conn = spawn_blocking::<_, rusqlite::Result<_>>(move || {
+        // Calculate the contract hash for the progress.
         let contract_hash = essential_hash::contract_addr::from_contract(&contract);
+
         let tx = conn.borrow_mut().transaction()?;
         essential_node_db::insert_contract(&tx, &contract, l2_block_number)?;
+        // Technically we don't currently need to store the progress.
+        // We could instead do what we do with blocks and just take the max.
+        // However, in the future it will be possible to have multiple contracts
+        // at the same `l2_block_number` and we will need this to know where we were up to.
         essential_node_db::insert_contract_progress(&tx, l2_block_number, &contract_hash)?;
         tx.commit()?;
         Ok(conn)
@@ -171,6 +240,7 @@ where
     Ok(conn)
 }
 
+/// Write a block to the database.
 async fn write_block<C>(mut conn: C, block: Block) -> crate::Result<C>
 where
     C: BorrowMut<rusqlite::Connection> + Send + 'static,
@@ -184,6 +254,7 @@ where
     .await?
 }
 
+/// Check that the contract matches the last progress.
 fn check_contract_fork(
     contract: &Option<Contract>,
     progress: &ContractProgress,
@@ -192,6 +263,7 @@ fn check_contract_fork(
         Some(contract) => {
             let contract_hash = essential_hash::contract_addr::from_contract(contract);
             if contract_hash != progress.last_contract {
+                // There was a contract but it didn't match the expected contract.
                 return Err(CriticalError::DataSyncFailed(
                     DataSyncError::ContractMismatch(
                         progress.l2_block_number,
@@ -202,6 +274,7 @@ fn check_contract_fork(
             }
         }
         None => {
+            // There was expected to be a contract but there was none.
             return Err(CriticalError::DataSyncFailed(
                 DataSyncError::ContractMismatch(
                     progress.l2_block_number,
@@ -215,11 +288,13 @@ fn check_contract_fork(
     Ok(())
 }
 
+/// Check that the block matches the last progress.
 fn check_block_fork(block: &Option<Block>, progress: &BlockProgress) -> crate::Result<()> {
     match block {
         Some(block) => {
             let block_hash = essential_hash::content_addr(block);
             if block_hash != progress.last_block_hash {
+                // There was a block but it didn't match the expected block.
                 return Err(CriticalError::DataSyncFailed(DataSyncError::Fork(
                     progress.last_block_number,
                     progress.last_block_hash.clone(),
@@ -228,6 +303,7 @@ fn check_block_fork(block: &Option<Block>, progress: &BlockProgress) -> crate::R
             }
         }
         None => {
+            // There was expected to be a block but there was none.
             return Err(CriticalError::DataSyncFailed(DataSyncError::Fork(
                 progress.last_block_number,
                 progress.last_block_hash.clone(),
@@ -237,15 +313,6 @@ fn check_block_fork(block: &Option<Block>, progress: &BlockProgress) -> crate::R
     }
 
     Ok(())
-}
-
-impl Default for ContractProgress {
-    fn default() -> Self {
-        Self {
-            l2_block_number: Default::default(),
-            last_contract: ContentAddress(Default::default()),
-        }
-    }
 }
 
 impl From<(u64, ContentAddress)> for ContractProgress {
