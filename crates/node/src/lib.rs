@@ -142,7 +142,7 @@ impl NodeConnection {
     }
 
     /// Fetches the state value for the given contract content address and key pair.
-    pub fn get_state_value(
+    pub fn query_state(
         self,
         contract_ca: &ContentAddress,
         key: &Key,
@@ -177,8 +177,8 @@ impl NodeConnection {
     }
 
     /// Calls [`ConnectionHandle::access`] on the inner connection handle with the given function.
-    pub fn access<O>(self, f: impl FnOnce(&mut Connection) -> O) -> O {
-        self.0.access(f)
+    pub fn access<O>(mut self, f: impl FnOnce(&mut Connection) -> O) -> O {
+        f(&mut self.0)
     }
 
     /// Short-hand for calling [`ConnectionHandle::access`] with a function that

@@ -18,8 +18,8 @@ pub struct ConnectionPool {
 /// A temporary handle to a [`rusqlite::Connection`] provided by a
 /// [`ConnectionPool`].
 ///
-/// Upon [`ConnectionHandle::access`] or `drop`, the inner `Connection` is
-/// placed back in the pool's inner idle queue for future use.
+/// Upon `drop`, the inner `Connection` is placed back in the pool's inner idle
+/// queue for future use.
 ///
 /// As a result, in async or multi-threaded environments, care should be taken
 /// to avoid holding onto a `ConnectionHandle` any longer than necessary to
@@ -55,6 +55,8 @@ impl ConnectionPool {
     /// Pop a connection from the queue if one is available.
     ///
     /// If `None` is returned, all connections are currently in use.
+    ///
+    /// The inner connection is returned to the pool upon dropping the handle.
     pub fn pop(&self) -> Option<ConnectionHandle> {
         self.queue.pop().map(|conn| ConnectionHandle {
             conn: Some(conn),
@@ -93,25 +95,35 @@ impl ConnectionPool {
     }
 }
 
-impl ConnectionHandle {
-    /// Consume the `ConnectionHandle` and provide access to the inner
-    /// [`rusqlite::Connection`] via the given function.
-    ///
-    /// After the given function is called, the connection is immediately placed
-    /// back on the `Pool`s idle queue and the handle is dropped.
-    pub fn access<O>(mut self, f: impl FnOnce(&mut Connection) -> O) -> O {
-        let mut conn = self.conn.take().expect(EXPECT_CONN_SOME);
-        let output = f(&mut conn);
-        self.queue.push(conn).expect(EXPECT_QUEUE_LEN);
-        output
+impl core::ops::Deref for ConnectionHandle {
+    type Target = Connection;
+    fn deref(&self) -> &Self::Target {
+        self.conn.as_ref().expect(EXPECT_CONN_SOME)
+    }
+}
+
+impl core::ops::DerefMut for ConnectionHandle {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.conn.as_mut().expect(EXPECT_CONN_SOME)
+    }
+}
+
+impl core::borrow::Borrow<Connection> for ConnectionHandle {
+    fn borrow(&self) -> &Connection {
+        &*self
+    }
+}
+
+impl core::borrow::BorrowMut<Connection> for ConnectionHandle {
+    fn borrow_mut(&mut self) -> &mut Connection {
+        &mut *self
     }
 }
 
 impl Drop for ConnectionHandle {
     fn drop(&mut self) {
-        // Only `Some` in the case that `ConnectionHandle::access` was not called.
-        if let Some(conn) = self.conn.take() {
-            self.queue.push(conn).expect(EXPECT_QUEUE_LEN);
-        }
+        // Return the connection to the pool's queue.
+        let conn = self.conn.take().expect(EXPECT_CONN_SOME);
+        self.queue.push(conn).expect(EXPECT_QUEUE_LEN);
     }
 }

@@ -1,3 +1,5 @@
+//! [`AsyncConnectionPool`] and [`AsyncConnectionHandle`] implemented using tokio semaphores.
+
 use rusqlite::Connection;
 use std::sync::Arc;
 use tokio::sync::{AcquireError, OwnedSemaphorePermit, Semaphore, TryAcquireError};
@@ -11,9 +13,15 @@ pub struct AsyncConnectionPool {
 
 /// A thin wrapper around a [`ConnectionHandle`][crate::ConnectionHandle] that
 /// manages the associated permit that was provided by the pool's semaphore.
+///
+/// Upon `drop`, the connection handle is dropped first returning the connection
+/// to the pool's queue, then the permit is dropped indicating avaialability to
+/// the pool's semaphore.
 pub struct AsyncConnectionHandle {
     conn: crate::ConnectionHandle,
-    permit: OwnedSemaphorePermit,
+    /// Hold the permit, so that it may be dropped immediately after the
+    /// `ConnectionHandle` is dropped.
+    _permit: OwnedSemaphorePermit,
 }
 
 impl AsyncConnectionPool {
@@ -43,9 +51,9 @@ impl AsyncConnectionPool {
     ///
     /// Awaits a permit from the inner semaphore before acquiring the connection.
     pub async fn acquire(&self) -> Result<AsyncConnectionHandle, AcquireError> {
-        let permit = Semaphore::acquire_owned(self.semaphore.clone()).await?;
+        let _permit = Semaphore::acquire_owned(self.semaphore.clone()).await?;
         let conn = self.pool.pop().expect("permit guarantees availability");
-        Ok(AsyncConnectionHandle { conn, permit })
+        Ok(AsyncConnectionHandle { conn, _permit })
     }
 
     /// Attempt to acquire a connection from the idle queue if one is available.
@@ -53,9 +61,9 @@ impl AsyncConnectionPool {
     /// Returns a `TryAcquireError` if there are no permits available, or if the
     /// semaphore has been closed.
     pub fn try_acquire(&self) -> Result<AsyncConnectionHandle, TryAcquireError> {
-        let permit = Semaphore::try_acquire_owned(self.semaphore.clone())?;
+        let _permit = Semaphore::try_acquire_owned(self.semaphore.clone())?;
         let conn = self.pool.pop().expect("permit guarantees availability");
-        Ok(AsyncConnectionHandle { conn, permit })
+        Ok(AsyncConnectionHandle { conn, _permit })
     }
 
     /// Close the connection pool semaphore, await all connections to be
@@ -81,16 +89,27 @@ impl AsyncConnectionPool {
     }
 }
 
-impl AsyncConnectionHandle {
-    /// Consume the `AsyncConnectionHandle` and provide access to the inner
-    /// [`rusqlite::Connection`] via the given function.
-    ///
-    /// After the given function is called, the connection is immediately placed
-    /// back on the pool's idle queue and the semaphore permit is released
-    /// before returning.
-    pub fn access<O>(self, f: impl FnOnce(&mut Connection) -> O) -> O {
-        let output = self.conn.access(f);
-        std::mem::drop(self.permit);
-        output
+impl core::ops::Deref for AsyncConnectionHandle {
+    type Target = crate::ConnectionHandle;
+    fn deref(&self) -> &Self::Target {
+        &self.conn
+    }
+}
+
+impl core::ops::DerefMut for AsyncConnectionHandle {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.conn
+    }
+}
+
+impl core::borrow::Borrow<Connection> for AsyncConnectionHandle {
+    fn borrow(&self) -> &Connection {
+        &*self
+    }
+}
+
+impl core::borrow::BorrowMut<Connection> for AsyncConnectionHandle {
+    fn borrow_mut(&mut self) -> &mut Connection {
+        &mut *self
     }
 }
