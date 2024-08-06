@@ -11,3 +11,6 @@ repository.workspace = true
 crossbeam = { workspace = true }
 rusqlite = { workspace = true }
 tokio = { workspace = true, default-features = false, features = ["sync"], optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "test-util"] }

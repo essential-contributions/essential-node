@@ -47,6 +47,12 @@ impl AsyncConnectionPool {
         self.pool.capacity()
     }
 
+    /// Returns `true` if the inner idle queue is full, i.e. all `Connection`s
+    /// are available for use.
+    pub fn all_connections_ready(&self) -> bool {
+        self.pool.all_connections_ready()
+    }
+
     /// Acquire a connection from the idle queue.
     ///
     /// Awaits a permit from the inner semaphore before acquiring the connection.
@@ -104,7 +110,7 @@ impl core::ops::DerefMut for AsyncConnectionHandle {
 
 impl core::borrow::Borrow<Connection> for AsyncConnectionHandle {
     fn borrow(&self) -> &Connection {
-        &*self
+        self
     }
 }
 

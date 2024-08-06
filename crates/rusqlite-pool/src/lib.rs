@@ -110,7 +110,7 @@ impl core::ops::DerefMut for ConnectionHandle {
 
 impl core::borrow::Borrow<Connection> for ConnectionHandle {
     fn borrow(&self) -> &Connection {
-        &*self
+        self
     }
 }
 
