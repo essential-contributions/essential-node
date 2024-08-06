@@ -22,6 +22,7 @@ pub mod create {
     decl_const_sql_str!(BLOCK, "create/block.sql");
     decl_const_sql_str!(BLOCK_SOLUTION, "create/block_solution.sql");
     decl_const_sql_str!(CONTRACT_PREDICATE, "create/contract_predicate.sql");
+    decl_const_sql_str!(CONTRACT_PROGRESS, "create/contract_progress.sql");
     decl_const_sql_str!(CONTRACT, "create/contract.sql");
     decl_const_sql_str!(PREDICATE, "create/predicate.sql");
     decl_const_sql_str!(SOLUTION, "create/solution.sql");
@@ -34,6 +35,7 @@ pub mod insert {
     decl_const_sql_str!(BLOCK_SOLUTION, "insert/block_solution.sql");
     decl_const_sql_str!(CONTRACT, "insert/contract.sql");
     decl_const_sql_str!(CONTRACT_PREDICATE, "insert/contract_predicate.sql");
+    decl_const_sql_str!(CONTRACT_PROGRESS, "insert/contract_progress.sql");
     decl_const_sql_str!(PREDICATE, "insert/predicate.sql");
     decl_const_sql_str!(SOLUTION, "insert/solution.sql");
 }
@@ -41,7 +43,9 @@ pub mod insert {
 /// Statements for making queries.
 pub mod query {
     decl_const_sql_str!(GET_CONTRACT_PREDICATES, "query/get_contract_predicates.sql");
+    decl_const_sql_str!(GET_CONTRACT_PROGRESS, "query/get_contract_progress.sql");
     decl_const_sql_str!(GET_CONTRACT_SALT, "query/get_contract_salt.sql");
+    decl_const_sql_str!(GET_LATEST_BLOCK_NUMBER, "query/get_latest_block_number.sql");
     decl_const_sql_str!(GET_PREDICATE, "query/get_predicate.sql");
     decl_const_sql_str!(GET_SOLUTION, "query/get_solution.sql");
     decl_const_sql_str!(GET_STATE, "query/get_state.sql");
@@ -80,6 +84,7 @@ pub mod table {
     pub const CONTRACT: Table = Table::new("contract", create::CONTRACT);
     pub const CONTRACT_PREDICATE: Table =
         Table::new("contract_predicate", create::CONTRACT_PREDICATE);
+    pub const CONTRACT_PROGRESS: Table = Table::new("contract_progress", create::CONTRACT_PROGRESS);
     pub const PREDICATE: Table = Table::new("predicate", create::PREDICATE);
     pub const SOLUTION: Table = Table::new("solution", create::SOLUTION);
     pub const STATE: Table = Table::new("state", create::STATE);
@@ -90,6 +95,7 @@ pub mod table {
         BLOCK_SOLUTION,
         CONTRACT,
         CONTRACT_PREDICATE,
+        CONTRACT_PROGRESS,
         PREDICATE,
         SOLUTION,
         STATE,

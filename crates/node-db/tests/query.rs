@@ -1,5 +1,5 @@
 use essential_node_db as node_db;
-use essential_types::{contract::Contract, Word};
+use essential_types::{contract::Contract, ContentAddress, Word};
 use rusqlite::Connection;
 use std::time::Duration;
 
@@ -74,6 +74,24 @@ fn test_get_contract() {
     let fetched_contract = node_db::get_contract(&conn, &ca).unwrap().unwrap();
 
     assert_eq!(contract, fetched_contract);
+}
+
+#[test]
+fn test_get_contract_progress() {
+    // Create an in-memory SQLite database.
+    let mut conn = Connection::open_in_memory().unwrap();
+
+    // Create the necessary tables and insert the contract progress.
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    node_db::insert_contract_progress(&tx, 42, &ContentAddress([42; 32])).unwrap();
+    tx.commit().unwrap();
+
+    // Fetch the contract progress.
+    let (l2_block_number, hash) = node_db::get_contract_progress(&conn).unwrap().unwrap();
+
+    assert_eq!(l2_block_number, 42);
+    assert_eq!(hash, ContentAddress([42; 32]));
 }
 
 #[test]

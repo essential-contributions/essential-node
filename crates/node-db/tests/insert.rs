@@ -2,7 +2,7 @@
 
 use essential_hash::content_addr;
 use essential_node_db as node_db;
-use essential_types::predicate::Predicate;
+use essential_types::{predicate::Predicate, ContentAddress};
 use rusqlite::Connection;
 use std::time::Duration;
 
@@ -101,4 +101,58 @@ fn test_insert_contract() {
         let pred: Predicate = node_db::decode(&pred_blob).unwrap();
         assert_eq!(&pred, expected_pred);
     }
+}
+
+#[test]
+fn test_insert_contract_progress() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    node_db::insert_contract_progress(&tx, 0, &ContentAddress([0; 32]))
+        .expect("Failed to insert contract progress");
+    tx.commit().unwrap();
+
+    let mut stmt = conn
+        .prepare("SELECT id, l2_block_number, content_hash FROM contract_progress")
+        .unwrap();
+    let mut result = stmt
+        .query_map((), |row| {
+            Ok((
+                row.get::<_, u64>("id")?,
+                row.get::<_, u64>("l2_block_number")?,
+                row.get::<_, Vec<u8>>("content_hash")?,
+            ))
+        })
+        .unwrap();
+    let (id, l2_block_number, content_hash) = result.next().unwrap().unwrap();
+    assert_eq!(id, 1);
+    assert_eq!(l2_block_number, 0);
+    assert_eq!(
+        node_db::decode::<ContentAddress>(&content_hash).unwrap(),
+        ContentAddress([0; 32])
+    );
+    assert!(result.next().is_none());
+
+    node_db::insert_contract_progress(&conn, u64::MAX, &ContentAddress([1; 32]))
+        .expect("Failed to insert contract progress");
+
+    drop(result);
+
+    let result = node_db::get_contract_progress(&conn).unwrap().unwrap();
+    assert_eq!(result.0, u64::MAX);
+    assert_eq!(result.1, ContentAddress([1; 32]));
+
+    // Id should always be 1 because we only inserted one row.
+    let mut result = stmt.query_map((), |row| row.get::<_, u64>("id")).unwrap();
+    let id = result.next().unwrap().unwrap();
+    assert_eq!(id, 1);
+    drop(result);
+
+    // Check the db only has one row.
+    let num_rows = conn
+        .query_row("SELECT COUNT(id) FROM contract_progress", (), |row| {
+            row.get::<_, i64>("COUNT(id)")
+        })
+        .unwrap();
+    assert_eq!(num_rows, 1);
 }
