@@ -6,9 +6,10 @@ use std::sync::Arc;
 
 // Allow for providing an ID to make sure each test gets its own DB.
 fn new_mem_conn(unique_id: &str) -> Result<Connection> {
-    let mut flags = rusqlite::OpenFlags::default();
-    flags.insert(rusqlite::OpenFlags::SQLITE_OPEN_SHARED_CACHE);
-    let conn_str = format!("file:{}?mode=memory&cache=shared", unique_id);
+    let flags = rusqlite::OpenFlags::default()
+        | rusqlite::OpenFlags::SQLITE_OPEN_SHARED_CACHE
+        | rusqlite::OpenFlags::SQLITE_OPEN_MEMORY;
+    let conn_str = format!("file:{unique_id}");
     rusqlite::Connection::open_with_flags(conn_str, flags)
 }
 
