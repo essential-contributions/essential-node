@@ -42,11 +42,10 @@ pub struct DbConfig {
 }
 
 /// The source of the node's database.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub enum DbSource {
-    /// Use an in-memory database.
-    #[default]
-    Memory,
+    /// Use an in-memory database using the given string as a unique ID.
+    Memory(String),
     /// Use the database at the given path.
     Path(PathBuf),
 }
@@ -197,6 +196,13 @@ impl NodeConnection {
     }
 }
 
+impl Default for DbSource {
+    fn default() -> Self {
+        // By default, use an empty ID.
+        Self::Memory(String::new())
+    }
+}
+
 impl Default for DbConfig {
     fn default() -> Self {
         // Here we use the number of available CPUs as a heuristic for a default
@@ -210,9 +216,18 @@ impl Default for DbConfig {
 }
 
 /// Initialise the connection pool from the given configuration.
-fn new_conn_pool(conf: &DbConfig) -> Result<AsyncConnectionPool, rusqlite::Error> {
+fn new_conn_pool(conf: &DbConfig) -> rusqlite::Result<AsyncConnectionPool> {
     AsyncConnectionPool::new(conf.conn_limit, || match &conf.source {
-        DbSource::Memory => rusqlite::Connection::open_in_memory(),
+        DbSource::Memory(id) => new_mem_conn(id),
         DbSource::Path(p) => rusqlite::Connection::open(p),
     })
+}
+
+/// Create an in-memory connection with the given ID
+fn new_mem_conn(id: &str) -> rusqlite::Result<rusqlite::Connection> {
+    let flags = rusqlite::OpenFlags::default()
+        | rusqlite::OpenFlags::SQLITE_OPEN_SHARED_CACHE
+        | rusqlite::OpenFlags::SQLITE_OPEN_MEMORY;
+    let conn_str = format!("file:{id}");
+    rusqlite::Connection::open_with_flags(conn_str, flags)
 }
