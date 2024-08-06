@@ -125,9 +125,5 @@ async fn test_close_async_pool() {
     let handle = pool.acquire().await.unwrap();
     drop(handle);
 
-    let close_results = pool.close().await;
-    assert_eq!(close_results.len(), 3);
-    for result in close_results {
-        assert!(result.is_ok());
-    }
+    pool.close().await.unwrap();
 }

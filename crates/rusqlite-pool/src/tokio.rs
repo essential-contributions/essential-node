@@ -24,6 +24,10 @@ pub struct AsyncConnectionHandle {
     _permit: OwnedSemaphorePermit,
 }
 
+/// One or more of the connections failed to close.
+#[derive(Debug)]
+pub struct AsyncCloseError(pub Vec<(Connection, rusqlite::Error)>);
+
 impl AsyncConnectionPool {
     /// Create a new connection pool.
     ///
@@ -72,26 +76,42 @@ impl AsyncConnectionPool {
         Ok(AsyncConnectionHandle { conn, _permit })
     }
 
-    /// Close the connection pool semaphore, await all connections to be
-    /// returned and close all connections.
+    /// Acquire all connections, close the pool's semaphore and close all connections.
     ///
-    /// Returns the [`Connection::close`][rusqlite::Connection::close] result
-    /// for each connection in the queue.
-    pub async fn close(self) -> Vec<Result<(), (Connection, rusqlite::Error)>> {
-        // Acquire all of the permits.
+    /// All future calls to `acquire` or `try_acquire` will return immediately
+    /// with `Err` following calling `close`.
+    ///
+    /// Returns `Ok(true)` in the case the pool was successfully closed.
+    ///
+    /// Returns `Ok(false)` in the case that the pool was already closed.
+    ///
+    /// Returns `Err` in the case that one or more connections failed to close.
+    pub async fn close(&self) -> Result<bool, AsyncCloseError> {
+        // Acquire all permits, awaiting as necessary.
         let capacity = u32::try_from(self.capacity()).expect("capacity out of range");
-        let permit = self
-            .semaphore
-            .acquire_many(capacity)
-            .await
-            .expect("semaphore cannot be closed yet");
+        let permit = match self.semaphore.acquire_many(capacity).await {
+            // Can only be `Err` in the case that the pool was already closed.
+            Err(_) => return Ok(false),
+            Ok(permit) => permit,
+        };
 
         // Disallow creating any further permits.
         self.semaphore.close();
         std::mem::drop(permit);
 
-        // Close the connections.
-        self.pool.close()
+        // Close the connections and collect any errors that occurred.
+        let results = self.pool.close();
+        let errs: Vec<_> = results.into_iter().filter_map(Result::err).collect();
+        if errs.is_empty() {
+            Ok(true)
+        } else {
+            Err(AsyncCloseError(errs))
+        }
+    }
+
+    /// Returns whether or not the pool has been closed.
+    pub fn is_closed(&self) -> bool {
+        self.semaphore.is_closed()
     }
 }
 
@@ -119,3 +139,15 @@ impl core::borrow::BorrowMut<Connection> for AsyncConnectionHandle {
         &mut *self
     }
 }
+
+impl core::fmt::Display for AsyncCloseError {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        writeln!(f, "failed to close one or more connections:")?;
+        for (ix, (_conn, err)) in self.0.iter().enumerate() {
+            write!(f, "  {ix}: {err}")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for AsyncCloseError {}

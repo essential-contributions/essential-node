@@ -78,15 +78,17 @@ impl ConnectionPool {
 
     /// Manually close the pool and all connections in the inner queue.
     ///
-    /// Returns the `Connection::close` result for each connection in the idle
-    /// queue.
+    /// Returns the `Connection::close` result for each connection in the queue.
     ///
     /// If it is necessary that results are returned for all connections, care
     /// must be taken to ensure all [`ConnectionHandle`]s are dropped and that
     /// [`all_connections_ready`][Self::all_connections_ready] returns `true`
     /// before calling this method. Otherwise, connections not in the queue will
     /// be closed upon the last `ConnectionHandle` dropping.
-    pub fn close(self) -> Vec<Result<(), (Connection, rusqlite::Error)>> {
+    ///
+    /// All connections closed during this call will be unavailable in future
+    /// calls to [`pop`][ConnectionPool::pop].
+    pub fn close(&self) -> Vec<Result<(), (Connection, rusqlite::Error)>> {
         let mut res = vec![];
         while let Some(conn) = self.queue.pop() {
             res.push(conn.close());
