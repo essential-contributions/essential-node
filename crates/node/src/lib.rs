@@ -43,12 +43,6 @@ pub struct Config {
     pub db: db::Config,
 }
 
-/// The result of manually closing the `Node`.
-pub struct CloseResult {
-    /// The result of closing each connection.
-    pub conns: Vec<Result<(), (rusqlite::Connection, rusqlite::Error)>>,
-}
-
 /// Node creation failure.
 #[derive(Debug, Error)]
 #[error("`Node` creation failed: {0}")]
