@@ -80,7 +80,8 @@ impl ConnectionPool {
     /// Attempt to synchronously acquire a temporary database [`ConnectionHandle`]
     /// from the inner pool.
     ///
-    /// Returns `None` in the case that all database connections are busy.
+    /// Returns `Err` in the case that all database connections are busy or if
+    /// the node has been closed.
     pub fn try_acquire(&self) -> Result<ConnectionHandle, TryAcquireError> {
         self.0.try_acquire().map(ConnectionHandle)
     }
