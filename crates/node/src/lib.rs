@@ -1,7 +1,5 @@
 //! The Essential Node implementation.
 
-use rusqlite_pool::tokio::AsyncConnectionPool;
-use std::sync::Arc;
 use thiserror::Error;
 
 pub mod db;
@@ -9,7 +7,7 @@ pub mod db;
 /// An Essential `Node`.
 pub struct Node {
     /// A fixed number of connections to the node's database.
-    conn_pool: Arc<AsyncConnectionPool>,
+    conn_pool: db::ConnectionPool,
 }
 
 /// All configuration options for a `Node` instance.
@@ -38,27 +36,23 @@ pub struct CloseError(#[from] pub rusqlite_pool::tokio::AsyncCloseError);
 impl Node {
     /// Create a new `Node` instance from the given configuration.
     pub fn new(conf: &Config) -> Result<Self, NewError> {
-        let conn_pool = Arc::new(db::new_conn_pool(&conf.db)?);
-        let node = Self { conn_pool };
+        let conn_pool = db::ConnectionPool::new(&conf.db)?;
 
-        // Ensure the DB tables exist.
-        // TODO: Could do this here, or let application create tables?
-        node.conn_pool()
-            .try_acquire()
-            .expect("all permits available upon creation")
-            .create_tables()?;
+        // Create the tables.
+        let mut conn = conn_pool.try_acquire().expect("all permits available");
+        db::with_tx(&mut conn, |tx| db::create_tables(tx))?;
 
-        Ok(node)
+        Ok(Self { conn_pool })
     }
 
-    /// Access to the node's DB connection pool.
-    pub fn conn_pool(&self) -> db::ConnectionPool {
-        db::ConnectionPool(self.conn_pool.clone())
+    /// Access to the node's DB connection pool and in turn, DB-access-related methods.
+    pub fn db(&self) -> db::ConnectionPool {
+        self.conn_pool.clone()
     }
 
     /// Manually close the `Node` and handle the result.
     pub async fn close(self) -> Result<(), CloseError> {
-        self.conn_pool.close().await?;
+        self.conn_pool.0.close().await?;
         Ok(())
     }
 }

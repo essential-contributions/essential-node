@@ -1,5 +1,5 @@
 //! Extends [`essential_node_db`] and [`rusqlite_pool::tokio`] items with
-//! node-specific short-hands and helpers.
+//! node-specific wrappers, short-hands and helpers.
 
 use core::ops::Range;
 use essential_node_db as db;
@@ -9,22 +9,22 @@ use essential_types::{
 use rusqlite::Transaction;
 use rusqlite_pool::tokio::{AsyncConnectionHandle, AsyncConnectionPool};
 use std::{path::PathBuf, sync::Arc, time::Duration};
+use thiserror::Error;
 use tokio::sync::{AcquireError, TryAcquireError};
 
-/// Access to the node's DB connection pool.
+// Make the node DB crate available via [`essential_node::db`].
+#[doc(inline)]
+pub use essential_node_db::*;
+
+/// Access to the node's DB connection pool and DB-access-related methods.
 ///
 /// The handle is safe to clone and share between threads.
 #[derive(Clone)]
 pub struct ConnectionPool(pub(crate) Arc<AsyncConnectionPool>);
 
-/// A temporary connection handle to a [`Node`]'s connection pool.
+/// A temporary connection handle to a [`Node`][`crate::Node`]'s [`ConnectionPool`].
 ///
-/// This is a thin wrapper around [`AsyncConnectionHandle`] providing short-hand
-/// methods for common node DB access patterns.
-///
-/// A `NodeConnection` can be acquired via the [`ConnectionPool::conn`] method. It must
-/// be `drop`ped in order for the inner connection to be made available to the
-/// pool once more.
+/// Provides `Deref`, `DerefMut` impls for the inner [`rusqlite::Connection`].
 pub struct ConnectionHandle(AsyncConnectionHandle);
 
 /// Node configuration related to the database.
@@ -32,7 +32,7 @@ pub struct ConnectionHandle(AsyncConnectionHandle);
 pub struct Config {
     /// The number of simultaneous connections to the database to maintain.
     pub conn_limit: usize,
-    /// The source of the
+    /// How to source the node's database.
     pub source: Source,
 }
 
@@ -45,8 +45,33 @@ pub enum Source {
     Path(PathBuf),
 }
 
+/// Any error that might occur during node DB connection pool access.
+#[derive(Debug, Error)]
+pub enum AcquireThenError<E> {
+    /// Failed to acquire a DB connection.
+    #[error("failed to acquire a DB connection: {0}")]
+    Acquire(#[from] tokio::sync::AcquireError),
+    /// The tokio spawn blocking task failed to join.
+    #[error("failed to join task: {0}")]
+    Join(#[from] tokio::task::JoinError),
+    /// The error returned by the `acquire_then` function result.
+    #[error("{0}")]
+    Inner(E),
+}
+
+/// An `acquire_then` error whose function returns a result with a rusqlite error.
+pub type AcquireThenRusqliteError = AcquireThenError<rusqlite::Error>;
+
+/// An `acquire_then` error whose function returns a result with a query error.
+pub type AcquireThenQueryError = AcquireThenError<db::QueryError>;
+
 impl ConnectionPool {
-    /// Acquire a temporary database [`NodeConnection`] from the inner pool.
+    /// Create the connection pool from the given configuration.
+    pub(crate) fn new(conf: &Config) -> rusqlite::Result<Self> {
+        Ok(Self(Arc::new(new_conn_pool(conf)?)))
+    }
+
+    /// Acquire a temporary database [`ConnectionHandle`] from the inner pool.
     ///
     /// In the case that all connections are busy, waits for the first available
     /// connection.
@@ -54,7 +79,7 @@ impl ConnectionPool {
         self.0.acquire().await.map(ConnectionHandle)
     }
 
-    /// Attempt to synchronously acquire a temporary database [`NodeConnection`]
+    /// Attempt to synchronously acquire a temporary database [`ConnectionHandle`]
     /// from the inner pool.
     ///
     /// Returns `None` in the case that all database connections are busy.
@@ -63,111 +88,139 @@ impl ConnectionPool {
     }
 }
 
-impl ConnectionHandle {
-    // NOTE: Should we expose the table creation and insertion methods?
+/// Short-hand methods for async DB access.
+impl ConnectionPool {
+    /// Asynchronous access to the node's DB via the given function.
+    ///
+    /// Requests and awaits a connection from the connection pool, then spawns a
+    /// blocking task for the given function providing access to the connection handle.
+    pub async fn acquire_then<F, T, E>(&self, f: F) -> Result<T, AcquireThenError<E>>
+    where
+        F: 'static + Send + FnOnce(&mut ConnectionHandle) -> Result<T, E>,
+        T: 'static + Send,
+        E: 'static + Send,
+    {
+        // Acquire a handle.
+        let mut handle = self.acquire().await?;
+
+        // Spawn the given DB connection access function on a task.
+        tokio::task::spawn_blocking(move || f(&mut handle))
+            .await?
+            .map_err(AcquireThenError::Inner)
+    }
 
     /// Create all database tables.
-    pub fn create_tables(&mut self) -> rusqlite::Result<()> {
-        self.with_tx(|tx| db::create_tables(tx))
+    pub async fn create_tables(&self) -> Result<(), AcquireThenRusqliteError> {
+        self.acquire_then(|h| with_tx(h, |tx| db::create_tables(tx)))
+            .await
     }
 
     /// Insert the given block into the `block` table and for each of its
     /// solutions, add a row into the `solution` and `block_solution` tables.
-    pub fn insert_block(&mut self, block: &Block) -> rusqlite::Result<()> {
-        self.with_tx(|tx| db::insert_block(tx, block))
+    pub async fn insert_block(&self, block: Arc<Block>) -> Result<(), AcquireThenRusqliteError> {
+        self.acquire_then(move |h| with_tx(h, |tx| db::insert_block(tx, &block)))
+            .await
     }
 
     /// Insert the given contract into the `contract` table and for each of its
     /// predicates add entries to the `predicate` and `contract_predicate` tables.
-    pub fn insert_contract(
-        &mut self,
-        contract: &Contract,
+    pub async fn insert_contract(
+        &self,
+        contract: Arc<Contract>,
         da_block_num: u64,
-    ) -> rusqlite::Result<()> {
-        self.with_tx(|tx| db::insert_contract(tx, contract, da_block_num))
+    ) -> Result<(), AcquireThenRusqliteError> {
+        self.acquire_then(move |h| {
+            with_tx(h, |tx| db::insert_contract(tx, &contract, da_block_num))
+        })
+        .await
     }
 
     /// Updates the state for a given contract content address and key.
-    pub fn update_state(
+    pub async fn update_state(
         &self,
-        contract_ca: &ContentAddress,
-        key: &Key,
-        value: &Value,
-    ) -> rusqlite::Result<()> {
-        db::update_state(self, contract_ca, key, value)
+        contract_ca: ContentAddress,
+        key: Key,
+        value: Value,
+    ) -> Result<(), AcquireThenRusqliteError> {
+        self.acquire_then(move |h| db::update_state(h, &contract_ca, &key, &value))
+            .await
     }
 
     /// Deletes the state for a given contract content address and key.
-    pub fn delete_state(&self, contract_ca: &ContentAddress, key: &Key) -> rusqlite::Result<()> {
-        db::delete_state(self, contract_ca, key)
+    pub async fn delete_state(
+        &self,
+        contract_ca: ContentAddress,
+        key: Key,
+    ) -> Result<(), AcquireThenRusqliteError> {
+        self.acquire_then(move |h| db::delete_state(h, &contract_ca, &key))
+            .await
     }
 
     /// Fetches a contract by its content address.
-    pub fn get_contract(&self, ca: &ContentAddress) -> Result<Option<Contract>, db::QueryError> {
-        db::get_contract(self, ca)
+    pub async fn get_contract(
+        &self,
+        ca: ContentAddress,
+    ) -> Result<Option<Contract>, AcquireThenQueryError> {
+        self.acquire_then(move |h| db::get_contract(h, &ca)).await
     }
 
     /// Fetches a predicate by its predicate content address.
-    pub fn get_predicate(
+    pub async fn get_predicate(
         &self,
-        predicate_ca: &ContentAddress,
-    ) -> Result<Option<Predicate>, db::QueryError> {
-        db::get_predicate(self, predicate_ca)
+        predicate_ca: ContentAddress,
+    ) -> Result<Option<Predicate>, AcquireThenQueryError> {
+        self.acquire_then(move |h| db::get_predicate(h, &predicate_ca))
+            .await
     }
 
     /// Fetches a solution by its content address.
-    pub fn get_solution(&self, ca: &ContentAddress) -> Result<Option<Solution>, db::QueryError> {
-        db::get_solution(self, ca)
+    pub async fn get_solution(
+        &self,
+        ca: ContentAddress,
+    ) -> Result<Option<Solution>, AcquireThenQueryError> {
+        self.acquire_then(move |h| db::get_solution(h, &ca)).await
     }
 
     /// Fetches the state value for the given contract content address and key pair.
-    pub fn query_state(
+    pub async fn query_state(
         &self,
-        contract_ca: &ContentAddress,
-        key: &Key,
-    ) -> Result<Option<Value>, db::QueryError> {
-        db::get_state_value(self, contract_ca, key)
+        contract_ca: ContentAddress,
+        key: Key,
+    ) -> Result<Option<Value>, AcquireThenQueryError> {
+        self.acquire_then(move |h| db::get_state_value(h, &contract_ca, &key))
+            .await
     }
 
     /// Lists all blocks in the given range.
-    pub fn list_blocks(&self, block_range: Range<u64>) -> Result<Vec<Block>, db::QueryError> {
-        db::list_blocks(self, block_range)
+    pub async fn list_blocks(
+        &self,
+        block_range: Range<u64>,
+    ) -> Result<Vec<Block>, AcquireThenQueryError> {
+        self.acquire_then(move |h| db::list_blocks(h, block_range))
+            .await
     }
 
     /// Lists blocks and their solutions within a specific time range with pagination.
-    pub fn list_blocks_by_time(
+    pub async fn list_blocks_by_time(
         &self,
         range: Range<Duration>,
         page_size: i64,
         page_number: i64,
-    ) -> Result<Vec<Block>, db::QueryError> {
-        db::list_blocks_by_time(self, range, page_size, page_number)
+    ) -> Result<Vec<Block>, AcquireThenQueryError> {
+        self.acquire_then(move |h| db::list_blocks_by_time(h, range, page_size, page_number))
+            .await
     }
 
     /// Lists contracts and their predicates within a given DA block range.
     ///
     /// Returns each non-empty DA block number in the range alongside a
     /// `Vec<Contract>` containing the contracts appearing in that block.
-    pub fn list_contracts(
+    pub async fn list_contracts(
         &self,
         block_range: Range<u64>,
-    ) -> Result<Vec<(u64, Vec<Contract>)>, db::QueryError> {
-        db::list_contracts(self, block_range)
-    }
-
-    /// Short-hand for constructing a transaction, providing it as an argument
-    /// to the given function, then committing the transaction before returning.
-    pub fn with_tx<T, E>(
-        &mut self,
-        f: impl FnOnce(&mut Transaction) -> Result<T, E>,
-    ) -> Result<T, E>
-    where
-        E: From<rusqlite::Error>,
-    {
-        let mut tx = self.0.transaction()?;
-        let res = f(&mut tx);
-        tx.commit()?;
-        res
+    ) -> Result<Vec<(u64, Vec<Contract>)>, AcquireThenQueryError> {
+        self.acquire_then(move |h| db::list_contracts(h, block_range))
+            .await
     }
 }
 
@@ -193,18 +246,34 @@ impl Default for Source {
 
 impl Default for Config {
     fn default() -> Self {
-        // Here we use the number of available CPUs as a heuristic for a default
-        // DB connection limit. This is because rusqlite `Connection` usage is
-        // synchronous, and should be saturating the thread anyway.
-        // TODO: Unsure if wasm-compatible? May want a feature for this?
-        let conn_limit = num_cpus::get();
-        let source = Source::default();
-        Self { conn_limit, source }
+        Self {
+            // Here we use the number of available CPUs as a heuristic for a default
+            // DB connection limit. This is because rusqlite `Connection` usage is
+            // synchronous, and should be saturating the thread anyway.
+            // TODO: Unsure if wasm-compatible? May want a feature for this?
+            conn_limit: num_cpus::get(),
+            source: Source::default(),
+        }
     }
 }
 
+/// Short-hand for constructing a transaction, providing it as an argument to
+/// the given function, then committing the transaction before returning.
+pub(crate) fn with_tx<T, E>(
+    conn: &mut rusqlite::Connection,
+    f: impl FnOnce(&mut Transaction) -> Result<T, E>,
+) -> Result<T, E>
+where
+    E: From<rusqlite::Error>,
+{
+    let mut tx = conn.transaction()?;
+    let res = f(&mut tx);
+    tx.commit()?;
+    res
+}
+
 /// Initialise the connection pool from the given configuration.
-pub(crate) fn new_conn_pool(conf: &Config) -> rusqlite::Result<AsyncConnectionPool> {
+fn new_conn_pool(conf: &Config) -> rusqlite::Result<AsyncConnectionPool> {
     AsyncConnectionPool::new(conf.conn_limit, || match &conf.source {
         Source::Memory(id) => new_mem_conn(id),
         Source::Path(p) => rusqlite::Connection::open(p),
