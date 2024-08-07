@@ -40,7 +40,7 @@ impl Node {
 
         // Create the tables.
         let mut conn = conn_pool.try_acquire().expect("all permits available");
-        db::with_tx(&mut conn, |tx| db::create_tables(tx))?;
+        db::with_tx(&mut conn, |tx| essential_node_db::create_tables(tx))?;
 
         Ok(Self { conn_pool })
     }
@@ -51,6 +51,10 @@ impl Node {
     }
 
     /// Manually close the `Node` and handle the result.
+    ///
+    /// This will signal closure to all [`db::ConnectionHandle`]s via the
+    /// connection pool's semaphore, wait for them to be dropped and their inner
+    /// [`rusqlite::Connection`]s to be closed before returning.
     pub async fn close(self) -> Result<(), CloseError> {
         self.conn_pool.0.close().await?;
         Ok(())

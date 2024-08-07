@@ -32,7 +32,7 @@ async fn test_create_tables() {
     // Verify that each table exists by querying the SQLite master table
     {
         let conn = node.db().acquire().await.unwrap();
-        for table in node::db::sql::table::ALL {
+        for table in essential_node_db::sql::table::ALL {
             let query = format!(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='{}';",
                 table.name,

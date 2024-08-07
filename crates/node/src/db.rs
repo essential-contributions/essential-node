@@ -1,5 +1,7 @@
-//! Extends [`essential_node_db`] and [`rusqlite_pool::tokio`] items with
-//! node-specific wrappers, short-hands and helpers.
+//! Provides the node's [`ConnectionPool`] implementation and related items.
+//!
+//! This module extends [`essential_node_db`] and [`rusqlite_pool::tokio`] items
+//! with node-specific wrappers, short-hands and helpers.
 
 use core::ops::Range;
 use essential_node_db as db;
@@ -11,10 +13,6 @@ use rusqlite_pool::tokio::{AsyncConnectionHandle, AsyncConnectionPool};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use thiserror::Error;
 use tokio::sync::{AcquireError, TryAcquireError};
-
-// Make the node DB crate available via [`essential_node::db`].
-#[doc(inline)]
-pub use essential_node_db::*;
 
 /// Access to the node's DB connection pool and DB-access-related methods.
 ///
