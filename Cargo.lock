@@ -304,6 +304,7 @@ dependencies = [
 name = "essential-node"
 version = "0.1.0"
 dependencies = [
+ "essential-hash",
  "essential-node-db",
  "essential-types",
  "num_cpus",

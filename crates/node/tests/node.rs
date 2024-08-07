@@ -11,3 +11,10 @@ fn test_node_new() {
     let conf = test_conf("test_node_new");
     Node::new(&conf).unwrap();
 }
+
+#[tokio::test]
+async fn test_node_close() {
+    let conf = test_conf("test_node_close");
+    let node = Node::new(&conf).unwrap();
+    node.close().await.unwrap();
+}

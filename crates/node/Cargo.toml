@@ -15,3 +15,6 @@ rusqlite = { workspace = true }
 rusqlite-pool = { workspace = true, features = ["tokio"] }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+
+[dev-dependencies]
+essential-hash = { workspace = true }
