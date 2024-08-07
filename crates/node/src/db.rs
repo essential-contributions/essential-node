@@ -237,8 +237,8 @@ impl core::ops::DerefMut for ConnectionHandle {
 
 impl Default for Source {
     fn default() -> Self {
-        // By default, use an empty ID.
-        Self::Memory(String::new())
+        // Default ID cannot be an empty string.
+        Self::Memory("__default-id".to_string())
     }
 }
 
