@@ -250,7 +250,7 @@ impl Default for Config {
             // DB connection limit. This is because rusqlite `Connection` usage is
             // synchronous, and should be saturating the thread anyway.
             // TODO: Unsure if wasm-compatible? May want a feature for this?
-            conn_limit: num_cpus::get(),
+            conn_limit: num_cpus::get().saturating_mul(4),
             source: Source::default(),
         }
     }
