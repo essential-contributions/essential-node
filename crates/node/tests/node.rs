@@ -16,5 +16,5 @@ fn test_node_new() {
 async fn test_node_close() {
     let conf = test_conf("test_node_close");
     let node = Node::new(&conf).unwrap();
-    node.close().await.unwrap();
+    node.close().unwrap();
 }

@@ -125,5 +125,7 @@ async fn test_close_async_pool() {
     let handle = pool.acquire().await.unwrap();
     drop(handle);
 
-    pool.close().await.unwrap();
+    for res in pool.close() {
+        res.unwrap();
+    }
 }

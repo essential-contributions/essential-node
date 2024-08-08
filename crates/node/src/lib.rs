@@ -51,7 +51,11 @@ pub struct NewError(#[from] pub rusqlite::Error);
 /// Node closure failure.
 #[derive(Debug, Error)]
 #[error("`Node` failed to close: {0}")]
-pub struct CloseError(#[from] pub rusqlite_pool::tokio::AsyncCloseError);
+pub struct CloseError(#[from] pub ConnectionCloseErrors);
+
+/// One or more connections failed to close.
+#[derive(Debug, Error)]
+pub struct ConnectionCloseErrors(pub Vec<(rusqlite::Connection, rusqlite::Error)>);
 
 impl Node {
     /// Create a new `Node` instance from the given configuration.
@@ -78,11 +82,28 @@ impl Node {
 
     /// Manually close the `Node` and handle the result.
     ///
-    /// This will signal closure to all [`db::ConnectionHandle`]s via the
-    /// connection pool's semaphore, wait for them to be dropped and their inner
-    /// [`rusqlite::Connection`]s to be closed before returning.
-    pub async fn close(self) -> Result<(), CloseError> {
-        self.conn_pool.0.close().await?;
+    /// Closes the inner connection pool, returning an error in the case that
+    /// any of the queued connections fail to close.
+    ///
+    /// Ensure all [`db::ConnectionHandle`]s are dropped before calling `close`
+    /// to properly handle all connection results. Otherwise, connections not in
+    /// the queue will be closed upon the last connection handle dropping.
+    pub fn close(self) -> Result<(), CloseError> {
+        let res = self.conn_pool.0.close();
+        let errs: Vec<_> = res.into_iter().filter_map(Result::err).collect();
+        if !errs.is_empty() {
+            return Err(ConnectionCloseErrors(errs).into());
+        }
+        Ok(())
+    }
+}
+
+impl core::fmt::Display for ConnectionCloseErrors {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        writeln!(f, "failed to close one or more connections:")?;
+        for (ix, (_conn, err)) in self.0.iter().enumerate() {
+            writeln!(f, "  {ix}: {err}")?;
+        }
         Ok(())
     }
 }

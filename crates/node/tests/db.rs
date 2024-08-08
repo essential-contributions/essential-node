@@ -48,7 +48,7 @@ async fn test_create_tables() {
         }
     }
 
-    node.close().await.unwrap();
+    node.close().unwrap();
 }
 
 #[tokio::test]
@@ -70,7 +70,7 @@ async fn test_block() {
     let fetched = db.list_blocks(0..blocks.len() as _).await.unwrap();
     assert_eq!(blocks, fetched);
 
-    node.close().await.unwrap();
+    node.close().unwrap();
 }
 
 #[tokio::test]
@@ -92,7 +92,7 @@ async fn test_contract() {
     let fetched = node.db().get_contract(ca).await.unwrap().unwrap();
     assert_eq!(&*contract, &fetched);
 
-    node.close().await.unwrap();
+    node.close().unwrap();
 }
 
 #[tokio::test]
@@ -173,5 +173,5 @@ async fn test_state() {
         assert!(opt.is_none());
     }
 
-    node.close().await.unwrap();
+    node.close().unwrap();
 }
