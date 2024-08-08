@@ -266,9 +266,9 @@ where
     E: From<rusqlite::Error>,
 {
     let mut tx = conn.transaction()?;
-    let res = f(&mut tx);
+    let out = f(&mut tx)?;
     tx.commit()?;
-    res
+    Ok(out)
 }
 
 /// Initialise the connection pool from the given configuration.
