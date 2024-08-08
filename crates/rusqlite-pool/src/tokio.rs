@@ -18,6 +18,9 @@ pub struct AsyncConnectionPool {
 /// to the pool's queue, then the permit is dropped indicating avaialability to
 /// the pool's semaphore.
 pub struct AsyncConnectionHandle {
+    // NOTE(MAINTAINERS):
+    // These fields are intentionally ordered in drop order!
+    // The connection must be dropped prior to the permit!
     conn: crate::ConnectionHandle,
     /// Hold the permit, so that it may be dropped immediately after the
     /// `ConnectionHandle` is dropped.
