@@ -194,7 +194,7 @@ pub fn update_state(
     Ok(())
 }
 
-// TODO: add tests
+/// Updates the progress on state derivation.
 pub fn update_state_progress(
     conn: &Connection,
     block_number: u64,
@@ -370,7 +370,7 @@ pub fn get_latest_block(conn: &Transaction) -> Result<Option<Block>, QueryError>
     Ok(blocks.into_iter().next())
 }
 
-// TODO: add tests
+/// Fetches the last progress on state derivation.
 pub fn get_state_progress(conn: &Connection) -> Result<Option<(u64, ContentAddress)>, QueryError> {
     let mut stmt = conn.prepare(sql::query::GET_STATE_PROGRESS)?;
     let value_blob: Option<(i64, Vec<u8>)> = stmt

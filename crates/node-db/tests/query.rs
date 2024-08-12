@@ -141,6 +141,24 @@ fn test_get_solution() {
 }
 
 #[test]
+fn test_get_state_progress() {
+    // Create an in-memory SQLite database.
+    let mut conn = Connection::open_in_memory().unwrap();
+
+    // Create the necessary tables and insert the contract progress.
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    node_db::update_state_progress(&tx, 42, &ContentAddress([42; 32])).unwrap();
+    tx.commit().unwrap();
+
+    // Fetch the state progress.
+    let (block_number, block_hash) = node_db::get_state_progress(&conn).unwrap().unwrap();
+
+    assert_eq!(block_number, 42);
+    assert_eq!(block_hash, ContentAddress([42; 32]));
+}
+
+#[test]
 fn test_list_blocks() {
     // The test blocks.
     let blocks = util::test_blocks(100);
