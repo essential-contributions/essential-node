@@ -190,11 +190,11 @@ async fn test_sync() {
     assert_eq!(result[199].1[0].salt, [199; 32]);
 
     let start = tokio::time::Instant::now();
-    let mut num_solutions: usize;
-    let mut result: Vec<Block>;
+    let mut num_solutions: usize = 0;
+    let mut result: Vec<Block> = vec![];
     loop {
         if start.elapsed() > tokio::time::Duration::from_secs(10) {
-            panic!("timeout");
+            panic!("timeout num_solutions: {}, {:?}", num_solutions, result);
         }
         let Ok(r) = essential_node_db::list_blocks(&test_conn, 0..203) else {
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
