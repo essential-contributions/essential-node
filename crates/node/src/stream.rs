@@ -85,13 +85,12 @@ where
     let mutations: Vec<Mutations<Vec<Mutation>>> = block
         .solutions
         .into_iter()
-        .map(|solution| {
+        .flat_map(|solution| {
             solution.data.into_iter().map(|data| Mutations {
                 contract_address: data.predicate_to_solve.contract,
                 mutations: data.state_mutations,
             })
         })
-        .flatten()
         .collect();
 
     Ok(update_state_in_db(conn, mutations, block.number, &block_hash).await?)
@@ -168,11 +167,11 @@ where
         for mutation in mutations {
             for m in mutation.mutations {
                 update_state(&tx, &mutation.contract_address, &m.key, &m.value)
-                    .map_err(|err| RecoverableError::WriteStateError(err))?;
+                    .map_err(RecoverableError::WriteStateError)?;
             }
 
             update_state_progress(&tx, block_number, &block_hash)
-                .map_err(|err| RecoverableError::WriteStateError(err))?;
+                .map_err(RecoverableError::WriteStateError)?;
         }
         tx.commit()?;
 

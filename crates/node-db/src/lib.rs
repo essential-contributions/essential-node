@@ -205,7 +205,7 @@ pub fn update_state_progress(
     conn.execute(
         sql::insert::STATE_PROGRESS,
         named_params! {
-            ":block_number": block_number,
+            ":number": block_number,
             ":block_hash": block_hash_blob,
         },
     )?;

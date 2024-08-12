@@ -1,13 +1,14 @@
 #![allow(dead_code)]
 
 use essential_node::stream::GetConn;
+use essential_node_db::insert_contract;
 use essential_types::{
     contract::Contract,
     predicate::Predicate,
     solution::{Mutation, Solution, SolutionData},
     Block, ConstraintBytecode, PredicateAddress, StateReadBytecode, Word,
 };
-use rusqlite::OpenFlags;
+use rusqlite::{Connection, OpenFlags};
 use std::{future::Future, time::Duration};
 
 #[derive(Clone, Copy)]
@@ -27,29 +28,38 @@ impl GetConn for Conn {
     }
 }
 
-pub fn test_blocks(n: u64) -> Vec<Block> {
+pub fn test_blocks(conn: &mut Option<&mut Connection>, n: u64) -> Vec<Block> {
     (0..n)
-        .map(|i| test_block(i, Duration::from_secs(i as _)))
+        .map(|i| test_block(conn, i, Duration::from_secs(i as _)))
         .collect()
 }
 
-pub fn test_block(number: u64, timestamp: Duration) -> Block {
+pub fn test_block(conn: &mut Option<&mut Connection>, number: u64, timestamp: Duration) -> Block {
     let seed = number as i64 * 79;
     Block {
         number,
         timestamp,
-        solutions: (0..3).map(|i| test_solution(seed * (1 + i))).collect(),
+        solutions: (0..3)
+            .map(|i| test_solution(conn, seed * (1 + i)))
+            .collect(),
     }
 }
 
-pub fn test_solution(seed: Word) -> Solution {
+pub fn test_solution(conn: &mut Option<&mut Connection>, seed: Word) -> Solution {
     Solution {
-        data: vec![test_solution_data(seed)],
+        data: vec![test_solution_data(conn, seed)],
     }
 }
 
-pub fn test_solution_data(seed: Word) -> SolutionData {
+pub fn test_solution_data(conn: &mut Option<&mut Connection>, seed: Word) -> SolutionData {
     let contract = test_contract(seed);
+
+    if let Some(conn) = conn {
+        let tx = conn.transaction().unwrap();
+        insert_contract(&tx, &contract, 0).unwrap();
+        tx.commit().unwrap();
+    }
+
     let predicate = essential_hash::content_addr(&contract.predicates[0]);
     let contract = essential_hash::contract_addr::from_contract(&contract);
     SolutionData {
