@@ -19,7 +19,7 @@ fn insert_block_and_send_notification(
 }
 
 fn assert_block_progress(conn: &Connection, block: &Block, hash: &ContentAddress) {
-    match get_state_progress(&conn).unwrap() {
+    match get_state_progress(conn).unwrap() {
         Some((progress_number, progress_hash)) => {
             assert_eq!(progress_number, block.number);
             assert_eq!(progress_hash, *hash);
@@ -36,7 +36,7 @@ async fn assert_multiple_block_mutations(conn: &Connection, blocks: &[&Block]) {
             for data in &solution.data {
                 for mutation in &data.state_mutations {
                     let value =
-                        get_state_value(&conn, &data.predicate_to_solve.contract, &mutation.key)
+                        get_state_value(conn, &data.predicate_to_solve.contract, &mutation.key)
                             .unwrap()
                             .unwrap();
                     assert_eq!(value, mutation.value);
