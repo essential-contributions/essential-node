@@ -145,7 +145,7 @@ async fn fork() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // State progress is updated outside of the stream to be block 2
-    update_state_progress(&mut conn, blocks[2].number, &hashes[2]).unwrap();
+    update_state_progress(&conn, blocks[2].number, &hashes[2]).unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Stream errors when processing block 1
