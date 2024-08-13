@@ -263,13 +263,12 @@ impl GetConn for Conn {
 
 pub async fn setup_server() -> (String, Child) {
     let mut child = Command::new("essential-rest-server")
-        .env("RUST_LOG", "[run_loop]=debug,info")
         .arg("--db")
         .arg("memory")
         .arg("0.0.0.0:0")
         .arg("--loop-freq")
         .arg("1")
-        // .arg("--disable-tracing")
+        .arg("--disable-tracing")
         .kill_on_drop(true)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

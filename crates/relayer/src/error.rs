@@ -68,6 +68,9 @@ pub(crate) enum RecoverableError {
     /// The stream returned an error.
     #[error("the stream returned an error: {0}")]
     StreamError(String),
+    /// A DB error occurred.
+    #[error("a DB error occurred: {0}")]
+    Rusqlite(rusqlite::Error),
 }
 
 #[derive(Debug, Error)]
