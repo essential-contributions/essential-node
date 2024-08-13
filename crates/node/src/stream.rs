@@ -164,7 +164,7 @@ where
             }
         }
 
-        update_state_progress(&tx, block_number, &block_hash)
+        update_state_progress(&tx, block_number, block_hash)
             .map_err(RecoverableError::WriteState)?;
 
         tx.commit()?;
