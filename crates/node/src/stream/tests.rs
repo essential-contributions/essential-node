@@ -1,7 +1,9 @@
 use super::*;
 use crate::test_utils::{self, Conn};
-use essential_node_db::{create_tables, get_state_progress, insert_block, query_state};
-use essential_types::{Block, ContentAddress};
+use essential_node_db::{
+    create_tables, get_state_progress, insert_block, insert_contract, query_state,
+};
+use essential_types::{contract::Contract, Block, ContentAddress};
 use rusqlite::Connection;
 use std::time::Duration;
 
@@ -16,16 +18,16 @@ fn insert_block_and_send_notification(
     stream_tx.send(()).unwrap();
 }
 
-fn assert_block_progress(conn: &Connection, block: &Block, hash: &ContentAddress) {
-    match get_state_progress(conn).unwrap() {
-        Some((progress_number, progress_hash)) => {
-            assert_eq!(progress_number, block.number);
-            assert_eq!(progress_hash, *hash);
-        }
-        None => {
-            assert_eq!(block.number, 0);
-        }
-    }
+fn assert_block_progress_is_some(conn: &Connection, block: &Block, hash: &ContentAddress) {
+    let (progress_number, progress_hash) = get_state_progress(conn)
+        .unwrap()
+        .expect("progress should be some");
+    assert_eq!(progress_number, block.number);
+    assert_eq!(progress_hash, *hash);
+}
+
+fn assert_block_progress_is_none(conn: &Connection) {
+    assert!(get_state_progress(conn).unwrap().is_none());
 }
 
 async fn assert_multiple_block_mutations(conn: &Connection, blocks: &[&Block]) {
@@ -43,6 +45,14 @@ async fn assert_multiple_block_mutations(conn: &Connection, blocks: &[&Block]) {
     }
 }
 
+fn insert_contracts_to_db(conn: &mut Connection, contracts: Vec<Contract>) {
+    let tx = conn.transaction().unwrap();
+    for contract in contracts {
+        insert_contract(&tx, &contract, 0).unwrap();
+    }
+    tx.commit().unwrap();
+}
+
 #[tokio::test]
 async fn can_derive_state() {
     std::env::set_var("RUST_LOG", "trace");
@@ -55,7 +65,10 @@ async fn can_derive_state() {
     create_tables(&tx).unwrap();
     tx.commit().unwrap();
 
-    let test_blocks = test_utils::test_blocks(&mut Some(&mut conn), 5);
+    let test_blocks_count = 5;
+    let (test_blocks, contracts) = test_utils::test_blocks(test_blocks_count);
+    insert_contracts_to_db(&mut conn, contracts);
+
     let blocks = test_blocks;
     let hashes = blocks
         .iter()
@@ -67,22 +80,24 @@ async fn can_derive_state() {
 
     let handle = block_stream(Conn, stream_rx).await.unwrap();
 
+    assert_block_progress_is_none(&conn);
+
     insert_block_and_send_notification(&mut conn, &blocks[0], &stream_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
     // Check for progress and state
-    assert_block_progress(&conn, &blocks[0], &hashes[0]);
+    assert_block_progress_is_some(&conn, &blocks[0], &hashes[0]);
     assert_multiple_block_mutations(&conn, &[&blocks[0]]).await;
 
     insert_block_and_send_notification(&mut conn, &blocks[1], &stream_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
     insert_block_and_send_notification(&mut conn, &blocks[2], &stream_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
-    assert_block_progress(&conn, &blocks[2], &hashes[2]);
+    assert_block_progress_is_some(&conn, &blocks[2], &hashes[2]);
     assert_multiple_block_mutations(&conn, &[&blocks[1], &blocks[2]]).await;
 
     insert_block_and_send_notification(&mut conn, &blocks[3], &stream_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
-    assert_block_progress(&conn, &blocks[3], &hashes[3]);
+    assert_block_progress_is_some(&conn, &blocks[3], &hashes[3]);
     assert_multiple_block_mutations(&conn, &[&blocks[3]]).await;
 
     handle.close().await.unwrap();

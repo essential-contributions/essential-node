@@ -79,12 +79,8 @@ where
     C: BorrowMut<rusqlite::Connection> + Send + 'static,
 {
     let (conn, progress) = get_last_progress(conn).await?;
-    let next_block_number = progress
-        .as_ref()
-        .map(|(block_number, _)| block_number.saturating_add(1))
-        .unwrap_or(0);
 
-    let (conn, block) = get_next_block(conn, progress, next_block_number).await?;
+    let (conn, block) = get_next_block(conn, progress).await?;
     let block_hash = essential_hash::content_addr(&block);
 
     let mutations = block.solutions.into_iter().flat_map(|solution| {
@@ -113,24 +109,22 @@ where
 async fn get_next_block<C>(
     conn: C,
     progress: Option<(u64, ContentAddress)>,
-    next_block_number: u64,
 ) -> Result<(C, Block), InternalError>
 where
     C: BorrowMut<rusqlite::Connection> + Send + 'static,
 {
     tokio::task::spawn_blocking(move || {
-        let range = progress.as_ref().map_or(
-            next_block_number..next_block_number.saturating_add(1),
-            |(block_num, _)| *block_num..next_block_number.saturating_add(1),
-        );
+        let range = progress.as_ref().map_or(0..1, |(block_num, _)| {
+            *block_num..block_num.saturating_add(2) // TODO: hack
+        });
 
         let blocks = list_blocks(conn.borrow(), range).map_err(RecoverableError::ReadState)?;
 
         let block = match progress {
-            Some((_, hash)) => {
+            Some((number, hash)) => {
                 let mut iter = blocks.into_iter();
                 let previous_block = iter.next().ok_or(CriticalError::Fork)?;
-                let current_block = iter.next().ok_or(RecoverableError::BlockNotFound)?;
+                let current_block = iter.next().ok_or(RecoverableError::BlockNotFound(number))?;
                 if essential_hash::content_addr(&previous_block) != hash {
                     return Err(CriticalError::Fork.into());
                 }
@@ -139,7 +133,7 @@ where
             None => blocks
                 .into_iter()
                 .next()
-                .ok_or(RecoverableError::BlockNotFound)?,
+                .ok_or(RecoverableError::BlockNotFound(0))?,
         };
 
         Ok((conn, block))

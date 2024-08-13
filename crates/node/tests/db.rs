@@ -57,7 +57,7 @@ async fn test_block() {
     let node = Node::new(&conf).unwrap();
 
     // The test blocks.
-    let blocks = test_utils::test_blocks(&mut None, 100);
+    let (blocks, _) = test_utils::test_blocks(100);
 
     // Insert the blocks.
     let db = node.db();

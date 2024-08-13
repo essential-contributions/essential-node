@@ -11,8 +11,8 @@ pub(super) enum InternalError {
 
 #[derive(Debug, Error)]
 pub enum RecoverableError {
-    #[error("block not found")]
-    BlockNotFound,
+    #[error("block {0} not found")]
+    BlockNotFound(u64),
     #[error("could not update state")]
     WriteState(#[from] rusqlite::Error),
     #[error("could not read state")]
