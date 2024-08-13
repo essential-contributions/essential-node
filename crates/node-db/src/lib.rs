@@ -319,7 +319,7 @@ pub fn get_solution(
 }
 
 /// Fetches the state value for the given contract content address and key pair.
-pub fn get_state_value(
+pub fn query_state(
     conn: &Connection,
     contract_ca: &ContentAddress,
     key: &Key,

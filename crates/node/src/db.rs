@@ -186,7 +186,7 @@ impl ConnectionPool {
         contract_ca: ContentAddress,
         key: Key,
     ) -> Result<Option<Value>, AcquireThenQueryError> {
-        self.acquire_then(move |h| db::get_state_value(h, &contract_ca, &key))
+        self.acquire_then(move |h| db::query_state(h, &contract_ca, &key))
             .await
     }
 
