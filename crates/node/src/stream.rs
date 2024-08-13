@@ -1,4 +1,5 @@
-// #![allow(dead_code)]
+// TODO: remove when state derivation is actually used
+#![allow(dead_code)]
 
 use crate::{
     error::{self, CriticalError, InternalError, RecoverableError},
