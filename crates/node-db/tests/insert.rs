@@ -67,9 +67,9 @@ fn test_insert_contract() {
 
     // Verify the contract was inserted correctly.
     let mut stmt = conn
-        .prepare("SELECT content_hash, salt, da_block_number FROM contract")
+        .prepare("SELECT content_hash, salt, l2_block_number FROM contract")
         .unwrap();
-    let (contract_ca_blob, salt_blob, da_block_number) = stmt
+    let (contract_ca_blob, salt_blob, l2_block_number) = stmt
         .query_row((), |row| {
             Ok((
                 row.get::<_, Vec<u8>>(0)?,
@@ -85,7 +85,7 @@ fn test_insert_contract() {
     );
 
     // Check the block number.
-    assert_eq!(block_n, da_block_number);
+    assert_eq!(block_n, l2_block_number);
 
     // Check the salt.
     let salt: [u8; 32] = node_db::decode(&salt_blob).unwrap();

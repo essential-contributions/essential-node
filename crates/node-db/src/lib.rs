@@ -100,10 +100,12 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
 ///
 /// 1. Insert it into the `contract` table.
 /// 2. For each predicate, add entries to the `predicate` and `contract_predicate` tables.
+///
+/// The `l2_block_number` is the block containing the contract's DA proof.
 pub fn insert_contract(
     tx: &Transaction,
     contract: &Contract,
-    da_block_number: u64,
+    l2_block_number: u64,
 ) -> rusqlite::Result<()> {
     // Collect the predicate content addresses.
     let predicate_cas: Vec<_> = contract.predicates.iter().map(content_addr).collect();
@@ -122,7 +124,7 @@ pub fn insert_contract(
         named_params! {
             ":content_hash": contract_ca_blob,
             ":salt": salt_blob,
-            ":da_block_number": da_block_number,
+            ":l2_block_number": l2_block_number,
         },
     )?;
 
@@ -453,8 +455,9 @@ pub fn list_blocks_by_time(
 
 /// Lists contracts and their predicates within a given DA block range.
 ///
-/// Returns each non-empty DA block number in the range alongside a
-/// `Vec<Contract>` containing the contracts appearing in that block.
+/// Returns each non-empty L2 block number in the range alongside a
+/// `Vec<Contract>` containing the contracts appearing in the DA proof for that
+/// block.
 pub fn list_contracts(
     conn: &Connection,
     block_range: Range<u64>,
@@ -466,7 +469,7 @@ pub fn list_contracts(
             ":end_block": block_range.end,
         },
         |row| {
-            let block_num: u64 = row.get("da_block_number")?;
+            let block_num: u64 = row.get("l2_block_number")?;
             let salt_blob: Vec<u8> = row.get("salt")?;
             let contract_ca_blob: Vec<u8> = row.get("content_hash")?;
             let pred_blob: Vec<u8> = row.get("predicate")?;
@@ -479,17 +482,17 @@ pub fn list_contracts(
     let mut last_block_num: Option<u64> = None;
     let mut last_contract_ca = None;
     for res in rows {
-        let (da_block_num, ca_blob, salt_blob, pred_blob): (u64, Vec<u8>, Vec<u8>, Vec<u8>) = res?;
+        let (l2_block_num, ca_blob, salt_blob, pred_blob): (u64, Vec<u8>, Vec<u8>, Vec<u8>) = res?;
         let contract_ca: ContentAddress = decode(&ca_blob)?;
         let salt: Hash = decode(&salt_blob)?;
 
         // Fetch the block entry associated with the given block number or insert if new.
         let block = match last_block_num {
-            Some(n) if n == da_block_num => blocks.last_mut().expect("block entry must exist"),
+            Some(n) if n == l2_block_num => blocks.last_mut().expect("block entry must exist"),
             _ => {
-                last_block_num = Some(da_block_num);
+                last_block_num = Some(l2_block_num);
                 last_contract_ca = None;
-                blocks.push((da_block_num, vec![]));
+                blocks.push((l2_block_num, vec![]));
                 blocks.last_mut().expect("block entry must exist")
             }
         };
