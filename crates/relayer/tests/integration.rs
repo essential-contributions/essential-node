@@ -194,7 +194,7 @@ async fn test_sync() {
     let mut result: Vec<Block> = vec![];
     loop {
         if start.elapsed() > tokio::time::Duration::from_secs(10) {
-            panic!("timeout num_solutions: {}, {:?}", num_solutions, result);
+            panic!("timeout num_solutions: {}, {}", num_solutions, result.len());
         }
         let Ok(r) = essential_node_db::list_blocks(&test_conn, 0..203) else {
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -263,13 +263,13 @@ impl GetConn for Conn {
 
 pub async fn setup_server() -> (String, Child) {
     let mut child = Command::new("essential-rest-server")
-        // .env("RUST_LOG", "info")
+        .env("RUST_LOG", "[run_loop]=debug,info")
         .arg("--db")
         .arg("memory")
         .arg("0.0.0.0:0")
         .arg("--loop-freq")
         .arg("1")
-        .arg("--disable-tracing")
+        // .arg("--disable-tracing")
         .kill_on_drop(true)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
