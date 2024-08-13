@@ -48,6 +48,10 @@ async fn assert_multiple_block_mutations(conn: &Connection, blocks: &[&Block]) {
 
 #[tokio::test]
 async fn can_derive_state() {
+    std::env::set_var("RUST_LOG", "trace");
+    #[cfg(feature = "tracing")]
+    let _ = tracing_subscriber::fmt::try_init();
+
     let mut conn = Conn.get().await.unwrap();
 
     let tx = conn.transaction().unwrap();

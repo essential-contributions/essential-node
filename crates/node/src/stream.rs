@@ -148,6 +148,7 @@ where
     .map_err(RecoverableError::JoinError)?
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument("state_progress", skip_all))]
 async fn update_state_in_db<C, S, I>(
     mut conn: C,
     mutations: I,
@@ -161,7 +162,7 @@ where
 {
     let block_hash = block_hash.clone();
 
-    tokio::task::spawn_blocking(move || {
+    let f = {
         let tx = conn.borrow_mut().transaction()?;
 
         for mutation in mutations {
@@ -169,15 +170,20 @@ where
                 update_state(&tx, &mutation.contract_address, &m.key, &m.value)
                     .map_err(RecoverableError::WriteStateError)?;
             }
-
-            update_state_progress(&tx, block_number, &block_hash)
-                .map_err(RecoverableError::WriteStateError)?;
         }
+
+        update_state_progress(&tx, block_number, &block_hash)
+            .map_err(RecoverableError::WriteStateError)?;
+
         tx.commit()?;
 
+        #[cfg(feature = "tracing")]
+        tracing::debug!(number = block_number, hash = %block_hash);
+
         Ok(conn)
-    })
-    .await?
+    };
+
+    tokio::task::spawn_blocking(move || f).await?
 }
 
 /// Exit on critical errors, log recoverable errors
