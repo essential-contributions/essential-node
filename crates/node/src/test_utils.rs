@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use essential_node::stream::GetConn;
+use crate::stream::GetConn;
 use essential_node_db::insert_contract;
 use essential_types::{
     contract::Contract,

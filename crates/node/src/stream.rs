@@ -1,5 +1,7 @@
+// #![allow(dead_code)]
+
 use crate::{
-    error::{CriticalError, InternalError, RecoverableError},
+    error::{self, CriticalError, InternalError, RecoverableError},
     handle::Handle,
 };
 use essential_node_db::{get_state_progress, list_blocks, update_state, update_state_progress};
@@ -8,6 +10,9 @@ use futures::stream::{StreamExt, TryStreamExt};
 use std::{borrow::BorrowMut, future::Future};
 use tokio::sync::watch;
 use tokio_stream::wrappers::WatchStream;
+
+#[cfg(test)]
+mod tests;
 
 pub trait GetConn {
     /// The error type.
@@ -82,16 +87,12 @@ where
     let (conn, block) = get_next_block(conn, progress, next_block_number).await?;
     let block_hash = essential_hash::content_addr(&block);
 
-    let mutations: Vec<Mutations<Vec<Mutation>>> = block
-        .solutions
-        .into_iter()
-        .flat_map(|solution| {
-            solution.data.into_iter().map(|data| Mutations {
-                contract_address: data.predicate_to_solve.contract,
-                mutations: data.state_mutations,
-            })
+    let mutations = block.solutions.into_iter().flat_map(|solution| {
+        solution.data.into_iter().map(|data| Mutations {
+            contract_address: data.predicate_to_solve.contract,
+            mutations: data.state_mutations,
         })
-        .collect();
+    });
 
     Ok(update_state_in_db(conn, mutations, block.number, &block_hash).await?)
 }
@@ -103,8 +104,7 @@ where
     C: BorrowMut<rusqlite::Connection> + Send + 'static,
 {
     tokio::task::spawn_blocking(move || {
-        let r = get_state_progress(conn.borrow())
-            .map_err(|_err| RecoverableError::LastProgressError)?;
+        let r = get_state_progress(conn.borrow()).map_err(|_err| RecoverableError::LastProgress)?;
         Ok((conn, r))
     })
     .await?
@@ -124,7 +124,7 @@ where
             |(block_num, _)| *block_num..next_block_number.saturating_add(1),
         );
 
-        let blocks = list_blocks(conn.borrow(), range).map_err(RecoverableError::ReadStateError)?;
+        let blocks = list_blocks(conn.borrow(), range).map_err(RecoverableError::ReadState)?;
 
         let block = match progress {
             Some((_, hash)) => {
@@ -145,7 +145,7 @@ where
         Ok((conn, block))
     })
     .await
-    .map_err(RecoverableError::JoinError)?
+    .map_err(RecoverableError::Join)?
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument("state_progress", skip_all))]
@@ -160,20 +160,18 @@ where
     S: IntoIterator<Item = Mutation>,
     I: IntoIterator<Item = Mutations<S>> + Send + 'static,
 {
-    let block_hash = block_hash.clone();
-
     let f = {
         let tx = conn.borrow_mut().transaction()?;
 
         for mutation in mutations {
             for m in mutation.mutations {
                 update_state(&tx, &mutation.contract_address, &m.key, &m.value)
-                    .map_err(RecoverableError::WriteStateError)?;
+                    .map_err(RecoverableError::WriteState)?;
             }
         }
 
         update_state_progress(&tx, block_number, &block_hash)
-            .map_err(RecoverableError::WriteStateError)?;
+            .map_err(RecoverableError::WriteState)?;
 
         tx.commit()?;
 
@@ -188,6 +186,7 @@ where
 
 /// Exit on critical errors, log recoverable errors
 fn handle_error(e: InternalError) -> Result<(), CriticalError> {
+    let e = map_recoverable_errors(e);
     match e {
         InternalError::Critical(e) => {
             #[cfg(feature = "tracing")]
@@ -205,5 +204,31 @@ fn handle_error(e: InternalError) -> Result<(), CriticalError> {
         }
         #[cfg(not(feature = "tracing"))]
         InternalError::Recoverable(_) => Ok(()),
+    }
+}
+
+/// Some critical error types contain variants that we should handle as recoverable errors.
+/// This function maps those errors to recoverable errors.
+fn map_recoverable_errors(e: InternalError) -> InternalError {
+    // Map recoverable rusqlite errors to recoverable errors
+    match e {
+        InternalError::Critical(CriticalError::GetConnection(e)) => match e {
+            rus @ rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error {
+                    code: rusqlite::ffi::ErrorCode::DatabaseLocked,
+                    ..
+                },
+                _,
+            )
+            | rus @ rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error {
+                    code: rusqlite::ffi::ErrorCode::DatabaseBusy,
+                    ..
+                },
+                _,
+            ) => InternalError::Recoverable(error::RecoverableError::Rusqlite(rus)),
+            _ => InternalError::Critical(CriticalError::GetConnection(e)),
+        },
+        _ => e,
     }
 }

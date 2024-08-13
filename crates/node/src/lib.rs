@@ -5,9 +5,11 @@
 use thiserror::Error;
 
 pub mod db;
-pub mod error;
-pub mod handle;
-pub mod stream;
+mod error;
+mod handle;
+mod stream;
+#[cfg(any(feature = "test-utils", test))]
+pub mod test_utils;
 
 /// The Essential `Node`.
 ///

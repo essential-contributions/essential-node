@@ -14,13 +14,15 @@ pub enum RecoverableError {
     #[error("block not found")]
     BlockNotFound,
     #[error("could not update state")]
-    WriteStateError(#[from] rusqlite::Error),
+    WriteState(#[from] rusqlite::Error),
     #[error("could not read state")]
-    ReadStateError(#[from] QueryError),
+    ReadState(#[from] QueryError),
     #[error("failed to join handle")]
-    JoinError(#[from] tokio::task::JoinError),
+    Join(#[from] tokio::task::JoinError),
     #[error("failed to get last block")]
-    LastProgressError,
+    LastProgress,
+    #[error("failed to get new connection")]
+    Rusqlite(rusqlite::Error),
 }
 
 #[derive(Debug, Error)]

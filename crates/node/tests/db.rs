@@ -1,7 +1,7 @@
-use essential_node::{self as node, Node};
-use std::sync::Arc;
+#![cfg(feature = "test-utils")]
 
-mod util;
+use essential_node::{self as node, test_utils, Node};
+use std::sync::Arc;
 
 fn test_conf(id: &str) -> node::Config {
     let mut conf = node::Config::default();
@@ -57,7 +57,7 @@ async fn test_block() {
     let node = Node::new(&conf).unwrap();
 
     // The test blocks.
-    let blocks = util::test_blocks(&mut None, 100);
+    let blocks = test_utils::test_blocks(&mut None, 100);
 
     // Insert the blocks.
     let db = node.db();
@@ -81,7 +81,7 @@ async fn test_contract() {
     // The test contract.
     let seed = 42;
     let da_block = 100;
-    let contract = Arc::new(util::test_contract(seed));
+    let contract = Arc::new(test_utils::test_contract(seed));
 
     // Insert the contract.
     let clone = contract.clone();
@@ -103,7 +103,7 @@ async fn test_state() {
     // The test state.
     let seed = 36;
     let da_block = 100;
-    let contract = Arc::new(util::test_contract(seed));
+    let contract = Arc::new(test_utils::test_contract(seed));
 
     // Make some randomish keys and values.
     let mut keys = vec![];

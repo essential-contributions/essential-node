@@ -1,11 +1,9 @@
-use essential_node::stream::{block_stream, GetConn};
+use super::*;
+use crate::test_utils::{self, Conn};
 use essential_node_db::{create_tables, get_state_progress, insert_block, query_state};
 use essential_types::{Block, ContentAddress};
 use rusqlite::Connection;
 use std::time::Duration;
-use util::Conn;
-
-mod util;
 
 fn insert_block_and_send_notification(
     conn: &mut Connection,
@@ -57,7 +55,7 @@ async fn can_derive_state() {
     create_tables(&tx).unwrap();
     tx.commit().unwrap();
 
-    let test_blocks = util::test_blocks(&mut Some(&mut conn), 5);
+    let test_blocks = test_utils::test_blocks(&mut Some(&mut conn), 5);
     let blocks = test_blocks;
     let hashes = blocks
         .iter()
