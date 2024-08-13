@@ -123,13 +123,14 @@ impl ConnectionPool {
 
     /// Insert the given contract into the `contract` table and for each of its
     /// predicates add entries to the `predicate` and `contract_predicate` tables.
+    /// The `l2_block_num` is the L2 block containing the contract's DA proof.
     pub async fn insert_contract(
         &self,
         contract: Arc<Contract>,
-        da_block_num: u64,
+        l2_block_num: u64,
     ) -> Result<(), AcquireThenRusqliteError> {
         self.acquire_then(move |h| {
-            with_tx(h, |tx| db::insert_contract(tx, &contract, da_block_num))
+            with_tx(h, |tx| db::insert_contract(tx, &contract, l2_block_num))
         })
         .await
     }
@@ -186,7 +187,7 @@ impl ConnectionPool {
         contract_ca: ContentAddress,
         key: Key,
     ) -> Result<Option<Value>, AcquireThenQueryError> {
-        self.acquire_then(move |h| db::get_state_value(h, &contract_ca, &key))
+        self.acquire_then(move |h| db::query_state(h, &contract_ca, &key))
             .await
     }
 
