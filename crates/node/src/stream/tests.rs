@@ -7,6 +7,7 @@ use essential_types::{contract::Contract, Block, ContentAddress};
 use rusqlite::Connection;
 use std::time::Duration;
 
+// Insert a block to the database and send a notification to the stream
 fn insert_block_and_send_notification(
     conn: &mut Connection,
     block: &Block,
@@ -18,7 +19,8 @@ fn insert_block_and_send_notification(
     stream_tx.send(()).unwrap();
 }
 
-fn assert_block_progress_is_some(conn: &Connection, block: &Block, hash: &ContentAddress) {
+// Check that the state progress in the database is block number and hash
+fn assert_state_progress_is_some(conn: &Connection, block: &Block, hash: &ContentAddress) {
     let (progress_number, progress_hash) = get_state_progress(conn)
         .unwrap()
         .expect("progress should be some");
@@ -26,10 +28,12 @@ fn assert_block_progress_is_some(conn: &Connection, block: &Block, hash: &Conten
     assert_eq!(progress_hash, *hash);
 }
 
-fn assert_block_progress_is_none(conn: &Connection) {
+// Check that the state progress in the database is none
+fn assert_state_progress_is_none(conn: &Connection) {
     assert!(get_state_progress(conn).unwrap().is_none());
 }
 
+// Check state
 async fn assert_multiple_block_mutations(conn: &Connection, blocks: &[&Block]) {
     for block in blocks {
         for solution in &block.solutions {
@@ -80,24 +84,34 @@ async fn can_derive_state() {
 
     let handle = block_stream(Conn, stream_rx).await.unwrap();
 
-    assert_block_progress_is_none(&conn);
+    // Initially, the state progress is none
+    assert_state_progress_is_none(&conn);
 
+    // Process block 0
     insert_block_and_send_notification(&mut conn, &blocks[0], &stream_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
-    // Check for progress and state
-    assert_block_progress_is_some(&conn, &blocks[0], &hashes[0]);
+    // Assert state progress is block 0
+    assert_state_progress_is_some(&conn, &blocks[0], &hashes[0]);
+    // Assert mutations in block 0 are in database
     assert_multiple_block_mutations(&conn, &[&blocks[0]]).await;
 
+    // Process block 1
     insert_block_and_send_notification(&mut conn, &blocks[1], &stream_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
+    // Process block 2
     insert_block_and_send_notification(&mut conn, &blocks[2], &stream_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
-    assert_block_progress_is_some(&conn, &blocks[2], &hashes[2]);
+    // Assert state progress is block 2
+    assert_state_progress_is_some(&conn, &blocks[2], &hashes[2]);
+    // Assert mutations in block 1 and 2 are in database
     assert_multiple_block_mutations(&conn, &[&blocks[1], &blocks[2]]).await;
 
+    // Process block 3
     insert_block_and_send_notification(&mut conn, &blocks[3], &stream_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
-    assert_block_progress_is_some(&conn, &blocks[3], &hashes[3]);
+    // Assert state progress is block 3
+    assert_state_progress_is_some(&conn, &blocks[3], &hashes[3]);
+    // Assert mutations in block 3 are in database
     assert_multiple_block_mutations(&conn, &[&blocks[3]]).await;
 
     handle.close().await.unwrap();

@@ -35,7 +35,15 @@ where
     pub mutations: I,
 }
 
-/// Run the stream that is updated when a new block is added to the database.
+/// Run the stream that derives state from blocks.
+///
+/// The stream is spawned and run in the background.
+/// The watch channel listens to notifications when a new block is added to the database.
+///
+/// Returns a handle that can be used to clone or join the stream.
+///
+/// Recoverable errors will be logged and the stream will be restarted.
+/// Critical errors will cause the stream to end.
 pub async fn block_stream<C>(
     get_conn: C,
     block_rx: watch::Receiver<()>,
@@ -76,6 +84,10 @@ where
     Ok(Handle::new(jh, shutdown))
 }
 
+/// Apply state mutations to the next block in the database.
+///
+/// Read the last progress on state updates.
+/// Get the next block to process and apply its state mutations.
 async fn process_block<C>(conn: C) -> Result<C, InternalError>
 where
     C: BorrowMut<rusqlite::Connection> + Send + 'static,
@@ -95,6 +107,7 @@ where
     Ok(update_state_in_db(conn, mutations, block.number, block_hash).await?)
 }
 
+/// Fetch the last processed block from the database in a blocking task.
 async fn get_last_progress<C>(
     conn: C,
 ) -> Result<(C, Option<(u64, ContentAddress)>), RecoverableError>
@@ -108,6 +121,7 @@ where
     .await?
 }
 
+/// Fetch the next block to process from the database in a blocking task.
 async fn get_next_block<C>(
     conn: C,
     progress: Option<(u64, ContentAddress)>,
@@ -123,15 +137,18 @@ where
         let blocks = list_blocks(conn.borrow(), range).map_err(RecoverableError::ReadState)?;
 
         let block = match progress {
+            // Get the next block
             Some((number, hash)) => {
                 let mut iter = blocks.into_iter();
                 let previous_block = iter.next().ok_or(CriticalError::Fork)?;
+                // Make sure the block is inserted into the database before deriving state
                 let current_block = iter.next().ok_or(RecoverableError::BlockNotFound(number))?;
                 if essential_hash::content_addr(&previous_block) != hash {
                     return Err(CriticalError::Fork.into());
                 }
                 current_block
             }
+            // No progress, get the first block
             None => blocks
                 .into_iter()
                 .next()
@@ -144,6 +161,7 @@ where
     .map_err(RecoverableError::Join)?
 }
 
+/// Apply state mutations to the database in a blocking task.
 #[cfg_attr(feature = "tracing", tracing::instrument("state_progress", skip_all))]
 async fn update_state_in_db<C, S, I>(
     conn: C,
@@ -156,9 +174,11 @@ where
     S: IntoIterator<Item = Mutation>,
     I: IntoIterator<Item = Mutations<S>> + Send + 'static,
 {
+    #[cfg(feature = "tracing")]
     let span = tracing::Span::current();
 
     tokio::task::spawn_blocking(move || {
+        #[cfg(feature = "tracing")]
         let _guard = span.enter();
 
         update_state_in_db_inner(conn, mutations, block_number, block_hash)
@@ -196,7 +216,7 @@ where
     Ok(conn)
 }
 
-/// Exit on critical errors, log recoverable errors
+/// Exit on critical errors, log recoverable errors.
 fn handle_error(e: InternalError) -> Result<(), CriticalError> {
     let e = map_recoverable_errors(e);
     match e {
