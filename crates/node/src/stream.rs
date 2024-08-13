@@ -26,6 +26,7 @@ pub trait GetConn {
     ) -> impl Future<Output = std::result::Result<Self::Connection, Self::Error>> + Send;
 }
 
+/// Mutations per contract address to be applied to the state.
 pub struct Mutations<I>
 where
     I: IntoIterator<Item = Mutation>,
@@ -34,6 +35,7 @@ where
     pub mutations: I,
 }
 
+/// Run the stream that is updated when a new block is added to the database.
 pub async fn block_stream<C>(
     get_conn: C,
     block_rx: watch::Receiver<()>,
@@ -90,7 +92,7 @@ where
         })
     });
 
-    Ok(update_state_in_db(conn, mutations, block.number, &block_hash).await?)
+    Ok(update_state_in_db(conn, mutations, block.number, block_hash).await?)
 }
 
 async fn get_last_progress<C>(
@@ -115,7 +117,7 @@ where
 {
     tokio::task::spawn_blocking(move || {
         let range = progress.as_ref().map_or(0..1, |(block_num, _)| {
-            *block_num..block_num.saturating_add(2) // TODO: hack
+            *block_num..block_num.saturating_add(2) // List previous and current block
         });
 
         let blocks = list_blocks(conn.borrow(), range).map_err(RecoverableError::ReadState)?;
@@ -144,38 +146,54 @@ where
 
 #[cfg_attr(feature = "tracing", tracing::instrument("state_progress", skip_all))]
 async fn update_state_in_db<C, S, I>(
-    mut conn: C,
+    conn: C,
     mutations: I,
     block_number: u64,
-    block_hash: &ContentAddress,
+    block_hash: ContentAddress,
 ) -> Result<C, RecoverableError>
 where
     C: BorrowMut<rusqlite::Connection> + Send + 'static,
     S: IntoIterator<Item = Mutation>,
     I: IntoIterator<Item = Mutations<S>> + Send + 'static,
 {
-    let f = {
-        let tx = conn.borrow_mut().transaction()?;
+    let span = tracing::Span::current();
 
-        for mutation in mutations {
-            for m in mutation.mutations {
-                update_state(&tx, &mutation.contract_address, &m.key, &m.value)
-                    .map_err(RecoverableError::WriteState)?;
-            }
+    tokio::task::spawn_blocking(move || {
+        let _guard = span.enter();
+
+        update_state_in_db_inner(conn, mutations, block_number, block_hash)
+    })
+    .await?
+}
+
+fn update_state_in_db_inner<C, S, I>(
+    mut conn: C,
+    mutations: I,
+    block_number: u64,
+    block_hash: ContentAddress,
+) -> Result<C, RecoverableError>
+where
+    C: BorrowMut<rusqlite::Connection> + Send + 'static,
+    S: IntoIterator<Item = Mutation>,
+    I: IntoIterator<Item = Mutations<S>> + Send + 'static,
+{
+    let tx = conn.borrow_mut().transaction()?;
+
+    for mutation in mutations {
+        for m in mutation.mutations {
+            update_state(&tx, &mutation.contract_address, &m.key, &m.value)
+                .map_err(RecoverableError::WriteState)?;
         }
+    }
 
-        update_state_progress(&tx, block_number, block_hash)
-            .map_err(RecoverableError::WriteState)?;
+    update_state_progress(&tx, block_number, &block_hash).map_err(RecoverableError::WriteState)?;
 
-        tx.commit()?;
+    tx.commit()?;
 
-        #[cfg(feature = "tracing")]
-        tracing::debug!(number = block_number, hash = %block_hash);
+    #[cfg(feature = "tracing")]
+    tracing::debug!(number = block_number, hash = %block_hash);
 
-        Ok(conn)
-    };
-
-    tokio::task::spawn_blocking(move || f).await?
+    Ok(conn)
 }
 
 /// Exit on critical errors, log recoverable errors
