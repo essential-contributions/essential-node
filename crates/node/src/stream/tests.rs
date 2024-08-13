@@ -68,13 +68,13 @@ async fn can_derive_state() {
     let test_blocks_count = 5;
     let (test_blocks, contracts) = test_utils::test_blocks(test_blocks_count);
     insert_contracts_to_db(&mut conn, contracts);
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
     let blocks = test_blocks;
     let hashes = blocks
         .iter()
         .map(essential_hash::content_addr)
         .collect::<Vec<_>>();
-    tokio::time::sleep(Duration::from_millis(100)).await;
 
     let (stream_tx, stream_rx) = tokio::sync::watch::channel(());
 
@@ -101,4 +101,43 @@ async fn can_derive_state() {
     assert_multiple_block_mutations(&conn, &[&blocks[3]]).await;
 
     handle.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn fork() {
+    let mut conn = Conn.get().await.unwrap();
+
+    let tx = conn.transaction().unwrap();
+    create_tables(&tx).unwrap();
+    tx.commit().unwrap();
+
+    let test_blocks_count = 3;
+    let (test_blocks, contracts) = test_utils::test_blocks(test_blocks_count);
+    insert_contracts_to_db(&mut conn, contracts);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let blocks = test_blocks;
+    let hashes = blocks
+        .iter()
+        .map(essential_hash::content_addr)
+        .collect::<Vec<_>>();
+
+    let (stream_tx, stream_rx) = tokio::sync::watch::channel(());
+
+    let handle = block_stream(Conn, stream_rx).await.unwrap();
+
+    // Stream processes block 0
+    insert_block_and_send_notification(&mut conn, &blocks[0], &stream_tx);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // State progress is updated outside of the stream to be block 2
+    update_state_progress(&mut conn, blocks[2].number, &hashes[2]).unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Stream errors when processing block 1
+    insert_block_and_send_notification(&mut conn, &blocks[1], &stream_tx);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let err = handle.close().await.err().unwrap();
+    assert!(matches!(err, CriticalError::Fork));
 }
