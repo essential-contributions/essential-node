@@ -1,5 +1,5 @@
 use essential_node::stream::{block_stream, GetConn};
-use essential_node_db::{create_tables, get_state_progress, get_state_value, insert_block};
+use essential_node_db::{create_tables, get_state_progress, insert_block, query_state};
 use essential_types::{Block, ContentAddress};
 use rusqlite::Connection;
 use std::time::Duration;
@@ -35,10 +35,9 @@ async fn assert_multiple_block_mutations(conn: &Connection, blocks: &[&Block]) {
         for solution in &block.solutions {
             for data in &solution.data {
                 for mutation in &data.state_mutations {
-                    let value =
-                        get_state_value(conn, &data.predicate_to_solve.contract, &mutation.key)
-                            .unwrap()
-                            .unwrap();
+                    let value = query_state(conn, &data.predicate_to_solve.contract, &mutation.key)
+                        .unwrap()
+                        .unwrap();
                     assert_eq!(value, mutation.value);
                 }
             }

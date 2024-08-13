@@ -27,7 +27,7 @@ fn test_state_value() {
     tx.commit().unwrap();
 
     // Fetch the state value.
-    let fetched_value = node_db::get_state_value(&conn, &contract_ca, &key)
+    let fetched_value = node_db::query_state(&conn, &contract_ca, &key)
         .unwrap()
         .unwrap();
 
@@ -68,7 +68,7 @@ fn test_state_values_with_deletion() {
     let mut fetched = vec![];
     for k in &keys {
         fetched.push(
-            node_db::get_state_value(&conn, &contract_ca, k)
+            node_db::query_state(&conn, &contract_ca, k)
                 .unwrap()
                 .unwrap(),
         );
@@ -83,7 +83,7 @@ fn test_state_values_with_deletion() {
 
     // Attempt to fetch the values again.
     for k in &keys {
-        let opt = node_db::get_state_value(&conn, &contract_ca, k).unwrap();
+        let opt = node_db::query_state(&conn, &contract_ca, k).unwrap();
         assert!(opt.is_none());
     }
 }

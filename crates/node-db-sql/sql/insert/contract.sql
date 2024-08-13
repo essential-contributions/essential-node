@@ -1,4 +1,4 @@
 INSERT
-    OR IGNORE INTO contract (salt, content_hash, da_block_number)
+    OR IGNORE INTO contract (salt, content_hash, l2_block_number)
 VALUES
-    (:salt, :content_hash, :da_block_number)
+    (:salt, :content_hash, :l2_block_number)

@@ -250,6 +250,7 @@ where
 
 /// Exit on critical errors, log recoverable errors
 fn handle_error(e: InternalError) -> Result<()> {
+    let e = map_recoverable_errors(e);
     match e {
         InternalError::Critical(e) => {
             #[cfg(feature = "tracing")]
@@ -267,5 +268,31 @@ fn handle_error(e: InternalError) -> Result<()> {
         }
         #[cfg(not(feature = "tracing"))]
         InternalError::Recoverable(_) => Ok(()),
+    }
+}
+
+/// Some critical error types contain variants that we should handle as recoverable errors.
+/// This function maps those errors to recoverable errors.
+fn map_recoverable_errors(e: InternalError) -> InternalError {
+    // Map recoverable rusqlite errors to recoverable errors
+    match e {
+        InternalError::Critical(CriticalError::Rusqlite(e)) => match e {
+            rus @ rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error {
+                    code: rusqlite::ffi::ErrorCode::DatabaseLocked,
+                    ..
+                },
+                _,
+            )
+            | rus @ rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error {
+                    code: rusqlite::ffi::ErrorCode::DatabaseBusy,
+                    ..
+                },
+                _,
+            ) => InternalError::Recoverable(error::RecoverableError::Rusqlite(rus)),
+            _ => InternalError::Critical(CriticalError::Rusqlite(e)),
+        },
+        _ => e,
     }
 }
