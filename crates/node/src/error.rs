@@ -22,8 +22,6 @@ pub enum RecoverableError {
     LastProgress,
     #[error("A recoverable database error occurred: {0}")]
     Rusqlite(rusqlite::Error),
-    #[error("failed to get new connection")]
-    GetConnection(#[from] tokio::sync::AcquireError),
 }
 
 #[derive(Debug, Error)]
@@ -34,4 +32,6 @@ pub enum CriticalError {
     DatabaseFailed(#[from] rusqlite::Error),
     #[error("Critical database failure: {0}")]
     ReadState(#[from] AcquireThenQueryError),
+    #[error("database connection pool closed")]
+    DbPoolClosed(#[from] tokio::sync::AcquireError),
 }

@@ -148,10 +148,7 @@ where
     #[cfg(feature = "tracing")]
     let span = tracing::Span::current();
 
-    let conn = conn
-        .acquire()
-        .await
-        .map_err(RecoverableError::GetConnection)?;
+    let conn = conn.acquire().await.map_err(CriticalError::from)?;
     let r = tokio::task::spawn_blocking(move || {
         #[cfg(feature = "tracing")]
         let _guard = span.enter();
@@ -227,8 +224,8 @@ fn map_recoverable_errors(e: InternalError) -> InternalError {
             }
         }
         InternalError::Critical(CriticalError::ReadState(e)) => match e {
-            e @ crate::db::AcquireThenError::Acquire(_)
-            | e @ crate::db::AcquireThenError::Join(_) => RecoverableError::ReadState(e).into(),
+            crate::db::AcquireThenError::Acquire(e) => CriticalError::DbPoolClosed(e).into(),
+            e @ crate::db::AcquireThenError::Join(_) => RecoverableError::ReadState(e).into(),
             crate::db::AcquireThenError::Inner(essential_node_db::QueryError::Rusqlite(rus)) => {
                 if is_recoverable_db_err(&rus) {
                     RecoverableError::Rusqlite(rus).into()
