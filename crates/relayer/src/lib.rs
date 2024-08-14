@@ -3,19 +3,18 @@
 //! The relayer syncs contracts and blocks.
 //! There are notify channels to signal when new data has been synced.
 
-use std::future::Future;
-
-use error::InternalError;
-use error::InternalResult;
-use futures::StreamExt;
-pub use handle::Handle;
-use reqwest::{ClientBuilder, Url};
-
 use error::CriticalError;
 pub use error::DataSyncError;
 pub use error::Error;
+use error::InternalError;
+use error::InternalResult;
 pub use error::Result;
+use futures::StreamExt;
+pub use handle::Handle;
+use reqwest::{ClientBuilder, Url};
 use rusqlite_pool::tokio::AsyncConnectionPool;
+use std::future::Future;
+use std::sync::Arc;
 use sync::stream_blocks;
 use sync::stream_contracts;
 use sync::sync_blocks;
@@ -55,7 +54,7 @@ impl Relayer {
     /// The two watch channels are used to notify the caller when new data has been synced.
     pub fn run(
         self,
-        conn: AsyncConnectionPool,
+        conn: Arc<AsyncConnectionPool>,
         new_contract: watch::Sender<()>,
         new_block: watch::Sender<()>,
     ) -> Result<Handle> {
@@ -94,7 +93,7 @@ impl Relayer {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     async fn run_contracts(
         &self,
-        conn: AsyncConnectionPool,
+        conn: Arc<AsyncConnectionPool>,
         mut shutdown: watch::Receiver<()>,
         notify: watch::Sender<()>,
     ) -> InternalResult<()> {
@@ -119,7 +118,7 @@ impl Relayer {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     async fn run_blocks(
         &self,
-        conn: AsyncConnectionPool,
+        conn: Arc<AsyncConnectionPool>,
         mut shutdown: watch::Receiver<()>,
         notify: watch::Sender<()>,
     ) -> InternalResult<()> {

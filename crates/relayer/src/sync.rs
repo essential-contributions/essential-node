@@ -3,6 +3,7 @@ use essential_types::{contract::Contract, ContentAddress};
 use futures::stream::TryStreamExt;
 use futures::{Stream, TryFutureExt};
 use rusqlite_pool::tokio::AsyncConnectionPool;
+use std::sync::Arc;
 use tokio::sync::watch;
 use tokio::task::spawn_blocking;
 
@@ -72,7 +73,7 @@ pub async fn get_block_progress(
 /// The first contract in the stream must be the last
 /// contract that was synced unless progress is None.
 pub async fn sync_contracts<S>(
-    conn: AsyncConnectionPool,
+    conn: Arc<AsyncConnectionPool>,
     progress: &Option<ContractProgress>,
     notify: watch::Sender<()>,
     stream: S,
@@ -137,7 +138,7 @@ where
 /// The first block in the stream must be the last
 /// block that was synced unless progress is None.
 pub async fn sync_blocks<S>(
-    conn: AsyncConnectionPool,
+    conn: Arc<AsyncConnectionPool>,
     progress: &Option<BlockProgress>,
     notify: watch::Sender<()>,
     stream: S,

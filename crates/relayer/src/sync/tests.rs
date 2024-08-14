@@ -1,18 +1,18 @@
+use super::*;
+use crate::error::InternalError;
 use essential_types::predicate::{Directive, Predicate};
 
-use crate::error::InternalError;
-
-use super::*;
-
-fn new_conn_pool() -> AsyncConnectionPool {
-    AsyncConnectionPool::new(3, || {
-        rusqlite::Connection::open_with_flags_and_vfs(
-            "file:/test_sync_contracts",
-            Default::default(),
-            "memdb",
-        )
-    })
-    .unwrap()
+fn new_conn_pool() -> Arc<AsyncConnectionPool> {
+    Arc::new(
+        AsyncConnectionPool::new(3, || {
+            rusqlite::Connection::open_with_flags_and_vfs(
+                "file:/test_sync_contracts",
+                Default::default(),
+                "memdb",
+            )
+        })
+        .unwrap(),
+    )
 }
 
 #[tokio::test]

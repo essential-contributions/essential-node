@@ -3,9 +3,7 @@
 //! The primary entry-point to the crate is the [`Node`] type.
 
 use essential_relayer::Relayer;
-use rusqlite_pool::tokio::AsyncConnectionPool;
 use state::derive_state_stream;
-use std::sync::Arc;
 use thiserror::Error;
 
 pub mod db;
@@ -120,9 +118,8 @@ impl Node {
         let (block_notify, _new_block) = tokio::sync::watch::channel(());
         let (contract_notify, _new_contract) = tokio::sync::watch::channel(());
 
-        let async_conn_pool =
-            Arc::<AsyncConnectionPool>::into_inner(self.conn_pool.clone().0).expect("TODO");
-        let _relayer_handle = relayer.run(async_conn_pool, contract_notify, block_notify)?;
+        let _relayer_handle =
+            relayer.run(self.conn_pool.0.clone(), contract_notify, block_notify)?;
 
         let (_state_tx, state_rx) = tokio::sync::watch::channel(());
         let _state_handle = derive_state_stream(self.conn_pool, state_rx)?;
