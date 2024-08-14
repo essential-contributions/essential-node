@@ -6,6 +6,7 @@ use tokio::sync::{AcquireError, OwnedSemaphorePermit, Semaphore, TryAcquireError
 
 /// A thin wrapper around a sync [`ConnectionPool`][crate::ConnectionPool]
 /// providing orderly async access to DB connections via a [`Semaphore`].
+#[derive(Clone)]
 pub struct AsyncConnectionPool {
     pool: crate::ConnectionPool,
     semaphore: Arc<Semaphore>,

@@ -1,9 +1,8 @@
-use std::borrow::{Borrow, BorrowMut};
-
 use essential_types::Block;
 use essential_types::{contract::Contract, ContentAddress};
 use futures::stream::TryStreamExt;
 use futures::{Stream, TryFutureExt};
+use rusqlite_pool::tokio::AsyncConnectionPool;
 use tokio::sync::watch;
 use tokio::task::spawn_blocking;
 
@@ -38,46 +37,32 @@ pub struct BlockProgress {
     pub last_block_hash: ContentAddress,
 }
 
-/// Helper struct to return the connection with a value.
-pub(crate) struct WithConn<C, T> {
-    pub conn: C,
-    pub value: T,
-}
-
 /// Get the last contract progress from the database.
-pub async fn get_contract_progress<C>(
-    conn: C,
-) -> crate::Result<WithConn<C, Option<ContractProgress>>>
-where
-    C: Borrow<rusqlite::Connection> + Send + 'static,
-{
+pub async fn get_contract_progress(
+    conn: &AsyncConnectionPool,
+) -> crate::Result<Option<ContractProgress>> {
+    let conn = conn.acquire().await?;
     tokio::task::spawn_blocking(move || {
-        let progress = essential_node_db::get_contract_progress(conn.borrow())?;
-        Ok(WithConn {
-            conn,
-            value: progress.map(Into::into),
-        })
+        let progress = essential_node_db::get_contract_progress(&conn)?;
+        Ok(progress.map(Into::into))
     })
     .await?
 }
 
 /// Get the last block progress from the database.
-pub async fn get_block_progress<C>(mut conn: C) -> crate::Result<WithConn<C, Option<BlockProgress>>>
-where
-    C: BorrowMut<rusqlite::Connection> + Send + 'static,
-{
+pub async fn get_block_progress(
+    conn: &AsyncConnectionPool,
+) -> crate::Result<Option<BlockProgress>> {
+    let mut conn = conn.acquire().await?;
     tokio::task::spawn_blocking(move || {
-        let tx = conn.borrow_mut().transaction()?;
+        let tx = conn.transaction()?;
         let block = essential_node_db::get_latest_block(&tx)?;
         tx.finish()?;
         let progress = block.map(|block| BlockProgress {
             last_block_number: block.number,
             last_block_hash: essential_hash::content_addr(&block),
         });
-        Ok(WithConn {
-            conn,
-            value: progress,
-        })
+        Ok(progress)
     })
     .await?
 }
@@ -86,14 +71,13 @@ where
 ///
 /// The first contract in the stream must be the last
 /// contract that was synced unless progress is None.
-pub async fn sync_contracts<C, S>(
-    conn: C,
+pub async fn sync_contracts<S>(
+    conn: AsyncConnectionPool,
     progress: &Option<ContractProgress>,
     notify: watch::Sender<()>,
     stream: S,
 ) -> InternalResult<()>
 where
-    C: BorrowMut<rusqlite::Connection> + Send + 'static,
     S: Stream<Item = InternalResult<Contract>>,
 {
     tokio::pin!(stream);
@@ -125,7 +109,7 @@ where
     };
 
     stream
-        .try_fold(conn, move |conn, contract| {
+        .try_for_each(move |contract| {
             // The `l2_block_number` for this contract.
             let this_l2_block_number = l2_block_number;
 
@@ -136,7 +120,13 @@ where
             l2_block_number += 1;
 
             // Write the contract to the database.
-            write_contract(conn, contract, this_l2_block_number, notify.clone()).map_err(Into::into)
+            let conn = conn.clone();
+            let notify = notify.clone();
+            async move {
+                write_contract(&conn, contract, this_l2_block_number, notify.clone())
+                    .map_err(Into::into)
+                    .await
+            }
         })
         .await?;
     Ok(())
@@ -146,14 +136,13 @@ where
 ///
 /// The first block in the stream must be the last
 /// block that was synced unless progress is None.
-pub async fn sync_blocks<C, S>(
-    conn: C,
+pub async fn sync_blocks<S>(
+    conn: AsyncConnectionPool,
     progress: &Option<BlockProgress>,
     notify: watch::Sender<()>,
     stream: S,
 ) -> InternalResult<()>
 where
-    C: BorrowMut<rusqlite::Connection> + Send + 'static,
     S: Stream<Item = InternalResult<Block>>,
 {
     tokio::pin!(stream);
@@ -182,7 +171,7 @@ where
     };
 
     stream
-        .try_fold(conn, move |conn, block| {
+        .try_for_each(move |block| {
             // Check this block is the expect `N + 1`.
             let sequential_block = block.number == block_number;
 
@@ -190,6 +179,7 @@ where
             block_number = block.number.saturating_add(1);
 
             let notify = notify.clone();
+            let conn = conn.clone();
             async move {
                 // If the block is not sequential, return an error.
                 if !sequential_block {
@@ -199,11 +189,11 @@ where
                 }
 
                 // Write the block to the database.
-                let conn = write_block(conn, block).await?;
+                write_block(&conn, block).await?;
 
                 // Best effort to notify of new block
                 let _ = notify.send(());
-                Ok(conn)
+                Ok(())
             }
         })
         .await?;
@@ -211,20 +201,18 @@ where
 }
 
 /// Write a contract and progress atomically to the database.
-async fn write_contract<C>(
-    mut conn: C,
+async fn write_contract(
+    conn: &AsyncConnectionPool,
     contract: Contract,
     l2_block_number: u64,
     notify: watch::Sender<()>,
-) -> crate::Result<C>
-where
-    C: BorrowMut<rusqlite::Connection> + Send + 'static,
-{
-    let conn = spawn_blocking::<_, rusqlite::Result<_>>(move || {
+) -> crate::Result<()> {
+    let mut conn = conn.acquire().await?;
+    spawn_blocking::<_, rusqlite::Result<_>>(move || {
         // Calculate the contract hash for the progress.
         let contract_hash = essential_hash::contract_addr::from_contract(&contract);
 
-        let tx = conn.borrow_mut().transaction()?;
+        let tx = conn.transaction()?;
         essential_node_db::insert_contract(&tx, &contract, l2_block_number)?;
         // Technically we don't currently need to store the progress.
         // We could instead do what we do with blocks and just take the max.
@@ -237,19 +225,17 @@ where
     .await??;
     // Best effort to notify of new contract
     let _ = notify.send(());
-    Ok(conn)
+    Ok(())
 }
 
 /// Write a block to the database.
-async fn write_block<C>(mut conn: C, block: Block) -> crate::Result<C>
-where
-    C: BorrowMut<rusqlite::Connection> + Send + 'static,
-{
+async fn write_block(conn: &AsyncConnectionPool, block: Block) -> crate::Result<()> {
+    let mut conn = conn.acquire().await?;
     spawn_blocking(move || {
-        let tx = conn.borrow_mut().transaction()?;
+        let tx = conn.transaction()?;
         essential_node_db::insert_block(&tx, &block)?;
         tx.commit()?;
-        Ok(conn)
+        Ok(())
     })
     .await?
 }

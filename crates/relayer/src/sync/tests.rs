@@ -4,19 +4,21 @@ use crate::error::InternalError;
 
 use super::*;
 
-fn new_conn() -> rusqlite::Connection {
-    rusqlite::Connection::open_with_flags_and_vfs(
-        "file:/test_sync_contracts",
-        Default::default(),
-        "memdb",
-    )
+fn new_conn_pool() -> AsyncConnectionPool {
+    AsyncConnectionPool::new(3, || {
+        rusqlite::Connection::open_with_flags_and_vfs(
+            "file:/test_sync_contracts",
+            Default::default(),
+            "memdb",
+        )
+    })
     .unwrap()
 }
 
 #[tokio::test]
 async fn test_sync_contracts() {
-    let conn = new_conn();
-    let mut test_conn = new_conn();
+    let conn = new_conn_pool();
+    let mut test_conn = conn.acquire().await.unwrap();
 
     let tx = test_conn.transaction().unwrap();
     essential_node_db::create_tables(&tx).unwrap();
@@ -39,7 +41,7 @@ async fn test_sync_contracts() {
         }),
     ]);
 
-    sync_contracts(conn, &None, watch::channel(()).0, stream)
+    sync_contracts(conn.clone(), &None, watch::channel(()).0, stream)
         .await
         .unwrap();
 
@@ -88,9 +90,7 @@ async fn test_sync_contracts() {
         }),
     });
 
-    let conn = new_conn();
-
-    let e = sync_contracts(conn, &progress, watch::channel(()).0, stream)
+    let e = sync_contracts(conn.clone(), &progress, watch::channel(()).0, stream)
         .await
         .unwrap_err();
 
@@ -123,8 +123,6 @@ async fn test_sync_contracts() {
             salt: [1; 32],
         }),
     });
-
-    let conn = new_conn();
 
     sync_contracts(conn, &progress, watch::channel(()).0, stream)
         .await
