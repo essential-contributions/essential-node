@@ -1,6 +1,5 @@
-use thiserror::Error;
-
 use crate::db::AcquireThenQueryError;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub(super) enum InternalError {

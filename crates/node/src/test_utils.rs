@@ -1,14 +1,17 @@
 #![allow(dead_code)]
 
+use crate::db::ConnectionPool;
 use essential_types::{
     contract::Contract,
     predicate::Predicate,
     solution::{Mutation, Solution, SolutionData},
     Block, ConstraintBytecode, PredicateAddress, StateReadBytecode, Word,
 };
-use std::time::Duration;
-
-use crate::db::ConnectionPool;
+use std::{process::Stdio, time::Duration};
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::{Child, Command},
+};
 
 pub fn test_conn_pool(id: &str) -> ConnectionPool {
     let config = crate::db::Config {
@@ -16,6 +19,12 @@ pub fn test_conn_pool(id: &str) -> ConnectionPool {
         ..Default::default()
     };
     ConnectionPool::new(&config).unwrap()
+}
+
+pub fn test_db_conf(id: &str) -> crate::Config {
+    let mut conf = crate::Config::default();
+    conf.db.source = crate::db::Source::Memory(id.to_string());
+    conf
 }
 
 pub fn test_blocks(n: u64) -> (Vec<Block>, Vec<Contract>) {
@@ -111,4 +120,52 @@ pub fn test_constraints(seed: Word) -> Vec<ConstraintBytecode> {
     let n = (1 + seed % 3) as usize;
     let b = (seed % u8::MAX as Word) as u8;
     vec![vec![b; 10]; n]
+}
+
+pub async fn setup_server() -> (String, Child) {
+    let mut child = Command::new("essential-rest-server")
+        .arg("--db")
+        .arg("memory")
+        .arg("0.0.0.0:0")
+        .arg("--loop-freq")
+        .arg("1")
+        .arg("--disable-tracing")
+        .kill_on_drop(true)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let stdout = child.stdout.take().unwrap();
+
+    let buf = BufReader::new(stdout);
+    let mut lines = buf.lines();
+
+    let port;
+    loop {
+        if let Some(line) = lines.next_line().await.unwrap() {
+            if line.contains("Listening") {
+                port = line
+                    .split(':')
+                    .next_back()
+                    .unwrap()
+                    .trim()
+                    .parse::<u16>()
+                    .unwrap();
+                break;
+            }
+        }
+    }
+
+    tokio::spawn(async move {
+        loop {
+            if let Some(line) = lines.next_line().await.unwrap() {
+                println!("{}", line);
+            }
+        }
+    });
+    assert_ne!(port, 0);
+
+    let server_address = format!("http://localhost:{}", port);
+    (server_address, child)
 }

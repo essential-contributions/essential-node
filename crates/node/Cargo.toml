@@ -10,6 +10,7 @@ repository.workspace = true
 [dependencies]
 essential-hash = { workspace = true }
 essential-node-db = { workspace = true }
+essential-relayer = { workspace = true } # for the error type
 essential-types = { workspace = true }
 futures = { workspace = true }
 num_cpus = { workspace = true }

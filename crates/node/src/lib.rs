@@ -2,6 +2,10 @@
 //!
 //! The primary entry-point to the crate is the [`Node`] type.
 
+use essential_relayer::Relayer;
+use rusqlite_pool::tokio::AsyncConnectionPool;
+use state::derive_state_stream;
+use std::sync::Arc;
 use thiserror::Error;
 
 pub mod db;
@@ -58,6 +62,15 @@ pub struct NewError(#[from] pub rusqlite::Error);
 #[error("`Node` failed to close: {0}")]
 pub struct CloseError(#[from] pub ConnectionCloseErrors);
 
+/// Node run failure.
+#[derive(Debug, Error)]
+pub enum RunError {
+    #[error("`Node` failed to run: State derivation error: {0}")]
+    StateDerivation(#[from] error::CriticalError),
+    #[error("`Node` failed to run: Relayer error: {0}")]
+    Relayer(#[from] essential_relayer::Error),
+}
+
 /// One or more connections failed to close.
 #[derive(Debug, Error)]
 pub struct ConnectionCloseErrors(pub Vec<(rusqlite::Connection, rusqlite::Error)>);
@@ -99,6 +112,21 @@ impl Node {
         if !errs.is_empty() {
             return Err(ConnectionCloseErrors(errs).into());
         }
+        Ok(())
+    }
+
+    pub fn run(self, server_address: String) -> Result<(), RunError> {
+        let relayer = Relayer::new(server_address.as_str())?;
+        let (block_notify, _new_block) = tokio::sync::watch::channel(());
+        let (contract_notify, _new_contract) = tokio::sync::watch::channel(());
+
+        let async_conn_pool =
+            Arc::<AsyncConnectionPool>::into_inner(self.conn_pool.clone().0).expect("TODO");
+        let _relayer_handle = relayer.run(async_conn_pool, contract_notify, block_notify)?;
+
+        let (_state_tx, state_rx) = tokio::sync::watch::channel(());
+        let _state_handle = derive_state_stream(self.conn_pool, state_rx)?;
+
         Ok(())
     }
 }

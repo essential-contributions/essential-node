@@ -306,6 +306,7 @@ version = "0.1.0"
 dependencies = [
  "essential-hash",
  "essential-node-db",
+ "essential-relayer",
  "essential-types",
  "futures",
  "num_cpus",
