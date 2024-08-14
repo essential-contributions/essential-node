@@ -3,11 +3,8 @@ use rusqlite_pool::ConnectionPool;
 
 // Allow for providing an ID to make sure each test gets its own DB.
 fn new_mem_conn(unique_id: &str) -> rusqlite::Result<Connection> {
-    let flags = rusqlite::OpenFlags::default()
-        | rusqlite::OpenFlags::SQLITE_OPEN_SHARED_CACHE
-        | rusqlite::OpenFlags::SQLITE_OPEN_MEMORY;
-    let conn_str = format!("file:{unique_id}");
-    rusqlite::Connection::open_with_flags(conn_str, flags)
+    let conn_str = format!("file:/{unique_id}");
+    rusqlite::Connection::open_with_flags_and_vfs(conn_str, Default::default(), "memdb")
 }
 
 #[test]

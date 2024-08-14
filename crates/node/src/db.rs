@@ -282,9 +282,6 @@ fn new_conn_pool(conf: &Config) -> rusqlite::Result<AsyncConnectionPool> {
 
 /// Create an in-memory connection with the given ID
 fn new_mem_conn(id: &str) -> rusqlite::Result<rusqlite::Connection> {
-    let flags = rusqlite::OpenFlags::default()
-        | rusqlite::OpenFlags::SQLITE_OPEN_SHARED_CACHE
-        | rusqlite::OpenFlags::SQLITE_OPEN_MEMORY;
-    let conn_str = format!("file:{id}");
-    rusqlite::Connection::open_with_flags(conn_str, flags)
+    let conn_str = format!("file:/{id}");
+    rusqlite::Connection::open_with_flags_and_vfs(conn_str, Default::default(), "memdb")
 }

@@ -1,16 +1,22 @@
 use essential_types::predicate::{Directive, Predicate};
-use rusqlite::OpenFlags;
 
 use crate::error::InternalError;
 
 use super::*;
 
+fn new_conn() -> rusqlite::Connection {
+    rusqlite::Connection::open_with_flags_and_vfs(
+        "file:/test_sync_contracts",
+        Default::default(),
+        "memdb",
+    )
+    .unwrap()
+}
+
 #[tokio::test]
 async fn test_sync_contracts() {
-    let mut flags = OpenFlags::default();
-    flags.insert(OpenFlags::SQLITE_OPEN_SHARED_CACHE);
-    let conn = rusqlite::Connection::open_with_flags("file::memory:", flags).unwrap();
-    let mut test_conn = rusqlite::Connection::open_with_flags("file::memory:", flags).unwrap();
+    let conn = new_conn();
+    let mut test_conn = new_conn();
 
     let tx = test_conn.transaction().unwrap();
     essential_node_db::create_tables(&tx).unwrap();
@@ -82,7 +88,7 @@ async fn test_sync_contracts() {
         }),
     });
 
-    let conn = rusqlite::Connection::open_with_flags("file::memory:", flags).unwrap();
+    let conn = new_conn();
 
     let e = sync_contracts(conn, &progress, watch::channel(()).0, stream)
         .await
@@ -118,7 +124,7 @@ async fn test_sync_contracts() {
         }),
     });
 
-    let conn = rusqlite::Connection::open_with_flags("file::memory:", flags).unwrap();
+    let conn = new_conn();
 
     sync_contracts(conn, &progress, watch::channel(()).0, stream)
         .await
