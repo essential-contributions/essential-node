@@ -3,7 +3,6 @@
 //! The relayer syncs contracts and blocks.
 //! There are notify channels to signal when new data has been synced.
 
-use std::borrow::BorrowMut;
 use std::future::Future;
 
 use error::InternalError;
@@ -16,11 +15,11 @@ use error::CriticalError;
 pub use error::DataSyncError;
 pub use error::Error;
 pub use error::Result;
+use rusqlite_pool::tokio::AsyncConnectionPool;
 use sync::stream_blocks;
 use sync::stream_contracts;
 use sync::sync_blocks;
 use sync::sync_contracts;
-use sync::WithConn;
 use tokio::sync::watch;
 
 mod error;
@@ -34,22 +33,6 @@ mod tests;
 pub struct Relayer {
     endpoint: Url,
     client: reqwest::Client,
-}
-
-/// Trait for getting a connection to the database.
-///
-/// Connections are consumed by the relayer and are not returned.
-/// However this should be fairly infrequent.
-pub trait GetConn {
-    /// The error type.
-    type Error;
-    /// The connection type.
-    type Connection: BorrowMut<rusqlite::Connection> + Send + 'static;
-
-    /// Get a connection to the database.
-    fn get(
-        &self,
-    ) -> impl Future<Output = std::result::Result<Self::Connection, Self::Error>> + Send;
 }
 
 impl Relayer {
@@ -70,45 +53,37 @@ impl Relayer {
     /// A handle is returned that can be used to close or join the streams.
     ///
     /// The two watch channels are used to notify the caller when new data has been synced.
-    pub fn run<C, E>(
+    pub fn run(
         self,
-        get_conn: C,
+        conn: AsyncConnectionPool,
         new_contract: watch::Sender<()>,
         new_block: watch::Sender<()>,
-    ) -> Result<Handle>
-    where
-        C: GetConn<Error = E> + Clone + Send + 'static,
-        Error: From<E>,
-    {
+    ) -> Result<Handle> {
         let relayer = self.clone();
-        let conn = get_conn.clone();
+
+        let c = conn.clone();
 
         // The contracts callback. This is a closure that will be called
         // every time the contracts stream is restarted.
         let contracts = move |shutdown: watch::Receiver<()>| {
-            let conn = conn.clone();
+            let conn = c.clone();
             let relayer = relayer.clone();
             let notify = new_contract.clone();
             async move {
-                // Get a new connection to the database
-                let c = conn.get().await.map_err(CriticalError::from)?;
-
                 // Run the contracts stream
-                relayer.run_contracts(c, shutdown, notify).await
+                relayer.run_contracts(conn, shutdown, notify).await
             }
         };
 
         // The blocks callback. This is a closure that will be called
         // every time the blocks stream is restarted.
         let blocks = move |shutdown: watch::Receiver<()>| {
-            let conn = get_conn.clone();
+            let conn = conn.clone();
             let relayer = self.clone();
             let notify = new_block.clone();
             async move {
-                // Get a new connection to the database
-                let c = conn.get().await.map_err(CriticalError::from)?;
                 // Run the contracts stream
-                relayer.run_blocks(c, shutdown, notify).await
+                relayer.run_blocks(conn, shutdown, notify).await
             }
         };
 
@@ -117,20 +92,14 @@ impl Relayer {
 
     /// Run the contracts stream.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    async fn run_contracts<C>(
+    async fn run_contracts(
         &self,
-        conn: C,
+        conn: AsyncConnectionPool,
         mut shutdown: watch::Receiver<()>,
         notify: watch::Sender<()>,
-    ) -> InternalResult<()>
-    where
-        C: BorrowMut<rusqlite::Connection> + Send + 'static,
-    {
+    ) -> InternalResult<()> {
         // Get the last progress that was made from the database.
-        let WithConn {
-            conn,
-            value: progress,
-        } = sync::get_contract_progress(conn).await?;
+        let progress = sync::get_contract_progress(&conn).await?;
 
         // Create the stream of contracts.
         let stream = stream_contracts(&self.endpoint, &self.client, &progress).await?;
@@ -148,20 +117,14 @@ impl Relayer {
 
     /// Run the blocks stream.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    async fn run_blocks<C>(
+    async fn run_blocks(
         &self,
-        conn: C,
+        conn: AsyncConnectionPool,
         mut shutdown: watch::Receiver<()>,
         notify: watch::Sender<()>,
-    ) -> InternalResult<()>
-    where
-        C: BorrowMut<rusqlite::Connection> + Send + 'static,
-    {
+    ) -> InternalResult<()> {
         // Get the last progress that was made from the database.
-        let WithConn {
-            conn,
-            value: progress,
-        } = sync::get_block_progress(conn).await?;
+        let progress = sync::get_block_progress(&conn).await?;
 
         // Create the stream of blocks.
         let stream = stream_blocks(&self.endpoint, &self.client, &progress).await?;

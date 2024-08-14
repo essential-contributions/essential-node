@@ -11,6 +11,7 @@ pub mod tokio;
 ///
 /// Internally, the pool is represented with a fixed-capacity, thread-safe
 /// queue.
+#[derive(Clone)]
 pub struct ConnectionPool {
     queue: Arc<ArrayQueue<Connection>>,
 }

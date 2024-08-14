@@ -47,6 +47,9 @@ pub enum Error {
     /// An error occurred while building the http client.
     #[error("an error occurred while building the http client: {0}")]
     HttpClientBuild(reqwest::Error),
+    /// The db pool was closed.
+    #[error("failed to acquire a db connection: {0}")]
+    DbPoolClosed(#[from] tokio::sync::AcquireError),
 }
 
 /// An error that can be recovered from.

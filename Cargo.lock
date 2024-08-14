@@ -346,6 +346,7 @@ dependencies = [
  "futures",
  "reqwest",
  "rusqlite",
+ "rusqlite-pool",
  "secp256k1",
  "serde",
  "serde_json",
