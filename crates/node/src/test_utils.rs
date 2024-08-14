@@ -7,11 +7,10 @@ use essential_types::{
     solution::{Mutation, Solution, SolutionData},
     Block, ConstraintBytecode, PredicateAddress, StateReadBytecode, Word,
 };
-use rusqlite::OpenFlags;
 use std::{future::Future, time::Duration};
 
 #[derive(Clone, Copy)]
-pub struct Conn;
+pub struct Conn(pub &'static str);
 
 impl GetConn for Conn {
     type Error = rusqlite::Error;
@@ -20,9 +19,9 @@ impl GetConn for Conn {
     fn get(
         &self,
     ) -> impl Future<Output = std::result::Result<Self::Connection, Self::Error>> + Send {
-        let mut flags = OpenFlags::default();
-        flags.insert(OpenFlags::SQLITE_OPEN_SHARED_CACHE);
-        let r = rusqlite::Connection::open_with_flags("file::memory:", flags).map_err(Into::into);
+        let conn_str = format!("file:/{}", self.0);
+        let r =
+            rusqlite::Connection::open_with_flags_and_vfs(conn_str, Default::default(), "memdb");
         futures::future::ready(r)
     }
 }

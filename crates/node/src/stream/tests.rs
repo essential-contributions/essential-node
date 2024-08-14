@@ -63,7 +63,7 @@ async fn can_derive_state() {
     #[cfg(feature = "tracing")]
     let _ = tracing_subscriber::fmt::try_init();
 
-    let mut conn = Conn.get().await.unwrap();
+    let mut conn = Conn("can_derive_state").get().await.unwrap();
 
     let tx = conn.transaction().unwrap();
     create_tables(&tx).unwrap();
@@ -82,7 +82,9 @@ async fn can_derive_state() {
 
     let (stream_tx, stream_rx) = tokio::sync::watch::channel(());
 
-    let handle = block_stream(Conn, stream_rx).await.unwrap();
+    let handle = block_stream(Conn("can_derive_state"), stream_rx)
+        .await
+        .unwrap();
 
     // Initially, the state progress is none
     assert_state_progress_is_none(&conn);
@@ -119,7 +121,7 @@ async fn can_derive_state() {
 
 #[tokio::test]
 async fn fork() {
-    let mut conn = Conn.get().await.unwrap();
+    let mut conn = Conn("fork").get().await.unwrap();
 
     let tx = conn.transaction().unwrap();
     create_tables(&tx).unwrap();
@@ -138,7 +140,7 @@ async fn fork() {
 
     let (stream_tx, stream_rx) = tokio::sync::watch::channel(());
 
-    let handle = block_stream(Conn, stream_rx).await.unwrap();
+    let handle = block_stream(Conn("fork"), stream_rx).await.unwrap();
 
     // Stream processes block 0
     insert_block_and_send_notification(&mut conn, &blocks[0], &stream_tx);
