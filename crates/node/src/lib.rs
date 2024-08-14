@@ -7,7 +7,7 @@ use thiserror::Error;
 pub mod db;
 mod error;
 mod handle;
-mod stream;
+mod state;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_utils;
 

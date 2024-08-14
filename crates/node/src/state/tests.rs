@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_utils::{self, Conn};
+use crate::test_utils::{self, test_conn_pool};
 use essential_node_db::{
     create_tables, get_state_progress, insert_block, insert_contract, query_state,
 };
@@ -63,7 +63,8 @@ async fn can_derive_state() {
     #[cfg(feature = "tracing")]
     let _ = tracing_subscriber::fmt::try_init();
 
-    let mut conn = Conn("can_derive_state").get().await.unwrap();
+    let conn_pool = test_conn_pool("can_derive_state");
+    let mut conn = conn_pool.acquire().await.unwrap();
 
     let tx = conn.transaction().unwrap();
     create_tables(&tx).unwrap();
@@ -82,7 +83,7 @@ async fn can_derive_state() {
 
     let (stream_tx, stream_rx) = tokio::sync::watch::channel(());
 
-    let handle = block_stream(Conn("can_derive_state"), stream_rx)
+    let handle = derive_state_stream(conn_pool.clone(), stream_rx)
         .await
         .unwrap();
 
@@ -121,7 +122,8 @@ async fn can_derive_state() {
 
 #[tokio::test]
 async fn fork() {
-    let mut conn = Conn("fork").get().await.unwrap();
+    let conn_pool = test_conn_pool("fork");
+    let mut conn = conn_pool.acquire().await.unwrap();
 
     let tx = conn.transaction().unwrap();
     create_tables(&tx).unwrap();
@@ -140,7 +142,9 @@ async fn fork() {
 
     let (stream_tx, stream_rx) = tokio::sync::watch::channel(());
 
-    let handle = block_stream(Conn("fork"), stream_rx).await.unwrap();
+    let handle = derive_state_stream(conn_pool.clone(), stream_rx)
+        .await
+        .unwrap();
 
     // Stream processes block 0
     insert_block_and_send_notification(&mut conn, &blocks[0], &stream_tx);

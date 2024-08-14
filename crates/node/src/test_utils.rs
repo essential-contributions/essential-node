@@ -1,29 +1,21 @@
 #![allow(dead_code)]
 
-use crate::stream::GetConn;
 use essential_types::{
     contract::Contract,
     predicate::Predicate,
     solution::{Mutation, Solution, SolutionData},
     Block, ConstraintBytecode, PredicateAddress, StateReadBytecode, Word,
 };
-use std::{future::Future, time::Duration};
+use std::time::Duration;
 
-#[derive(Clone, Copy)]
-pub struct Conn(pub &'static str);
+use crate::db::ConnectionPool;
 
-impl GetConn for Conn {
-    type Error = rusqlite::Error;
-    type Connection = rusqlite::Connection;
-
-    fn get(
-        &self,
-    ) -> impl Future<Output = std::result::Result<Self::Connection, Self::Error>> + Send {
-        let conn_str = format!("file:/{}", self.0);
-        let r =
-            rusqlite::Connection::open_with_flags_and_vfs(conn_str, Default::default(), "memdb");
-        futures::future::ready(r)
-    }
+pub fn test_conn_pool(id: &str) -> ConnectionPool {
+    let config = crate::db::Config {
+        source: crate::db::Source::Memory(id.into()),
+        ..Default::default()
+    };
+    ConnectionPool::new(&config).unwrap()
 }
 
 pub fn test_blocks(n: u64) -> (Vec<Block>, Vec<Contract>) {

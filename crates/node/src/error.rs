@@ -1,5 +1,6 @@
-use essential_node_db::QueryError;
 use thiserror::Error;
+
+use crate::db::AcquireThenQueryError;
 
 #[derive(Debug, Error)]
 pub(super) enum InternalError {
@@ -13,22 +14,24 @@ pub(super) enum InternalError {
 pub enum RecoverableError {
     #[error("block {0} not found")]
     BlockNotFound(u64),
-    #[error("could not update state")]
-    WriteState(#[from] rusqlite::Error),
     #[error("could not read state")]
-    ReadState(#[from] QueryError),
+    ReadState(AcquireThenQueryError),
     #[error("failed to join handle")]
     Join(#[from] tokio::task::JoinError),
     #[error("failed to get last block")]
     LastProgress,
-    #[error("failed to get new connection")]
+    #[error("A recoverable database error occurred: {0}")]
     Rusqlite(rusqlite::Error),
+    #[error("failed to get new connection")]
+    GetConnection(#[from] tokio::sync::AcquireError),
 }
 
 #[derive(Debug, Error)]
 pub enum CriticalError {
     #[error("fork was found")]
     Fork,
-    #[error("failed to get new connection")]
-    GetConnection(#[from] rusqlite::Error),
+    #[error("Critical database failure: {0}")]
+    DatabaseFailed(#[from] rusqlite::Error),
+    #[error("Critical database failure: {0}")]
+    ReadState(#[from] AcquireThenQueryError),
 }
