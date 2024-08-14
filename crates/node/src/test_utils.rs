@@ -3,45 +3,73 @@
 use essential_types::{
     contract::Contract,
     predicate::Predicate,
-    solution::{Solution, SolutionData},
+    solution::{Mutation, Solution, SolutionData},
     Block, ConstraintBytecode, PredicateAddress, StateReadBytecode, Word,
 };
 use std::time::Duration;
 
-pub fn test_blocks(n: u64) -> Vec<Block> {
-    (0..n)
+use crate::db::ConnectionPool;
+
+pub fn test_conn_pool(id: &str) -> ConnectionPool {
+    let config = crate::db::Config {
+        source: crate::db::Source::Memory(id.into()),
+        ..Default::default()
+    };
+    ConnectionPool::new(&config).unwrap()
+}
+
+pub fn test_blocks(n: u64) -> (Vec<Block>, Vec<Contract>) {
+    let (blocks, contracts) = (0..n)
         .map(|i| test_block(i, Duration::from_secs(i as _)))
-        .collect()
+        .unzip::<_, _, Vec<_>, Vec<_>>();
+    (blocks, contracts.into_iter().flatten().collect())
 }
 
-pub fn test_block(number: u64, timestamp: Duration) -> Block {
+pub fn test_block(number: u64, timestamp: Duration) -> (Block, Vec<Contract>) {
     let seed = number as i64 * 79;
-    Block {
-        number,
-        timestamp,
-        solutions: (0..3).map(|i| test_solution(seed * (1 + i))).collect(),
-    }
+    let (solutions, contracts) = (0..3)
+        .map(|i| test_solution(seed * (1 + i)))
+        .unzip::<_, _, Vec<_>, Vec<_>>();
+
+    (
+        Block {
+            number,
+            timestamp,
+            solutions,
+        },
+        contracts,
+    )
 }
 
-pub fn test_solution(seed: Word) -> Solution {
-    Solution {
-        data: vec![test_solution_data(seed)],
-    }
+pub fn test_solution(seed: Word) -> (Solution, Contract) {
+    let (solution_data, contract) = test_solution_data(seed);
+    (
+        Solution {
+            data: vec![solution_data],
+        },
+        contract,
+    )
 }
 
-pub fn test_solution_data(seed: Word) -> SolutionData {
+pub fn test_solution_data(seed: Word) -> (SolutionData, Contract) {
     let contract = test_contract(seed);
     let predicate = essential_hash::content_addr(&contract.predicates[0]);
-    let contract = essential_hash::contract_addr::from_contract(&contract);
-    SolutionData {
-        predicate_to_solve: PredicateAddress {
-            contract,
-            predicate,
+    let contract_address = essential_hash::contract_addr::from_contract(&contract);
+    (
+        SolutionData {
+            predicate_to_solve: PredicateAddress {
+                contract: contract_address,
+                predicate,
+            },
+            decision_variables: vec![],
+            transient_data: vec![],
+            state_mutations: vec![Mutation {
+                key: vec![seed],
+                value: vec![0, 0, 0, 0],
+            }],
         },
-        decision_variables: vec![],
-        transient_data: vec![],
-        state_mutations: vec![],
-    }
+        contract,
+    )
 }
 
 pub fn test_pred_addr() -> PredicateAddress {

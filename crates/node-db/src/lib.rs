@@ -196,6 +196,24 @@ pub fn update_state(
     Ok(())
 }
 
+/// Updates the progress on state derivation.
+pub fn update_state_progress(
+    conn: &Connection,
+    block_number: u64,
+    block_hash: &ContentAddress,
+) -> rusqlite::Result<()> {
+    let block_hash_blob = encode(block_hash);
+    let block_number = block_number as i64;
+    conn.execute(
+        sql::insert::STATE_PROGRESS,
+        named_params! {
+            ":number": block_number,
+            ":block_hash": block_hash_blob,
+        },
+    )?;
+    Ok(())
+}
+
 /// Deletes the state for a given contract content address and key.
 pub fn delete_state(
     conn: &Connection,
@@ -352,6 +370,22 @@ pub fn get_latest_block(conn: &Transaction) -> Result<Option<Block>, QueryError>
     };
     let blocks = list_blocks(conn, block_number..block_number.saturating_add(1))?;
     Ok(blocks.into_iter().next())
+}
+
+/// Fetches the last progress on state derivation.
+pub fn get_state_progress(conn: &Connection) -> Result<Option<(u64, ContentAddress)>, QueryError> {
+    let mut stmt = conn.prepare(sql::query::GET_STATE_PROGRESS)?;
+    let value_blob: Option<(i64, Vec<u8>)> = stmt
+        .query_row([], |row| Ok((row.get("number")?, row.get("block_hash")?)))
+        .optional()?;
+    value_blob
+        .map(|(number, block_hash_blob)| {
+            Ok((
+                number as u64,
+                decode(&block_hash_blob).map_err(QueryError::Decode)?,
+            ))
+        })
+        .transpose()
 }
 
 /// Lists all blocks in the given range.
