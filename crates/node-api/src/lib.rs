@@ -49,6 +49,7 @@ pub const CONNECTION_LIMIT: usize = 2_000;
 ///     node_api::serve_next_conn(&router, &listener, &mut conn_set).await;
 /// }
 /// # }
+#[tracing::instrument(skip_all)]
 pub async fn serve_next_conn(router: &Router, listener: &TcpListener, conn_set: &mut JoinSet<()>) {
     // Await the next connection.
     let stream = match next_conn(&listener, conn_set).await {
@@ -75,6 +76,7 @@ pub async fn serve_next_conn(router: &Router, listener: &TcpListener, conn_set: 
 ///
 /// If we're at the connection limit, this first awaits for a connection task to
 /// become available.
+#[tracing::instrument(skip_all, err)]
 pub async fn next_conn(
     listener: &TcpListener,
     conn_set: &mut JoinSet<()>,
@@ -86,10 +88,12 @@ pub async fn next_conn(
         conn_set.join_next().await.expect("set cannot be empty")?;
     }
     // Await another connection.
+    tracing::trace!("Awaiting new connection at {}", listener.local_addr()?);
     listener.accept().await
 }
 
 /// Serve a newly accepted TCP stream.
+#[tracing::instrument(skip_all, err)]
 pub async fn serve_conn(router: &Router, stream: TcpStream) -> Result<(), ServeConnError> {
     // Hyper has its own `AsyncRead` and `AsyncWrite` traits and doesn't use
     // tokio. `TokioIo` converts between them.
