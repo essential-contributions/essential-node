@@ -1,12 +1,14 @@
 #![allow(dead_code)]
 
 use crate::db::ConnectionPool;
+use essential_node_db::{get_state_progress, query_state};
 use essential_types::{
     contract::Contract,
     predicate::Predicate,
     solution::{Mutation, Solution, SolutionData},
-    Block, ConstraintBytecode, PredicateAddress, StateReadBytecode, Word,
+    Block, ConstraintBytecode, ContentAddress, PredicateAddress, StateReadBytecode, Word,
 };
+use rusqlite::Connection;
 use std::{process::Stdio, time::Duration};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
@@ -35,9 +37,9 @@ pub fn test_blocks(n: u64) -> (Vec<Block>, Vec<Contract>) {
 }
 
 pub fn test_block(number: u64, timestamp: Duration) -> (Block, Vec<Contract>) {
-    let seed = number as i64 * 79;
+    let seed = number as i64 * 3;
     let (solutions, contracts) = (0..3)
-        .map(|i| test_solution(seed * (1 + i)))
+        .map(|i| test_solution(seed + i))
         .unzip::<_, _, Vec<_>, Vec<_>>();
 
     (
@@ -94,7 +96,7 @@ pub fn test_contract(seed: Word) -> Contract {
         // Make sure each predicate is unique, or contract will have a different
         // number of entries after insertion when multiple predicates have same CA.
         predicates: (0..n)
-            .map(|ix| test_predicate(seed * (1 + ix as i64)))
+            .map(|ix| test_predicate(seed * (2 + ix as i64)))
             .collect(),
         salt: essential_types::convert::u8_32_from_word_4([seed; 4]),
     }
@@ -174,4 +176,34 @@ pub async fn setup_server() -> (String, Child) {
 
     let server_address = format!("http://localhost:{}", port);
     (server_address, child)
+}
+
+// Check that the state progress in the database is block number and hash
+pub fn assert_state_progress_is_some(conn: &Connection, block: &Block, hash: &ContentAddress) {
+    let (progress_number, progress_hash) = get_state_progress(conn)
+        .unwrap()
+        .expect("progress should be some");
+    assert_eq!(progress_number, block.number);
+    assert_eq!(progress_hash, *hash);
+}
+
+// Check that the state progress in the database is none
+pub fn assert_state_progress_is_none(conn: &Connection) {
+    assert!(get_state_progress(conn).unwrap().is_none());
+}
+
+// Check state
+pub fn assert_multiple_block_mutations(conn: &Connection, blocks: &[&Block]) {
+    for block in blocks {
+        for solution in &block.solutions {
+            for data in &solution.data {
+                for mutation in &data.state_mutations {
+                    let value = query_state(conn, &data.predicate_to_solve.contract, &mutation.key)
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(value, mutation.value);
+                }
+            }
+        }
+    }
 }

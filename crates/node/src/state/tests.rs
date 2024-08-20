@@ -1,9 +1,10 @@
 use super::*;
-use crate::test_utils::{self, test_conn_pool};
-use essential_node_db::{
-    create_tables, get_state_progress, insert_block, insert_contract, query_state,
+use crate::test_utils::{
+    self, assert_multiple_block_mutations, assert_state_progress_is_none,
+    assert_state_progress_is_some, test_conn_pool,
 };
-use essential_types::{contract::Contract, Block, ContentAddress};
+use essential_node_db::{create_tables, insert_block, insert_contract};
+use essential_types::{contract::Contract, Block};
 use rusqlite::Connection;
 use std::time::Duration;
 
@@ -17,36 +18,6 @@ fn insert_block_and_send_notification(
     insert_block(&tx, block).unwrap();
     tx.commit().unwrap();
     state_rx.send(()).unwrap();
-}
-
-// Check that the state progress in the database is block number and hash
-fn assert_state_progress_is_some(conn: &Connection, block: &Block, hash: &ContentAddress) {
-    let (progress_number, progress_hash) = get_state_progress(conn)
-        .unwrap()
-        .expect("progress should be some");
-    assert_eq!(progress_number, block.number);
-    assert_eq!(progress_hash, *hash);
-}
-
-// Check that the state progress in the database is none
-fn assert_state_progress_is_none(conn: &Connection) {
-    assert!(get_state_progress(conn).unwrap().is_none());
-}
-
-// Check state
-async fn assert_multiple_block_mutations(conn: &Connection, blocks: &[&Block]) {
-    for block in blocks {
-        for solution in &block.solutions {
-            for data in &solution.data {
-                for mutation in &data.state_mutations {
-                    let value = query_state(conn, &data.predicate_to_solve.contract, &mutation.key)
-                        .unwrap()
-                        .unwrap();
-                    assert_eq!(value, mutation.value);
-                }
-            }
-        }
-    }
 }
 
 fn insert_contracts_to_db(conn: &mut Connection, contracts: Vec<Contract>) {
@@ -94,7 +65,7 @@ async fn can_derive_state() {
     // Assert state progress is block 0
     assert_state_progress_is_some(&conn, &blocks[0], &hashes[0]);
     // Assert mutations in block 0 are in database
-    assert_multiple_block_mutations(&conn, &[&blocks[0]]).await;
+    assert_multiple_block_mutations(&conn, &[&blocks[0]]);
 
     // Process block 1
     insert_block_and_send_notification(&mut conn, &blocks[1], &state_rx);
@@ -105,7 +76,7 @@ async fn can_derive_state() {
     // Assert state progress is block 2
     assert_state_progress_is_some(&conn, &blocks[2], &hashes[2]);
     // Assert mutations in block 1 and 2 are in database
-    assert_multiple_block_mutations(&conn, &[&blocks[1], &blocks[2]]).await;
+    assert_multiple_block_mutations(&conn, &[&blocks[1], &blocks[2]]);
 
     // Process block 3
     insert_block_and_send_notification(&mut conn, &blocks[3], &state_rx);
@@ -113,7 +84,7 @@ async fn can_derive_state() {
     // Assert state progress is block 3
     assert_state_progress_is_some(&conn, &blocks[3], &hashes[3]);
     // Assert mutations in block 3 are in database
-    assert_multiple_block_mutations(&conn, &[&blocks[3]]).await;
+    assert_multiple_block_mutations(&conn, &[&blocks[3]]);
 
     handle.close().await.unwrap();
 }
