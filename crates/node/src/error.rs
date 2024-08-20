@@ -33,4 +33,6 @@ pub enum CriticalError {
     ReadState(#[from] AcquireThenQueryError),
     #[error("database connection pool closed")]
     DbPoolClosed(#[from] tokio::sync::AcquireError),
+    #[error(transparent)]
+    Relayer(#[from] essential_relayer::Error),
 }

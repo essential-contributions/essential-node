@@ -2,17 +2,16 @@
 //!
 //! The primary entry-point to the crate is the [`Node`] type.
 
-use error::CriticalError;
 use essential_relayer::Relayer;
+use node_handle::Handle;
 use state::derive_state_stream;
 use thiserror::Error;
-#[cfg(feature = "tracing")]
-use tracing::Instrument;
 
 pub mod db;
 mod error;
-mod handle;
+mod node_handle;
 mod state;
+mod state_handle;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_utils;
 
@@ -76,11 +75,6 @@ pub enum RunError {
 #[derive(Debug, Error)]
 pub struct ConnectionCloseErrors(pub Vec<(rusqlite::Connection, rusqlite::Error)>);
 
-pub struct Handle {
-    relayer: essential_relayer::Handle,
-    state: crate::handle::Handle<CriticalError>,
-}
-
 impl Node {
     /// Create a new `Node` instance from the given configuration.
     ///
@@ -133,10 +127,7 @@ impl Node {
         // Run state derivation stream.
         let state_handle = derive_state_stream(self.conn_pool.clone(), new_block)?;
 
-        Ok(Handle {
-            relayer: relayer_handle,
-            state: state_handle,
-        })
+        Ok(Handle::new(relayer_handle, state_handle))
     }
 }
 

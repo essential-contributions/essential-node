@@ -4,7 +4,7 @@
 use crate::{
     db::{ConnectionHandle, ConnectionPool},
     error::{CriticalError, InternalError, RecoverableError},
-    handle::Handle,
+    state_handle::Handle,
 };
 use essential_node_db::{update_state, update_state_progress};
 use essential_types::{solution::Mutation, Block, ContentAddress};
