@@ -2,9 +2,12 @@
 //!
 //! The primary entry-point to the crate is the [`Node`] type.
 
+use error::CriticalError;
 use essential_relayer::Relayer;
 use state::derive_state_stream;
 use thiserror::Error;
+#[cfg(feature = "tracing")]
+use tracing::Instrument;
 
 pub mod db;
 mod error;
@@ -73,6 +76,11 @@ pub enum RunError {
 #[derive(Debug, Error)]
 pub struct ConnectionCloseErrors(pub Vec<(rusqlite::Connection, rusqlite::Error)>);
 
+pub struct Handle {
+    relayer: essential_relayer::Handle,
+    state: crate::handle::Handle<CriticalError>,
+}
+
 impl Node {
     /// Create a new `Node` instance from the given configuration.
     ///
@@ -113,18 +121,22 @@ impl Node {
         Ok(())
     }
 
-    pub fn run(self, server_address: String) -> Result<(), RunError> {
-        let relayer = Relayer::new(server_address.as_str())?;
-        let (block_notify, _new_block) = tokio::sync::watch::channel(());
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+    pub async fn run(&self, server_address: String) -> Result<Handle, RunError> {
+        // Run relayer.
         let (contract_notify, _new_contract) = tokio::sync::watch::channel(());
+        let (block_notify, new_block) = tokio::sync::watch::channel(());
+        let relayer = Relayer::new(server_address.as_str())?;
+        let relayer_handle =
+            relayer.run((*self.conn_pool.0).clone(), contract_notify, block_notify)?;
 
-        let _relayer_handle =
-            relayer.run(self.conn_pool.0.clone(), contract_notify, block_notify)?;
+        // Run state derivation stream.
+        let state_handle = derive_state_stream(self.conn_pool.clone(), new_block)?;
 
-        let (_state_tx, state_rx) = tokio::sync::watch::channel(());
-        let _state_handle = derive_state_stream(self.conn_pool, state_rx)?;
-
-        Ok(())
+        Ok(Handle {
+            relayer: relayer_handle,
+            state: state_handle,
+        })
     }
 }
 

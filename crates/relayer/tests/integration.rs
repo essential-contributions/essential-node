@@ -7,7 +7,7 @@ use essential_types::{
 };
 use reqwest::ClientBuilder;
 use rusqlite_pool::tokio::AsyncConnectionPool;
-use std::{process::Stdio, sync::Arc};
+use std::process::Stdio;
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::{Child, Command},
@@ -247,17 +247,15 @@ async fn test_sync() {
     );
 }
 
-fn new_conn_pool(id: &str) -> Arc<AsyncConnectionPool> {
-    Arc::new(
-        AsyncConnectionPool::new(3, || {
-            rusqlite::Connection::open_with_flags_and_vfs(
-                format!("file:/{}", id),
-                Default::default(),
-                "memdb",
-            )
-        })
-        .unwrap(),
-    )
+fn new_conn_pool(id: &str) -> AsyncConnectionPool {
+    AsyncConnectionPool::new(3, || {
+        rusqlite::Connection::open_with_flags_and_vfs(
+            format!("file:/{}", id),
+            Default::default(),
+            "memdb",
+        )
+    })
+    .unwrap()
 }
 
 pub async fn setup_server() -> (String, Child) {

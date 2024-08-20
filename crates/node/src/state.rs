@@ -189,7 +189,7 @@ where
 }
 
 /// Exit on critical errors, log recoverable errors.
-fn handle_error(e: InternalError) -> Result<(), CriticalError> {
+pub(crate) fn handle_error(e: InternalError) -> Result<(), CriticalError> {
     let e = map_recoverable_errors(e);
     match e {
         InternalError::Critical(e) => {

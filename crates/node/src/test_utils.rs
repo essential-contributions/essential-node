@@ -110,16 +110,22 @@ pub fn test_predicate(seed: Word) -> Predicate {
 
 // Resulting bytecode is invalid, but this is just for testing DB behaviour, not validation.
 pub fn test_state_reads(seed: Word) -> Vec<StateReadBytecode> {
-    let n = (1 + seed % 3) as usize;
-    let b = (seed % u8::MAX as Word) as u8;
-    vec![vec![b; 10]; n]
+    vec![essential_state_asm::to_bytes(vec![
+        essential_state_asm::Stack::Push(seed).into(),
+        essential_state_asm::Stack::Pop.into(),
+        essential_state_asm::TotalControlFlow::Halt.into(),
+    ])
+    .collect()]
 }
 
 // Resulting bytecode is invalid, but this is just for testing DB behaviour, not validation.
 pub fn test_constraints(seed: Word) -> Vec<ConstraintBytecode> {
-    let n = (1 + seed % 3) as usize;
-    let b = (seed % u8::MAX as Word) as u8;
-    vec![vec![b; 10]; n]
+    vec![essential_constraint_asm::to_bytes(vec![
+        essential_constraint_asm::Stack::Push(seed).into(),
+        essential_constraint_asm::Stack::Pop.into(),
+        essential_constraint_asm::Stack::Push(1).into(),
+    ])
+    .collect()]
 }
 
 pub async fn setup_server() -> (String, Child) {
@@ -129,7 +135,7 @@ pub async fn setup_server() -> (String, Child) {
         .arg("0.0.0.0:0")
         .arg("--loop-freq")
         .arg("1")
-        .arg("--disable-tracing")
+        // .arg("--disable-tracing")
         .kill_on_drop(true)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

@@ -12,8 +12,10 @@ repository = "https://github.com/essential-contributions/essential-node"
 
 [workspace.dependencies]
 crossbeam = "0.8"
+essential-constraint-asm = "0.3.0"
 essential-hash = "0.2.0"
 essential-sign = "0.2.0"
+essential-state-asm = "0.3.0"
 essential-types = "0.2.0"
 futures = "0.3.30"
 num_cpus = "1.16"
