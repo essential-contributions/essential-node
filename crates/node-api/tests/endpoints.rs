@@ -13,7 +13,7 @@ async fn test_health_check() {
     init_tracing_subscriber();
 
     let node = test_node("test_health_check");
-    with_test_server(node.db(), |port: u16| async move {
+    with_test_server(node.db(), |port| async move {
         let response = reqwest_get(port, node_api::endpoint::health_check::PATH).await;
         assert!(response.status().is_success());
     })

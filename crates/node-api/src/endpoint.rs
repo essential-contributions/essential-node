@@ -49,7 +49,7 @@ pub mod health_check {
 
 /// The `get-predicate` get endpoint.
 ///
-/// Takes a predicate content address (encoded as hex) as a path parameter.
+/// Takes a contract content address (encoded as hex) as a path parameter.
 pub mod get_contract {
     use super::*;
     pub const PATH: &str = "/get-contract/:contract-ca";
