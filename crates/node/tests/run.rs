@@ -9,8 +9,54 @@ use essential_node::{
 };
 use essential_types::{
     contract::{Contract, SignedContract},
-    ContentAddress,
+    solution::Solution,
+    Block, ContentAddress,
 };
+use reqwest::{Client, Url};
+use rusqlite::Connection;
+
+// Submit provided solutions to server one by one.
+async fn submit_solutions(client: &Client, solve_url: &Url, solutions: &Vec<Solution>) {
+    for solution in solutions {
+        let r = client
+            .post(solve_url.clone())
+            .json(solution)
+            .send()
+            .await
+            .unwrap();
+        assert!(r.status().is_success(), "{}", r.text().await.unwrap());
+    }
+}
+
+// Fetch blocks from node database and assert that they contain the same solutions as expected.
+// Assert state mutations in the blocks have been applied to database.
+// Assert state progress is the latest fetched block.
+fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block>) {
+    let fetched_blocks = &essential_node_db::list_blocks(
+        &conn,
+        expected_blocks[0].number..expected_blocks[expected_blocks.len() - 1].number + 1,
+    )
+    .unwrap();
+    for (i, expected_block) in expected_blocks.iter().enumerate() {
+        // Check if the block was added to the database
+        assert_eq!(fetched_blocks[i].number, expected_block.number);
+        assert_eq!(
+            fetched_blocks[i].solutions.len(),
+            expected_block.solutions.len()
+        );
+        for (j, fetched_block_solution) in fetched_blocks[i].solutions.iter().enumerate() {
+            assert_eq!(fetched_block_solution, &expected_block.solutions[j].clone())
+        }
+        // Assert mutations in block are in database
+        assert_multiple_block_mutations(&conn, &[&fetched_blocks[i]]);
+    }
+    // Assert state progress is latest block
+    assert_state_progress_is_some(
+        &conn,
+        &fetched_blocks[fetched_blocks.len() - 1],
+        &essential_hash::content_addr(&fetched_blocks[fetched_blocks.len() - 1]),
+    );
+}
 
 #[tokio::test]
 async fn test_run() {
@@ -40,12 +86,12 @@ async fn test_run() {
         .join("/submit-solution")
         .unwrap();
 
-    // Run server
+    // Run node
     let db = node.db();
     let _handle = node.run(server_address).await.unwrap();
 
     // Create test blocks
-    let test_blocks_count = 2;
+    let test_blocks_count = 4;
     let (test_blocks, test_contracts) = test_blocks(test_blocks_count);
 
     // Deploy contracts to server
@@ -80,36 +126,30 @@ async fn test_run() {
     assert_state_progress_is_none(&conn);
 
     // Submit test block 0's solutions to server
-    for solution in &test_blocks[0].solutions {
-        let r = client
-            .post(solve_url.clone())
-            .json(solution)
-            .send()
-            .await
-            .unwrap();
-        assert!(r.status().is_success(), "{}", r.text().await.unwrap());
-    }
+    submit_solutions(&client, &solve_url, &test_blocks[0].solutions).await;
     tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
 
-    // Check if the block was added to the database
+    // Check block, state and state progress
     let conn = db.acquire().await.unwrap();
-    let fetched_blocks = &essential_node_db::list_blocks(&conn, 0..1).unwrap();
-    assert_eq!(fetched_blocks[0].number, test_blocks[0].number);
-    assert_eq!(
-        fetched_blocks[0].solutions.len(),
-        test_blocks[0].solutions.len()
-    );
-    for (i, fetched_block_solution) in fetched_blocks[0].solutions.iter().enumerate() {
-        assert_eq!(fetched_block_solution, &test_blocks[0].solutions[i].clone())
-    }
-    // Assert state progress is block 0
-    assert_state_progress_is_some(
-        &conn,
-        &fetched_blocks[0],
-        &essential_hash::content_addr(&fetched_blocks[0]),
-    );
-    // Assert mutations in block 0 are in database
-    assert_multiple_block_mutations(&conn, &[&fetched_blocks[0]]);
+    assert_submit_solutions_effects(&conn, vec![test_blocks[0].clone()]);
+
+    // Submit test block 1 and 2's solutions to server
+    submit_solutions(&client, &solve_url, &test_blocks[1].solutions).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
+    submit_solutions(&client, &solve_url, &test_blocks[2].solutions).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
+
+    // Check block, state and state progress
+    let conn = db.acquire().await.unwrap();
+    assert_submit_solutions_effects(&conn, vec![test_blocks[1].clone(), test_blocks[2].clone()]);
+
+    // Submit test block 3's solutions to server
+    submit_solutions(&client, &solve_url, &test_blocks[3].solutions).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
+
+    // Check block, state and state progress
+    let conn = db.acquire().await.unwrap();
+    assert_submit_solutions_effects(&conn, vec![test_blocks[3].clone()]);
 }
 
 fn sign(contract: Contract) -> SignedContract {

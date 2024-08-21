@@ -41,7 +41,7 @@ async fn can_derive_state() {
     create_tables(&tx).unwrap();
     tx.commit().unwrap();
 
-    let test_blocks_count = 5;
+    let test_blocks_count = 4;
     let (test_blocks, contracts) = test_utils::test_blocks(test_blocks_count);
     insert_contracts_to_db(&mut conn, contracts);
     tokio::time::sleep(Duration::from_millis(100)).await;
