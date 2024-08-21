@@ -1,3 +1,9 @@
+//! The Essential Node HTTP API.
+//!
+//! Find the available endpoints under the [`endpoint`] module.
+//!
+//! Construct a [`router`] and use [`serve_next_conn`] in a loop to serve the node API.
+
 use axum::{routing::get, Router};
 use essential_node::db;
 use std::{io, net::SocketAddr};
@@ -29,6 +35,18 @@ pub struct ServeConnError(#[from] Box<dyn std::error::Error + Send + Sync>);
 /// The maximum number of connections to maintain at once.
 pub const CONNECTION_LIMIT: usize = 2_000;
 
+/// Continuously serve the Node API using the given `router` and TCP `listener`.
+///
+/// This constructs a new `JoinSet` to use for limiting connections and then
+/// calls [`serve_next_conn`] in a loop. Any outstanding connections will not be
+/// counted toward the connection limit.
+pub async fn serve(router: &Router, listener: &TcpListener) {
+    let mut conn_set = JoinSet::new();
+    loop {
+        serve_next_conn(router, listener, &mut conn_set).await;
+    }
+}
+
 /// Accept and serve the next connection.
 ///
 /// If we're at the connection limit, this first awaits for a connection task to
@@ -52,7 +70,7 @@ pub const CONNECTION_LIMIT: usize = 2_000;
 #[tracing::instrument(skip_all)]
 pub async fn serve_next_conn(router: &Router, listener: &TcpListener, conn_set: &mut JoinSet<()>) {
     // Await the next connection.
-    let stream = match next_conn(&listener, conn_set).await {
+    let stream = match next_conn(listener, conn_set).await {
         Ok((stream, _remote_addr)) => {
             #[cfg(feature = "tracing")]
             tracing::trace!("Accepted new connection from: {_remote_addr}");
@@ -116,21 +134,28 @@ pub async fn serve_conn(router: &Router, stream: TcpStream) -> Result<(), ServeC
         .map_err(ServeConnError)
 }
 
-/// Construct the endpoint router.
+/// Construct the endpoint router with the node [`endpoint`]s, CORS layer and DB
+/// connection pool as state.
 pub fn router(conn_pool: db::ConnectionPool) -> Router {
+    with_endpoints(Router::new())
+        .layer(cors_layer())
+        .with_state(conn_pool)
+}
+
+/// Add the node API [`endpoint`]s to the given `router`.
+pub fn with_endpoints(router: Router<db::ConnectionPool>) -> Router<db::ConnectionPool> {
     use endpoint::*;
-    Router::new()
+    router
         .route(health_check::PATH, get(health_check::handler))
         .route(get_contract::PATH, get(get_contract::handler))
         .route(get_predicate::PATH, get(get_predicate::handler))
         .route(list_blocks::PATH, get(list_blocks::handler))
         .route(list_contracts::PATH, get(list_contracts::handler))
         .route(query_state::PATH, get(query_state::handler))
-        .layer(cors_layer())
-        .with_state(conn_pool)
 }
 
-fn cors_layer() -> CorsLayer {
+/// The default CORS layer.
+pub fn cors_layer() -> CorsLayer {
     CorsLayer::new()
         .allow_origin(tower_http::cors::Any)
         .allow_methods([http::Method::GET, http::Method::OPTIONS])

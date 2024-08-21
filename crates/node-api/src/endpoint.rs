@@ -5,13 +5,20 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use core::ops::Range;
 use essential_node::db;
 use essential_types::{
     contract::Contract, convert::word_from_bytes, predicate::Predicate, Block, ContentAddress,
     Value, Word,
 };
+use serde::Deserialize;
 use thiserror::Error;
+
+/// A range in blocks, used for the `list-blocks` and `list-contracts` endpoints.
+#[derive(Deserialize)]
+pub struct BlockRange {
+    pub start: u64,
+    pub end: u64,
+}
 
 /// Any endpoint error that might occur.
 #[derive(Debug, Error)]
@@ -76,13 +83,18 @@ pub mod get_predicate {
 ///
 /// Takes a range of L2 blocks as a parameter.
 pub mod list_blocks {
+    use axum_macros::debug_handler;
+
     use super::*;
     pub const PATH: &str = "/list-blocks";
+    #[debug_handler]
     pub async fn handler(
         State(conn_pool): State<db::ConnectionPool>,
-        Query(block_range): Query<Range<u64>>,
+        Query(block_range): Query<BlockRange>,
     ) -> Result<Json<Vec<Block>>, Error> {
-        let blocks = conn_pool.list_blocks(block_range).await?;
+        let blocks = conn_pool
+            .list_blocks(block_range.start..block_range.end)
+            .await?;
         Ok(Json(blocks))
     }
 }
@@ -95,9 +107,11 @@ pub mod list_contracts {
     pub const PATH: &str = "/list-contracts";
     pub async fn handler(
         State(conn_pool): State<db::ConnectionPool>,
-        Query(block_range): Query<Range<u64>>,
+        Query(block_range): Query<BlockRange>,
     ) -> Result<Json<Vec<(u64, Vec<Contract>)>>, Error> {
-        let contracts = conn_pool.list_contracts(block_range).await?;
+        let contracts = conn_pool
+            .list_contracts(block_range.start..block_range.end)
+            .await?;
         Ok(Json(contracts))
     }
 }

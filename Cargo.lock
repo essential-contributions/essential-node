@@ -533,17 +533,22 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "axum-macros",
+ "essential-hash",
  "essential-node",
+ "essential-node-api",
  "essential-types",
  "hex",
  "http",
  "hyper",
  "hyper-util",
+ "reqwest",
+ "serde",
  "thiserror",
  "tokio",
  "tower",
  "tower-http",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

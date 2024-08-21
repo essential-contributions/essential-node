@@ -103,9 +103,10 @@ async fn run(args: Args) -> anyhow::Result<()> {
     let node = Node::new(&conf)?;
 
     // Run the API.
+    let router = node_api::router(node.db());
     let listener = tokio::net::TcpListener::bind(args.bind_addr).await?;
     tracing::info!("Starting API server at {}", listener.local_addr()?);
-    let api = run_api(node.db(), &listener);
+    let api = node_api::serve(&router, &listener);
 
     // Select the first future to complete to close.
     let ctrl_c = tokio::signal::ctrl_c();
@@ -115,16 +116,4 @@ async fn run(args: Args) -> anyhow::Result<()> {
     }
     node.close().map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(())
-}
-
-/// Serve the node's API.
-async fn run_api(
-    node_db: node::db::ConnectionPool,
-    listener: &tokio::net::TcpListener,
-) -> anyhow::Result<()> {
-    let router = node_api::router(node_db);
-    let mut conn_set = tokio::task::JoinSet::new();
-    loop {
-        node_api::serve_next_conn(&router, &listener, &mut conn_set).await;
-    }
 }
