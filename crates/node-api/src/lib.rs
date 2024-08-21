@@ -2,7 +2,7 @@
 //!
 //! Find the available endpoints under the [`endpoint`] module.
 //!
-//! Construct a [`router`] and use [`serve_next_conn`] in a loop to serve the node API.
+//! To serve the node API, construct a [`router`], a [`TcpListener`] and call [`serve`].
 
 use axum::{routing::get, Router};
 use essential_node::db;
