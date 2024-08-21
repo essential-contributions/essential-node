@@ -7,6 +7,10 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[[bin]]
+name = "essential-node"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }

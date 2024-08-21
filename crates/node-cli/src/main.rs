@@ -10,9 +10,9 @@ use std::{
 #[derive(Parser)]
 #[command(version, about)]
 struct Args {
-    /// The address to bind to for the TCP listener.
+    /// The address to bind to for the TCP listener that will be used to serve the API.
     #[arg(long, default_value_t = SocketAddrV4::new([0; 4].into(), 0).into())]
-    bind_addr: SocketAddr,
+    bind_address: SocketAddr,
     /// The type of DB storage to use.
     ///
     /// In the case that "persistent" is specified, assumes the default path.
@@ -20,7 +20,7 @@ struct Args {
     db: Db,
     /// The path to the node's sqlite database.
     ///
-    /// Specifying this overrides the the `db` type as `persistent`.
+    /// Specifying this overrides the `db` type as `persistent`.
     ///
     /// By default, this path will be within the user's data directory.
     #[arg(long)]
@@ -99,12 +99,13 @@ async fn run(args: Args) -> anyhow::Result<()> {
 
     // Start the node.
     let conf = conf_from_args(&args)?;
-    tracing::info!("Starting node with config:\n{:#?}", conf);
+    tracing::debug!("Node config:\n{:#?}", conf);
+    tracing::info!("Starting node");
     let node = Node::new(&conf)?;
 
     // Run the API.
     let router = node_api::router(node.db());
-    let listener = tokio::net::TcpListener::bind(args.bind_addr).await?;
+    let listener = tokio::net::TcpListener::bind(args.bind_address).await?;
     tracing::info!("Starting API server at {}", listener.local_addr()?);
     let api = node_api::serve(&router, &listener);
 
