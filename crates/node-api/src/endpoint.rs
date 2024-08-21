@@ -14,6 +14,8 @@ use serde::Deserialize;
 use thiserror::Error;
 
 /// A range in blocks, used for the `list-blocks` and `list-contracts` endpoints.
+///
+/// The range is non-inclusive of the `end`, i.e. it is equivalent to `start..end`.
 #[derive(Deserialize)]
 pub struct BlockRange {
     pub start: u64,
