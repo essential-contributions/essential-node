@@ -84,8 +84,9 @@ fn init_tracing_subscriber() {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-    if let Err(err) = run(args).await {
-        tracing::error!("{err}");
+    if let Err(_err) = run(args).await {
+        #[cfg(feature = "tracing")]
+        tracing::error!("{_err}");
     }
 }
 
@@ -99,13 +100,17 @@ async fn run(args: Args) -> anyhow::Result<()> {
 
     // Start the node.
     let conf = conf_from_args(&args)?;
-    tracing::debug!("Node config:\n{:#?}", conf);
-    tracing::info!("Starting node");
+    #[cfg(feature = "tracing")]
+    {
+        tracing::debug!("Node config:\n{:#?}", conf);
+        tracing::info!("Starting node");
+    }
     let node = Node::new(&conf)?;
 
     // Run the API.
     let router = node_api::router(node.db());
     let listener = tokio::net::TcpListener::bind(args.bind_address).await?;
+    #[cfg(feature = "tracing")]
     tracing::info!("Starting API server at {}", listener.local_addr()?);
     let api = node_api::serve(&router, &listener);
 
