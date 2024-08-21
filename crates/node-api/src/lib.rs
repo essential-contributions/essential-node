@@ -84,10 +84,13 @@ pub async fn serve_next_conn(router: &Router, listener: &TcpListener, conn_set: 
     };
 
     // Serve the acquired connection.
-    if let Err(_err) = serve_conn(&router.clone(), stream).await {
-        #[cfg(feature = "tracing")]
-        tracing::trace!("Serve connection error: {_err}");
-    }
+    let router = router.clone();
+    conn_set.spawn(async move {
+        if let Err(_err) = serve_conn(&router, stream).await {
+            #[cfg(feature = "tracing")]
+            tracing::trace!("Serve connection error: {_err}");
+        }
+    });
 }
 
 /// Accept and return the next TCP stream connection.
