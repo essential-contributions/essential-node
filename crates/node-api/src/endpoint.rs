@@ -83,11 +83,8 @@ pub mod get_predicate {
 ///
 /// Takes a range of L2 blocks as a parameter.
 pub mod list_blocks {
-    use axum_macros::debug_handler;
-
     use super::*;
     pub const PATH: &str = "/list-blocks";
-    #[debug_handler]
     pub async fn handler(
         State(conn_pool): State<db::ConnectionPool>,
         Query(block_range): Query<BlockRange>,

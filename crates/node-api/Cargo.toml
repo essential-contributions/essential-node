@@ -9,7 +9,6 @@ repository.workspace = true
 
 [dependencies]
 axum = { workspace = true }
-axum-macros = "0.4" # TODO: Remove - added for debugging handlers
 essential-node = { workspace = true }
 essential-types = { workspace = true }
 hex = { workspace = true }
@@ -26,7 +25,7 @@ tracing = { workspace = true, optional = true }
 [dev-dependencies]
 essential-hash = { workspace = true }
 essential-node-api = { workspace = true, features = ["test-utils"] }
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 [features]
