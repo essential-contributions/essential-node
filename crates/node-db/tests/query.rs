@@ -1,5 +1,5 @@
-use essential_node_db as node_db;
-use essential_types::{contract::Contract, ContentAddress, Word};
+use essential_node_db::{self as node_db, BlockNumber, Optimistic, SolutionIndex, StatePosition};
+use essential_types::{contract::Contract, solution::Mutation, ContentAddress, Word};
 use rusqlite::Connection;
 use std::time::Duration;
 
@@ -254,4 +254,188 @@ fn test_list_contracts() {
         assert_eq!(ix as u64 + start, *block);
         assert_eq!(expected, contracts);
     }
+}
+
+#[test]
+fn test_query_state_at() {
+    let mut values = 0..Word::MAX;
+    let contract_addr = ContentAddress([42; 32]);
+    let blocks = util::test_blocks(10)
+        .into_iter()
+        .map(|mut block| {
+            for solution in block.solutions.iter_mut() {
+                for (k, data) in solution.data.iter_mut().enumerate() {
+                    data.predicate_to_solve.contract = contract_addr.clone();
+                    data.state_mutations = values
+                        .by_ref()
+                        .take(2)
+                        .enumerate()
+                        .map(|(d, v)| Mutation {
+                            key: vec![((k + 1) * (d + 1)) as Word],
+                            value: vec![v],
+                        })
+                        .collect();
+                }
+            }
+            block
+        })
+        .collect::<Vec<_>>();
+
+    // Create an in-memory SQLite database.
+    let mut conn = Connection::open_in_memory().unwrap();
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    for block in &blocks {
+        node_db::insert_block(&tx, block).unwrap();
+    }
+
+    let pos = StatePosition::Optimistic(Optimistic {
+        number: BlockNumber::Number(10),
+        position: SolutionIndex::Index(0),
+    });
+    let state = node_db::query_state_at(&tx, &contract_addr, &vec![1], &pos)
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        state,
+        blocks[9].solutions[2].data[0].state_mutations[0].value
+    );
+
+    let pos = StatePosition::Optimistic(Optimistic {
+        number: BlockNumber::Number(9),
+        position: SolutionIndex::Index(1),
+    });
+    let state = node_db::query_state_at(&tx, &contract_addr, &vec![1], &pos)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        state,
+        blocks[9].solutions[1].data[0].state_mutations[0].value
+    );
+
+    let pos = StatePosition::Optimistic(Optimistic {
+        number: BlockNumber::Number(9),
+        position: SolutionIndex::Index(0),
+    });
+    let state = node_db::query_state_at(&tx, &contract_addr, &vec![1], &pos)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        state,
+        blocks[9].solutions[0].data[0].state_mutations[0].value
+    );
+
+    let pos = StatePosition::Optimistic(Optimistic {
+        number: BlockNumber::Number(8),
+        position: SolutionIndex::Index(1),
+    });
+    let state = node_db::query_state_at(&tx, &contract_addr, &vec![1], &pos)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        state,
+        blocks[8].solutions[1].data[0].state_mutations[0].value
+    );
+
+    let pos = StatePosition::Optimistic(Optimistic {
+        number: BlockNumber::Latest,
+        position: SolutionIndex::Index(2),
+    });
+    let state = node_db::query_state_at(&tx, &contract_addr, &vec![1], &pos)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        state,
+        blocks[9].solutions[2].data[0].state_mutations[0].value
+    );
+
+    let pos = StatePosition::Optimistic(Optimistic {
+        number: BlockNumber::Latest,
+        position: SolutionIndex::Index(1),
+    });
+    let state = node_db::query_state_at(&tx, &contract_addr, &vec![1], &pos)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        state,
+        blocks[9].solutions[1].data[0].state_mutations[0].value
+    );
+
+    let pos = StatePosition::Optimistic(Optimistic {
+        number: BlockNumber::Number(1),
+        position: SolutionIndex::Start,
+    });
+    let state = node_db::query_state_at(&tx, &contract_addr, &vec![2], &pos)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        state,
+        blocks[0].solutions[2].data[0].state_mutations[1].value
+    );
+
+    let pos = StatePosition::Optimistic(Optimistic {
+        number: BlockNumber::Number(0),
+        position: SolutionIndex::Start,
+    });
+    let state = node_db::query_state_at(&tx, &contract_addr, &vec![2], &pos).unwrap();
+    assert!(state.is_none());
+
+    let pos = StatePosition::Optimistic(Optimistic {
+        number: BlockNumber::Number(0),
+        position: SolutionIndex::End,
+    });
+    let state = node_db::query_state_at(&tx, &contract_addr, &vec![2], &pos)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        state,
+        blocks[0].solutions[2].data[0].state_mutations[1].value
+    );
+
+    let pos = StatePosition::Optimistic(Optimistic {
+        number: BlockNumber::Number(5),
+        position: SolutionIndex::Index(20),
+    });
+    let state = node_db::query_state_at(&tx, &contract_addr, &vec![2], &pos)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        state,
+        blocks[5].solutions[2].data[0].state_mutations[1].value
+    );
+
+    // Add more blocks
+
+    let new_blocks = util::test_blocks(20)
+        .into_iter()
+        .map(|mut block| {
+            for solution in block.solutions.iter_mut() {
+                for data in solution.data.iter_mut() {
+                    data.predicate_to_solve.contract = contract_addr.clone();
+                    data.state_mutations = vec![Mutation {
+                        key: vec![99],
+                        value: vec![42],
+                    }];
+                }
+            }
+            block
+        })
+        .collect::<Vec<_>>();
+    for block in &new_blocks[10..] {
+        node_db::insert_block(&tx, block).unwrap();
+    }
+
+    // Check the latest value is still the same
+    let pos = StatePosition::Optimistic(Optimistic {
+        number: BlockNumber::Latest,
+        position: SolutionIndex::End,
+    });
+    let state = node_db::query_state_at(&tx, &contract_addr, &vec![1], &pos)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        state,
+        blocks[9].solutions[2].data[0].state_mutations[0].value
+    );
 }

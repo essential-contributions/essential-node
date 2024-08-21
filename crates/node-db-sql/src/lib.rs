@@ -24,6 +24,7 @@ pub mod create {
     decl_const_sql_str!(CONTRACT_PREDICATE, "create/contract_predicate.sql");
     decl_const_sql_str!(CONTRACT_PROGRESS, "create/contract_progress.sql");
     decl_const_sql_str!(CONTRACT, "create/contract.sql");
+    decl_const_sql_str!(MUTATION, "create/mutation.sql");
     decl_const_sql_str!(PREDICATE, "create/predicate.sql");
     decl_const_sql_str!(SOLUTION, "create/solution.sql");
     decl_const_sql_str!(STATE, "create/state.sql");
@@ -37,6 +38,7 @@ pub mod insert {
     decl_const_sql_str!(CONTRACT, "insert/contract.sql");
     decl_const_sql_str!(CONTRACT_PREDICATE, "insert/contract_predicate.sql");
     decl_const_sql_str!(CONTRACT_PROGRESS, "insert/contract_progress.sql");
+    decl_const_sql_str!(MUTATION, "insert/mutation.sql");
     decl_const_sql_str!(PREDICATE, "insert/predicate.sql");
     decl_const_sql_str!(SOLUTION, "insert/solution.sql");
     decl_const_sql_str!(STATE_PROGRESS, "insert/state_progress.sql");
@@ -56,6 +58,10 @@ pub mod query {
     decl_const_sql_str!(LIST_CONTRACTS, "query/list_contracts.sql");
     decl_const_sql_str!(LIST_BLOCKS_BY_TIME, "query/list_blocks_by_time.sql");
     decl_const_sql_str!(LIST_CONTRACTS_BY_TIME, "query/list_contracts_by_time.sql");
+    decl_const_sql_str!(
+        QUERY_STATE_AT_OPTIMISTIC,
+        "query/query_state_at_optimistic.sql"
+    );
 }
 
 /// Statements for updating and deleting state.
@@ -88,6 +94,7 @@ pub mod table {
     pub const CONTRACT_PREDICATE: Table =
         Table::new("contract_predicate", create::CONTRACT_PREDICATE);
     pub const CONTRACT_PROGRESS: Table = Table::new("contract_progress", create::CONTRACT_PROGRESS);
+    pub const MUTATION: Table = Table::new("mutation", create::MUTATION);
     pub const PREDICATE: Table = Table::new("predicate", create::PREDICATE);
     pub const SOLUTION: Table = Table::new("solution", create::SOLUTION);
     pub const STATE: Table = Table::new("state", create::STATE);
@@ -100,6 +107,7 @@ pub mod table {
         CONTRACT,
         CONTRACT_PREDICATE,
         CONTRACT_PROGRESS,
+        MUTATION,
         PREDICATE,
         SOLUTION,
         STATE,

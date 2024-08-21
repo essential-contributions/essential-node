@@ -25,6 +25,53 @@ use std::{ops::Range, time::Duration};
 
 mod error;
 
+#[non_exhaustive]
+/// Position in the log of state mutations.
+/// This type describes which block and solution you
+/// want to view state at.
+///
+/// This type will be expanded in the future to include
+/// more ways of pointing to a specific position in the log.
+pub enum StatePosition {
+    /// Optimistic chain position.
+    Optimistic(Optimistic),
+}
+
+/// The optimistic position is the first block
+/// proposed for a given block number that this
+/// node has not seen any evidence of fraud for.
+pub struct Optimistic {
+    /// The block number to view state as of.
+    pub number: BlockNumber,
+    /// The solution index withing the block.
+    pub position: SolutionIndex,
+}
+
+/// The block number to view state as of.
+pub enum BlockNumber {
+    /// The latest block this node has seen.
+    Latest,
+    /// A specific block number.
+    Number(u64),
+}
+
+/// The solution index within the block.
+///
+/// Note that because keys cannot be mutated
+/// more than once in a solution, we cannot
+/// get any more granular than the solution index.
+pub enum SolutionIndex {
+    /// The state as of the start of the block.
+    /// Note this is equivalent to the state
+    /// as of the end of the previous block.
+    Start,
+    /// The state as of the end of the block.
+    End,
+    /// The state as of the solution at the given index.
+    /// This is the state after the solution has been applied.
+    Index(u64),
+}
+
 /// Encodes the given value into a blob.
 ///
 /// This serializes the value using postcard.
@@ -73,6 +120,7 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
     // Insert all solutions.
     let mut stmt_solution = tx.prepare(sql::insert::SOLUTION)?;
     let mut stmt_block_solution = tx.prepare(sql::insert::BLOCK_SOLUTION)?;
+    let mut stmt_mutation = tx.prepare(sql::insert::MUTATION)?;
     for (ix, solution) in block.solutions.iter().enumerate() {
         let ca_blob = encode(&content_addr(solution));
 
@@ -86,12 +134,29 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
         // Create a mapping between the block and the solution.
         stmt_block_solution.execute(named_params! {
             ":block_number": block.number,
-            ":solution_hash": ca_blob,
+            ":solution_hash": &ca_blob,
             ":solution_index": ix,
         })?;
+
+        for (data_ix, data) in solution.data.iter().enumerate() {
+            let contract_ca_blob = encode(&data.predicate_to_solve.contract);
+            for (mutation_ix, mutation) in data.state_mutations.iter().enumerate() {
+                let key_blob = encode(&mutation.key);
+                let value_blob = encode(&mutation.value);
+                stmt_mutation.execute(named_params! {
+                    ":solution_hash": ca_blob,
+                    ":data_index": data_ix,
+                    ":mutation_index": mutation_ix,
+                    ":contract_ca": contract_ca_blob,
+                    ":key": key_blob,
+                    ":value": value_blob,
+                })?;
+            }
+        }
     }
     stmt_solution.finalize()?;
     stmt_block_solution.finalize()?;
+    stmt_mutation.finalize()?;
 
     Ok(())
 }
@@ -354,13 +419,38 @@ pub fn query_state(
     Ok(value_blob.as_deref().map(decode).transpose()?)
 }
 
+/// Query state at a specific position.
+pub fn query_state_at(
+    tx: &Transaction,
+    contract_ca: &ContentAddress,
+    key: &Key,
+    position: &StatePosition,
+) -> Result<Option<Value>, QueryError> {
+    let Some(solution_ptr) = state_position_to_solution_ptr(tx, position)? else {
+        return Ok(None);
+    };
+    let contract_ca_blob = encode(contract_ca);
+    let key_blob = encode(key);
+    let mut stmt = tx.prepare(sql::query::QUERY_STATE_AT_OPTIMISTIC)?;
+    let value_blob: Option<Vec<u8>> = stmt
+        .query_row(
+            named_params! {
+                ":contract_ca": contract_ca_blob,
+                ":key": key_blob,
+                ":block_number": solution_ptr.block_number,
+                ":solution_index": solution_ptr.solution_index,
+            },
+            |row| row.get("value"),
+        )
+        .optional()?;
+    Ok(value_blob.as_deref().map(decode).transpose()?)
+}
+
 /// Fetches the latest block number.
-pub fn get_latest_block_number(conn: &Connection) -> Result<Option<u64>, QueryError> {
-    Ok(
-        conn.query_row(sql::query::GET_LATEST_BLOCK_NUMBER, [], |row| {
-            row.get::<_, Option<u64>>("number")
-        })?,
-    )
+pub fn get_latest_block_number(conn: &Connection) -> Result<Option<u64>, rusqlite::Error> {
+    conn.query_row(sql::query::GET_LATEST_BLOCK_NUMBER, [], |row| {
+        row.get::<_, Option<u64>>("number")
+    })
 }
 
 /// Fetches the latest block.
@@ -547,4 +637,49 @@ pub fn list_contracts(
     }
 
     Ok(blocks)
+}
+
+#[derive(Debug)]
+struct SolutionPtr {
+    block_number: u64,
+    solution_index: u64,
+}
+
+fn state_position_to_solution_ptr(
+    conn: &Connection,
+    position: &StatePosition,
+) -> Result<Option<SolutionPtr>, rusqlite::Error> {
+    match position {
+        StatePosition::Optimistic(Optimistic { number, position }) => {
+            let Some(number) = block_number_to_number(conn, number)? else {
+                return Ok(None);
+            };
+
+            match (number, position) {
+                (0, SolutionIndex::Start) => Ok(None),
+                (number, SolutionIndex::Start) => Ok(Some(SolutionPtr {
+                    block_number: number - 1,
+                    solution_index: i64::MAX as u64,
+                })),
+                (number, SolutionIndex::End) => Ok(Some(SolutionPtr {
+                    block_number: number,
+                    solution_index: i64::MAX as u64,
+                })),
+                (number, SolutionIndex::Index(index)) => Ok(Some(SolutionPtr {
+                    block_number: number,
+                    solution_index: *index,
+                })),
+            }
+        }
+    }
+}
+
+fn block_number_to_number(
+    conn: &Connection,
+    block_number: &BlockNumber,
+) -> Result<Option<u64>, rusqlite::Error> {
+    match block_number {
+        BlockNumber::Latest => get_latest_block_number(conn),
+        BlockNumber::Number(n) => Ok(Some(*n)),
+    }
 }
