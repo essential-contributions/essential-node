@@ -60,13 +60,6 @@ fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block
 
 #[tokio::test]
 async fn test_run() {
-    std::env::set_var(
-        "RUST_LOG",
-        "[deploy]=trace,[submit_solution]=trace,[run_loop]=trace,[run_blocks]=trace",
-    );
-    #[cfg(feature = "tracing")]
-    let _ = tracing_subscriber::fmt::try_init();
-
     // Setup node
     let conf = test_db_conf("test_acquire");
     let node = Node::new(&conf).unwrap();

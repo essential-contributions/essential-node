@@ -137,7 +137,7 @@ pub async fn setup_server() -> (String, Child) {
         .arg("0.0.0.0:0")
         .arg("--loop-freq")
         .arg("1")
-        // .arg("--disable-tracing")
+        .arg("--disable-tracing")
         .kill_on_drop(true)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
