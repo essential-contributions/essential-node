@@ -33,7 +33,7 @@ async fn submit_solutions(client: &Client, solve_url: &Url, solutions: &Vec<Solu
 // Assert state progress is the latest fetched block.
 fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block>) {
     let fetched_blocks = &essential_node_db::list_blocks(
-        &conn,
+        conn,
         expected_blocks[0].number..expected_blocks[expected_blocks.len() - 1].number + 1,
     )
     .unwrap();
@@ -48,11 +48,11 @@ fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block
             assert_eq!(fetched_block_solution, &expected_block.solutions[j].clone())
         }
         // Assert mutations in block are in database
-        assert_multiple_block_mutations(&conn, &[&fetched_blocks[i]]);
+        assert_multiple_block_mutations(conn, &[&fetched_blocks[i]]);
     }
     // Assert state progress is latest block
     assert_state_progress_is_some(
-        &conn,
+        conn,
         &fetched_blocks[fetched_blocks.len() - 1],
         &essential_hash::content_addr(&fetched_blocks[fetched_blocks.len() - 1]),
     );
@@ -102,16 +102,15 @@ async fn test_run() {
     let fetched_contracts: Vec<ContentAddress> = essential_node_db::list_contracts(&conn, 0..100)
         .unwrap()
         .into_iter()
-        .map(|(_, contracts)| {
+        .flat_map(|(_, contracts)| {
             contracts
                 .into_iter()
                 .map(|c| essential_hash::contract_addr::from_contract(&c))
         })
-        .flatten()
         .collect();
     assert_eq!(fetched_contracts.len(), test_contracts.len());
     for test_contract in test_contracts.iter() {
-        let hash = essential_hash::contract_addr::from_contract(&test_contract);
+        let hash = essential_hash::contract_addr::from_contract(test_contract);
         assert!(fetched_contracts.contains(&hash));
     }
 
