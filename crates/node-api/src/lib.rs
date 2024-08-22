@@ -32,22 +32,29 @@ pub enum ServeNextConnError {
 #[error("Serve connection error: {0}")]
 pub struct ServeConnError(#[from] Box<dyn std::error::Error + Send + Sync>);
 
-/// The maximum number of connections to maintain at once.
-pub const CONNECTION_LIMIT: usize = 2_000;
+/// The default value used by `essential-node-cli` for the maximum number of
+/// TCP stream connections to maintain at once.
+pub const DEFAULT_CONNECTION_LIMIT: usize = 2_000;
 
 /// Continuously serve the Node API using the given `router` and TCP `listener`.
+///
+/// The number of simultaneous TCP stream connections will be capped at the given
+/// `conn_limit`.
 ///
 /// This constructs a new `JoinSet` to use for limiting connections and then
 /// calls [`serve_next_conn`] in a loop. Any outstanding connections will not be
 /// counted toward the connection limit.
-pub async fn serve(router: &Router, listener: &TcpListener) {
+pub async fn serve(router: &Router, listener: &TcpListener, conn_limit: usize) {
     let mut conn_set = JoinSet::new();
     loop {
-        serve_next_conn(router, listener, &mut conn_set).await;
+        serve_next_conn(router, listener, conn_limit, &mut conn_set).await;
     }
 }
 
 /// Accept and serve the next connection.
+///
+/// The number of simultaneous TCP stream connections will be capped at the given
+/// `conn_limit`.
 ///
 /// If we're at the connection limit, this first awaits for a connection task to
 /// become available.
@@ -61,16 +68,23 @@ pub async fn serve(router: &Router, listener: &TcpListener) {
 /// let node = Node::new(&conf).unwrap();
 /// let router = node_api::router(node.db());
 /// let listener = tokio::net::TcpListener::bind("127.0.0.1:3553").await.unwrap();
+/// let conn_limit = node_api::DEFAULT_CONNECTION_LIMIT;
 /// let mut conn_set = tokio::task::JoinSet::new();
 /// // Accept and serve connections.
 /// loop {
-///     node_api::serve_next_conn(&router, &listener, &mut conn_set).await;
+///     node_api::serve_next_conn(&router, &listener, conn_limit, &mut conn_set).await;
 /// }
 /// # }
+/// ```
 #[tracing::instrument(skip_all)]
-pub async fn serve_next_conn(router: &Router, listener: &TcpListener, conn_set: &mut JoinSet<()>) {
+pub async fn serve_next_conn(
+    router: &Router,
+    listener: &TcpListener,
+    conn_limit: usize,
+    conn_set: &mut JoinSet<()>,
+) {
     // Await the next connection.
-    let stream = match next_conn(listener, conn_set).await {
+    let stream = match next_conn(listener, conn_limit, conn_set).await {
         Ok((stream, _remote_addr)) => {
             #[cfg(feature = "tracing")]
             tracing::trace!("Accepted new connection from: {_remote_addr}");
@@ -100,12 +114,13 @@ pub async fn serve_next_conn(router: &Router, listener: &TcpListener, conn_set: 
 #[tracing::instrument(skip_all, err)]
 pub async fn next_conn(
     listener: &TcpListener,
+    conn_limit: usize,
     conn_set: &mut JoinSet<()>,
 ) -> io::Result<(TcpStream, SocketAddr)> {
     // If the `conn_set` size currently exceeds the limit, wait for the next to join.
-    if conn_set.len() >= CONNECTION_LIMIT {
+    if conn_set.len() >= conn_limit {
         #[cfg(feature = "tracing")]
-        tracing::info!("Connection limit reached: {CONNECTION_LIMIT}");
+        tracing::info!("Connection limit reached: {conn_limit}");
         conn_set.join_next().await.expect("set cannot be empty")?;
     }
     // Await another connection.
