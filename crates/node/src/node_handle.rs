@@ -1,18 +1,23 @@
 use crate::error::CriticalError;
 
+/// Handle for closing or joining the relayer and state derivation streams.
 pub struct Handle {
     relayer: essential_relayer::Handle,
     state: crate::state_handle::Handle<CriticalError>,
 }
 
 impl Handle {
-    pub fn new(
+    /// Create a new handle.
+    pub(crate) fn new(
         relayer: essential_relayer::Handle,
         state: crate::state_handle::Handle<CriticalError>,
     ) -> Self {
         Self { relayer, state }
     }
 
+    /// Close the relayer and state derivation streams.
+    ///
+    /// If this future is dropped then both streams will be closed.
     pub async fn close(self) -> Result<(), CriticalError> {
         let Self { relayer, state } = self;
         state.close().await?;
@@ -20,6 +25,11 @@ impl Handle {
         Ok(())
     }
 
+    /// Join the relayer and state derivation streams.
+    ///
+    /// Waits for either stream to finish and awaits the other one.
+    /// 
+    /// If this future is dropped then both streams will be closed.
     pub async fn join(self) -> Result<(), CriticalError> {
         let Self { relayer, state } = self;
 

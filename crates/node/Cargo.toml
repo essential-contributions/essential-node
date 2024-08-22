@@ -11,7 +11,7 @@ repository.workspace = true
 essential-constraint-asm = { workspace = true, optional = true }
 essential-hash = { workspace = true }
 essential-node-db = { workspace = true }
-essential-relayer = { workspace = true } # for the error type
+essential-relayer = { workspace = true }
 essential-state-asm = { workspace = true, optional = true }
 essential-types = { workspace = true }
 futures = { workspace = true }

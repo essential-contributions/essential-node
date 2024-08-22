@@ -2,6 +2,7 @@
 //!
 //! The primary entry-point to the crate is the [`Node`] type.
 
+use error::CriticalError;
 use essential_relayer::Relayer;
 use node_handle::Handle;
 use state::derive_state_stream;
@@ -62,15 +63,6 @@ pub struct NewError(#[from] pub rusqlite::Error);
 #[error("`Node` failed to close: {0}")]
 pub struct CloseError(#[from] pub ConnectionCloseErrors);
 
-/// Node run failure.
-#[derive(Debug, Error)]
-pub enum RunError {
-    #[error("`Node` failed to run: State derivation error: {0}")]
-    StateDerivation(#[from] error::CriticalError),
-    #[error("`Node` failed to run: Relayer error: {0}")]
-    Relayer(#[from] essential_relayer::Error),
-}
-
 /// One or more connections failed to close.
 #[derive(Debug, Error)]
 pub struct ConnectionCloseErrors(pub Vec<(rusqlite::Connection, rusqlite::Error)>);
@@ -118,13 +110,13 @@ impl Node {
     /// Run the `Node`.
     ///
     /// This method will start the relayer and state derivation stream.
-    /// Relayer will sync blocks from the server to node database and notify state derivation stream
-    /// via the shared watch channel.
+    /// Relayer will sync contracts and blocks from the server to node database
+    /// and notify state derivation stream of new blocks via the shared watch channel.
     ///
     /// Returns a [`Handle`] that can be used to close the two streams.
     /// The streams will continue to run until the handle is dropped.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    pub async fn run(&self, server_address: String) -> Result<Handle, RunError> {
+    pub async fn run(&self, server_address: String) -> Result<Handle, CriticalError> {
         // Run relayer.
         let (contract_notify, _new_contract) = tokio::sync::watch::channel(());
         let (block_notify, new_block) = tokio::sync::watch::channel(());
