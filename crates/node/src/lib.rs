@@ -4,7 +4,7 @@
 
 use error::CriticalError;
 use essential_relayer::Relayer;
-use node_handle::Handle;
+pub use node_handle::Handle;
 use state::derive_state_stream;
 use thiserror::Error;
 
