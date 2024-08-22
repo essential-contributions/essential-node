@@ -28,7 +28,7 @@ impl Handle {
     /// Join the relayer and state derivation streams.
     ///
     /// Waits for either stream to finish and awaits the other one.
-    /// 
+    ///
     /// If this future is dropped then both streams will be closed.
     pub async fn join(self) -> Result<(), CriticalError> {
         let Self { relayer, state } = self;

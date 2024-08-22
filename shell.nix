@@ -1,7 +1,7 @@
 # A dev shell providing the essentials for working on essential-node.
 { cargo-toml-lint
 , clippy
-, essential-node-api
+, essential-node
 , essential-rest-server
 , mkShell
 , rust-analyzer
@@ -12,7 +12,7 @@
 }:
 mkShell {
   inputsFrom = [
-    essential-node-api
+    essential-node
   ];
   buildInputs = [
     cargo-toml-lint

@@ -231,6 +231,26 @@ impl ConnectionPool {
     }
 }
 
+impl Config {
+    /// The default connection limit.
+    ///
+    /// This default uses the number of available CPUs as a heuristic for a
+    /// default connection limit. Specifically, it multiplies the number of
+    /// available CPUs by 4.
+    pub fn default_conn_limit() -> usize {
+        // TODO: Unsure if wasm-compatible? May want a feature for this?
+        num_cpus::get().saturating_mul(4)
+    }
+}
+
+impl Source {
+    /// A temporary, in-memory DB with a default ID.
+    pub fn default_memory() -> Self {
+        // Default ID cannot be an empty string.
+        Self::Memory("__default-id".to_string())
+    }
+}
+
 impl core::ops::Deref for ConnectionHandle {
     type Target = AsyncConnectionHandle;
     fn deref(&self) -> &Self::Target {
@@ -246,19 +266,14 @@ impl core::ops::DerefMut for ConnectionHandle {
 
 impl Default for Source {
     fn default() -> Self {
-        // Default ID cannot be an empty string.
-        Self::Memory("__default-id".to_string())
+        Self::default_memory()
     }
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            // Here we use the number of available CPUs as a heuristic for a default
-            // DB connection limit. This is because rusqlite `Connection` usage is
-            // synchronous, and should be saturating the thread anyway.
-            // TODO: Unsure if wasm-compatible? May want a feature for this?
-            conn_limit: num_cpus::get().saturating_mul(4),
+            conn_limit: Self::default_conn_limit(),
             source: Source::default(),
         }
     }

@@ -27,13 +27,13 @@
     in
     {
       overlays = {
-        essential-server = import ./overlay.nix { };
-        default = inputs.self.overlays.essential-server;
+        essential-node = import ./overlay.nix { };
+        default = inputs.self.overlays.essential-node;
       };
 
       packages = perSystemPkgs (pkgs: {
-        essential-node-api = pkgs.essential-node-api;
-        default = inputs.self.packages.${pkgs.system}.essential-node-api;
+        essential-node = pkgs.essential-node;
+        default = inputs.self.packages.${pkgs.system}.essential-node;
       });
 
       devShells = perSystemPkgs (pkgs: {
