@@ -33,10 +33,10 @@ let
 in
 rustPlatform.buildRustPackage {
   inherit src;
-  pname = "essential-node-api";
+  pname = "essential-node";
   version = (builtins.fromTOML (builtins.readFile crateTOML)).package.version;
 
-  buildAndTestSubdir = "crates/node-api";
+  buildAndTestSubdir = "crates/node-cli";
 
   nativeBuildInputs = lib.optionals stdenv.isLinux [
     pkg-config
