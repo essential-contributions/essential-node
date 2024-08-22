@@ -33,6 +33,9 @@ struct Args {
     /// Disable the tracing subscriber.
     #[arg(long, default_value_t = false)]
     disable_tracing: bool,
+    /// The maximum number of TCP streams to be served simultaneously.
+    #[arg(long, default_value_t = node_api::DEFAULT_CONNECTION_LIMIT)]
+    tcp_conn_limit: usize,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
@@ -112,7 +115,7 @@ async fn run(args: Args) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(args.bind_address).await?;
     #[cfg(feature = "tracing")]
     tracing::info!("Starting API server at {}", listener.local_addr()?);
-    let api = node_api::serve(&router, &listener);
+    let api = node_api::serve(&router, &listener, args.tcp_conn_limit);
 
     // Select the first future to complete to close.
     let ctrl_c = tokio::signal::ctrl_c();

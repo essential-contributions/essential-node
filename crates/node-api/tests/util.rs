@@ -68,7 +68,7 @@ where
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
     let api_jh = tokio::spawn(async move {
         tokio::select! {
-            _ = node_api::serve(&router, &listener) => {},
+            _ = node_api::serve(&router, &listener, node_api::DEFAULT_CONNECTION_LIMIT) => {},
             _ = shutdown_rx => {},
         }
     });
