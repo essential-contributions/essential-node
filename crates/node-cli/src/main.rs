@@ -90,7 +90,7 @@ fn init_tracing_subscriber() {
         .try_init();
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() {
     let args = Args::parse();
     if let Err(_err) = run(args).await {
@@ -122,7 +122,7 @@ async fn run(args: Args) -> anyhow::Result<()> {
         "Starting relayer and state derivation (relaying from {:?})",
         args.server_address
     );
-    let relayer_and_state = node.run(args.server_address).await?;
+    let relayer_and_state = node.run(args.server_address)?;
 
     // Run the API.
     let router = node_api::router(node.db());

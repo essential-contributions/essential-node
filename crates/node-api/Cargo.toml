@@ -31,4 +31,4 @@ tracing-subscriber = { workspace = true }
 [features]
 default = ["tracing"]
 test-utils = ["essential-node/test-utils"]
-tracing = ["dep:tracing"]
+tracing = ["dep:tracing", "essential-node/tracing"]
