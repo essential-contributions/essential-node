@@ -19,9 +19,10 @@ use essential_types::{
     contract::Contract, predicate::Predicate, solution::Solution, Block, ContentAddress, Hash, Key,
     Value,
 };
+use futures::Stream;
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
-use std::{ops::Range, time::Duration};
+use std::{future::Future, ops::Range, time::Duration};
 
 pub use query_range::finalized;
 
@@ -599,4 +600,58 @@ pub fn list_contracts(
     }
 
     Ok(blocks)
+}
+
+/// Subscribe to all blocks from the given starting block number.
+///
+/// The given `acquire_conn` function will be used on each iteration to
+/// asynchronously acquire a handle to a new rusqlite `Connection` from a source
+/// such as a connection pool. If the returned future completes with `None`, it
+/// is assumed the source of `Connection`s has closed, and in turn the `Stream`
+/// will close.
+///
+/// The given `await_new_block` function will be used as a signal to check
+/// whether or not a new block is available within the DB. The returned stream
+/// will yield immediately for each block until a DB query indicates there
+/// are no more blocks, at which point `await_new_block` is called before
+/// continuing. If `await_new_block` returns `None`, the source of new block
+/// notifications is assumed to have been closed and the stream will close.
+pub fn subscribe_blocks<F, FFut, Conn, G, GFut>(
+    start_block: u64,
+    acquire_conn: F,
+    await_new_block: G,
+) -> impl Stream<Item = Result<Block, QueryError>>
+where
+    // `acquire_conn` returns a future that resolves to an optional connection handle.
+    F: Clone + Fn() -> FFut,
+    FFut: Future<Output = Option<Conn>>,
+    Conn: AsRef<Connection>,
+    // `await_new_block` returns a future that resolves when a new block is available.
+    G: Clone + FnMut() -> GFut,
+    GFut: Future<Output = Option<()>>,
+{
+    futures::stream::unfold(start_block, move |block_ix| {
+        let acquire_conn = acquire_conn.clone();
+        let mut await_new_block = await_new_block.clone();
+        let next_block_ix = block_ix + 1;
+        async move {
+            loop {
+                // Acquire a connection.
+                // Returns `None` if the source of connections is closed.
+                let conn = acquire_conn().await?;
+                // Query for the current block.
+                match list_blocks(conn.as_ref(), block_ix..next_block_ix) {
+                    // If some error occurred, emit the error.
+                    Err(err) => return Some((Err(err), block_ix)),
+                    // If the query succeeded, pop the single block.
+                    Ok(mut vec) => match vec.pop() {
+                        // If there were no matching blocks, await the next.
+                        None => await_new_block().await?,
+                        // If we have the block, emit it.
+                        Some(block) => return Some((Ok(block), next_block_ix)),
+                    },
+                }
+            }
+        }
+    })
 }

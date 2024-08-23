@@ -4,13 +4,15 @@
 //! with node-specific wrappers, short-hands and helpers.
 
 use core::ops::Range;
+pub use essential_node_db::QueryError;
 use essential_node_db::{self as db};
 use essential_types::{
     contract::Contract, predicate::Predicate, solution::Solution, Block, ContentAddress, Key, Value,
 };
+use futures::Stream;
 use rusqlite::Transaction;
 use rusqlite_pool::tokio::{AsyncConnectionHandle, AsyncConnectionPool};
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{future::Future, path::PathBuf, sync::Arc, time::Duration};
 use thiserror::Error;
 use tokio::sync::{AcquireError, TryAcquireError};
 
@@ -229,6 +231,25 @@ impl ConnectionPool {
         self.acquire_then(move |h| db::list_contracts(h, block_range))
             .await
     }
+
+    /// Subscribe to all blocks from the given starting block number.
+    pub fn subscribe_blocks<F, Fut>(
+        &self,
+        start_block: u64,
+        await_new_block: F,
+    ) -> impl Stream<Item = Result<Block, QueryError>>
+    where
+        F: Clone + Fn() -> Fut,
+        Fut: Future<Output = Option<()>>,
+    {
+        // The `acquire_conn` function for acquiring connections.
+        let conn_pool = self.clone();
+        let acquire_conn = move || {
+            let conn_pool = conn_pool.clone();
+            async move { conn_pool.clone().acquire().await.ok() }
+        };
+        db::subscribe_blocks(start_block, acquire_conn, await_new_block)
+    }
 }
 
 impl Config {
@@ -248,6 +269,12 @@ impl Source {
     pub fn default_memory() -> Self {
         // Default ID cannot be an empty string.
         Self::Memory("__default-id".to_string())
+    }
+}
+
+impl AsRef<rusqlite::Connection> for ConnectionHandle {
+    fn as_ref(&self) -> &rusqlite::Connection {
+        self
     }
 }
 

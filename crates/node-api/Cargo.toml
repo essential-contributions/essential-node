@@ -11,6 +11,7 @@ repository.workspace = true
 axum = { workspace = true }
 essential-node = { workspace = true }
 essential-types = { workspace = true }
+futures = { workspace = true }
 hex = { workspace = true }
 http = { workspace = true }
 hyper = { workspace = true, features = ["http2"] }

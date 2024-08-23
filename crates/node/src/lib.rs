@@ -140,10 +140,13 @@ impl Node {
         )?;
 
         // Run state derivation stream.
-        let state_handle =
-            derive_state_stream(self.conn_pools.private.clone(), new_block, block_notify)?;
+        let state_handle = derive_state_stream(
+            self.conn_pools.private.clone(),
+            new_block.clone(),
+            block_notify,
+        )?;
 
-        Ok(Handle::new(relayer_handle, state_handle))
+        Ok(Handle::new(relayer_handle, state_handle, new_block))
     }
 }
 

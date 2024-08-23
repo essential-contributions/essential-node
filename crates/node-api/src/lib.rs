@@ -16,6 +16,18 @@ use tower_http::cors::CorsLayer;
 
 pub mod endpoint;
 
+/// State provided to the endpoints when serving connections.
+#[derive(Clone)]
+pub struct State {
+    /// A node DB connection pool.
+    pub conn_pool: db::ConnectionPool,
+    /// Notifies on availability of a new block (e.g. from the relayer).
+    ///
+    /// In the case that this is `None`, subscription streams will close after
+    /// the last available item in the DB.
+    pub new_block: Option<tokio::sync::watch::Receiver<()>>,
+}
+
 /// An error occurred while attempting to serve a new connection.
 #[derive(Debug, Error)]
 pub enum ServeNextConnError {
@@ -66,7 +78,11 @@ pub async fn serve(router: &Router, listener: &TcpListener, conn_limit: usize) {
 /// # use essential_node_api as node_api;
 /// let conf = node::Config::default();
 /// let node = Node::new(&conf).unwrap();
-/// let router = node_api::router(node.db());
+/// let state = node_api::State {
+///     conn_pool: node.db(),
+///     new_block: None,
+/// };
+/// let router = node_api::router(state);
 /// let listener = tokio::net::TcpListener::bind("127.0.0.1:3553").await.unwrap();
 /// let conn_limit = node_api::DEFAULT_CONNECTION_LIMIT;
 /// let mut conn_set = tokio::task::JoinSet::new();
@@ -154,14 +170,14 @@ pub async fn serve_conn(router: &Router, stream: TcpStream) -> Result<(), ServeC
 
 /// Construct the endpoint router with the node [`endpoint`]s, CORS layer and DB
 /// connection pool as state.
-pub fn router(conn_pool: db::ConnectionPool) -> Router {
+pub fn router(state: State) -> Router {
     with_endpoints(Router::new())
         .layer(cors_layer())
-        .with_state(conn_pool)
+        .with_state(state)
 }
 
 /// Add the node API [`endpoint`]s to the given `router`.
-pub fn with_endpoints(router: Router<db::ConnectionPool>) -> Router<db::ConnectionPool> {
+pub fn with_endpoints(router: Router<State>) -> Router<State> {
     use endpoint::*;
     router
         .route(health_check::PATH, get(health_check::handler))
