@@ -52,15 +52,15 @@ async fn can_derive_state() {
         .map(essential_hash::content_addr)
         .collect::<Vec<_>>();
 
-    let (state_rx, state_tx) = tokio::sync::watch::channel(());
+    let (state_tx, state_rx) = tokio::sync::watch::channel(());
 
-    let handle = derive_state_stream(conn_pool.clone(), state_tx).unwrap();
+    let handle = derive_state_stream(conn_pool.clone(), state_rx).unwrap();
 
     // Initially, the state progress is none
     assert_state_progress_is_none(&conn);
 
     // Process block 0
-    insert_block_and_send_notification(&mut conn, &blocks[0], &state_rx);
+    insert_block_and_send_notification(&mut conn, &blocks[0], &state_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
     // Assert state progress is block 0
     assert_state_progress_is_some(&conn, &blocks[0], &hashes[0]);
@@ -68,10 +68,10 @@ async fn can_derive_state() {
     assert_multiple_block_mutations(&conn, &[&blocks[0]]);
 
     // Process block 1
-    insert_block_and_send_notification(&mut conn, &blocks[1], &state_rx);
+    insert_block_and_send_notification(&mut conn, &blocks[1], &state_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
     // Process block 2
-    insert_block_and_send_notification(&mut conn, &blocks[2], &state_rx);
+    insert_block_and_send_notification(&mut conn, &blocks[2], &state_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
     // Assert state progress is block 2
     assert_state_progress_is_some(&conn, &blocks[2], &hashes[2]);
@@ -79,7 +79,7 @@ async fn can_derive_state() {
     assert_multiple_block_mutations(&conn, &[&blocks[1], &blocks[2]]);
 
     // Process block 3
-    insert_block_and_send_notification(&mut conn, &blocks[3], &state_rx);
+    insert_block_and_send_notification(&mut conn, &blocks[3], &state_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
     // Assert state progress is block 3
     assert_state_progress_is_some(&conn, &blocks[3], &hashes[3]);

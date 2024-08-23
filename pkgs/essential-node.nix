@@ -6,7 +6,6 @@
 , rustPlatform
 , sqlite
 , openssl
-, openssh
 }:
 let
   src = builtins.path {
@@ -49,7 +48,6 @@ rustPlatform.buildRustPackage {
   buildInputs = [
     sqlite
     openssl
-    openssh
   ] ++ lib.optionals stdenv.isLinux [
   ] ++ lib.optionals stdenv.isDarwin [
     darwin.apple_sdk.frameworks.SystemConfiguration

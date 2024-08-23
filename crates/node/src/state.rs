@@ -35,13 +35,13 @@ where
 /// Critical errors will cause the stream to end.
 pub fn derive_state_stream(
     conn: ConnectionPool,
-    state_rx: watch::Receiver<()>,
+    block_rx: watch::Receiver<()>,
 ) -> Result<Handle<CriticalError>, CriticalError> {
     let (shutdown, stream_close) = watch::channel(());
 
     let jh = tokio::spawn(async move {
         loop {
-            let rx = WatchStream::new(state_rx.clone());
+            let rx = WatchStream::new(block_rx.clone());
             let mut stream_close = stream_close.clone();
             let close = async move {
                 let _ = stream_close.changed().await;
