@@ -4,7 +4,6 @@ use essential_node_api as node_api;
 use std::{
     net::{SocketAddr, SocketAddrV4},
     path::PathBuf,
-    time::Duration,
 };
 
 /// The Essential Node CLI.
@@ -138,12 +137,12 @@ async fn run(args: Args) -> anyhow::Result<()> {
     tokio::select! {
         _ = api => {},
         _ = ctrl_c => {},
-    }
-
-    // After Ctrl+C, join the relayer and state streams, timing out if it takes longer than 3 secs.
-    if let Err(e) = tokio::time::timeout(Duration::from_secs(3), relayer_and_state.close()).await {
-        #[cfg(feature = "tracing")]
-        tracing::error!("Error while joining relayer and state derivation: {e}")
+        r = relayer_and_state.join() => {
+            if let Err(e) = r {
+                #[cfg(feature = "tracing")]
+                tracing::error!("Critical error on relayer or state derivation streams: {e}")
+            }
+        },
     }
 
     node.close().map_err(|e| anyhow::anyhow!("{e}"))?;
