@@ -40,8 +40,13 @@ pub fn derive_state_stream(
     let (shutdown, stream_close) = watch::channel(());
 
     let jh = tokio::spawn(async move {
+        let mut missing_block = false;
         loop {
-            let rx = WatchStream::new(block_rx.clone());
+            let rx = if missing_block {
+                WatchStream::from_changes(block_rx.clone())
+            } else {
+                WatchStream::new(block_rx.clone())
+            };
             let mut stream_close = stream_close.clone();
             let close = async move {
                 let _ = stream_close.changed().await;
@@ -57,6 +62,7 @@ pub fn derive_state_stream(
                 // Stream has ended, return from the task
                 Ok(_) => return Ok(()),
                 Err(e) => {
+                    missing_block = check_missing_block(&e);
                     // Return error if it's critical or
                     // continue if it's recoverable
                     handle_error(e)?;
@@ -66,6 +72,13 @@ pub fn derive_state_stream(
     });
 
     Ok(Handle::new(jh, shutdown))
+}
+
+fn check_missing_block(e: &InternalError) -> bool {
+    matches!(
+        e,
+        InternalError::Recoverable(RecoverableError::BlockNotFound(_))
+    )
 }
 
 /// Apply state mutations to the next block in the database.

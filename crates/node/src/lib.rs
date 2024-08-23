@@ -109,14 +109,14 @@ impl Node {
 
     /// Run the `Node`.
     ///
-    /// This method will start the relayer and state derivation stream.
+    /// This method will start the relayer and state derivation streams.
     /// Relayer will sync contracts and blocks from the server to node database
     /// and notify state derivation stream of new blocks via the shared watch channel.
     ///
     /// Returns a [`Handle`] that can be used to close the two streams.
     /// The streams will continue to run until the handle is dropped.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    pub async fn run(&self, server_address: String) -> Result<Handle, CriticalError> {
+    pub fn run(&self, server_address: String) -> Result<Handle, CriticalError> {
         // Run relayer.
         let (contract_notify, _new_contract) = tokio::sync::watch::channel(());
         let (block_notify, new_block) = tokio::sync::watch::channel(());

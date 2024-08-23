@@ -12,7 +12,7 @@ essential-hash.workspace = true
 essential-node-db.workspace = true
 essential-types.workspace = true
 futures.workspace = true
-reqwest.workspace = true
+reqwest = { workspace = true, features = ["json", "stream", "native-tls-alpn"] }
 rusqlite.workspace = true
 rusqlite-pool = { workspace = true, features = ["tokio"] }
 serde.workspace = true
