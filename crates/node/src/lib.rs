@@ -109,7 +109,7 @@ impl Node {
 
     /// Run the `Node`.
     ///
-    /// This method will start the relayer and state derivation stream.
+    /// This method will start the relayer and state derivation streams.
     /// Relayer will sync contracts and blocks from the server to node database
     /// and notify state derivation stream of new blocks via the shared watch channel.
     ///

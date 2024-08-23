@@ -4,6 +4,7 @@ use essential_node_api as node_api;
 use std::{
     net::{SocketAddr, SocketAddrV4},
     path::PathBuf,
+    time::Duration,
 };
 
 /// The Essential Node CLI.
@@ -13,6 +14,12 @@ struct Args {
     /// The address to bind to for the TCP listener that will be used to serve the API.
     #[arg(long, default_value_t = SocketAddrV4::new([0; 4].into(), 0).into())]
     bind_address: SocketAddr,
+    /// The URL address of the Essential server that will act as the layer-1.
+    ///
+    /// Note: This will likely be replaced with an L1 RPC URL flag upon switching to
+    /// use of Ethereum (or Ethereum test-net) as an L1.
+    #[arg(long)]
+    server_address: String,
     /// The type of DB storage to use.
     ///
     /// In the case that "persistent" is specified, assumes the default path.
@@ -110,6 +117,14 @@ async fn run(args: Args) -> anyhow::Result<()> {
     }
     let node = Node::new(&conf)?;
 
+    // Run the relayer and state derivation.
+    #[cfg(feature = "tracing")]
+    tracing::info!(
+        "Starting relayer and state derivation (relaying from {:?})",
+        args.server_address
+    );
+    let relayer_and_state = node.run(args.server_address).await?;
+
     // Run the API.
     let router = node_api::router(node.db());
     let listener = tokio::net::TcpListener::bind(args.bind_address).await?;
@@ -118,11 +133,19 @@ async fn run(args: Args) -> anyhow::Result<()> {
     let api = node_api::serve(&router, &listener, args.tcp_conn_limit);
 
     // Select the first future to complete to close.
+    // TODO: We should select over relayer/state-derivation critical error here.
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::select! {
         _ = api => {},
         _ = ctrl_c => {},
     }
+
+    // After Ctrl+C, join the relayer and state streams, timing out if it takes longer than 3 secs.
+    if let Err(e) = tokio::time::timeout(Duration::from_secs(3), relayer_and_state.close()).await {
+        #[cfg(feature = "tracing")]
+        tracing::error!("Error while joining relayer and state derivation: {e}")
+    }
+
     node.close().map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(())
 }
