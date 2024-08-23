@@ -486,6 +486,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "essential-asm-gen"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "748f91e7cb72404c41ea8354ca010a6e0ade2132d7ff624f99a6103de1d283ea"
+dependencies = [
+ "essential-asm-spec",
+ "essential-types",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "essential-asm-spec"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7c81aae90d82e04674453e79941f844968ea418e6e972914560563bf6d3f05c"
+dependencies = [
+ "serde",
+ "serde_yaml",
+]
+
+[[package]]
+name = "essential-constraint-asm"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00202b6562f2a581aff2114c3a92ba59d90fe03822b57d3bb7ed52dcb544728c"
+dependencies = [
+ "essential-asm-gen",
+ "essential-types",
+ "serde",
+]
+
+[[package]]
 name = "essential-hash"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -501,13 +535,19 @@ dependencies = [
 name = "essential-node"
 version = "0.1.0"
 dependencies = [
+ "essential-constraint-asm",
  "essential-hash",
  "essential-node-db",
+ "essential-relayer",
+ "essential-sign",
+ "essential-state-asm",
  "essential-types",
  "futures",
  "num_cpus",
+ "reqwest",
  "rusqlite",
  "rusqlite-pool",
+ "secp256k1",
  "thiserror",
  "tokio",
  "tokio-stream",
@@ -599,6 +639,17 @@ dependencies = [
  "essential-hash",
  "essential-types",
  "secp256k1",
+]
+
+[[package]]
+name = "essential-state-asm"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "858651de8c9ec712289d29837e6ca83986d029031bb67cfe0925396d3de8579c"
+dependencies = [
+ "essential-asm-gen",
+ "essential-constraint-asm",
+ "serde",
 ]
 
 [[package]]
@@ -1725,6 +1776,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_yaml"
+version = "0.9.34+deprecated"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
+dependencies = [
+ "indexmap",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml",
+]
+
+[[package]]
 name = "sha2"
 version = "0.10.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2119,6 +2183,12 @@ checksum = "a56d1686db2308d901306f92a263857ef59ea39678a5458e7cb17f01415101f5"
 dependencies = [
  "tinyvec",
 ]
+
+[[package]]
+name = "unsafe-libyaml"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
 
 [[package]]
 name = "untrusted"

@@ -1,6 +1,5 @@
-use thiserror::Error;
-
 use crate::db::AcquireThenQueryError;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub(super) enum InternalError {
@@ -34,4 +33,6 @@ pub enum CriticalError {
     ReadState(#[from] AcquireThenQueryError),
     #[error("database connection pool closed")]
     DbPoolClosed(#[from] tokio::sync::AcquireError),
+    #[error(transparent)]
+    Relayer(#[from] essential_relayer::Error),
 }

@@ -2,12 +2,17 @@
 //!
 //! The primary entry-point to the crate is the [`Node`] type.
 
+use error::CriticalError;
+use essential_relayer::Relayer;
+pub use node_handle::Handle;
+use state::derive_state_stream;
 use thiserror::Error;
 
 pub mod db;
 mod error;
-mod handle;
+mod node_handle;
 mod state;
+mod state_handle;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_utils;
 
@@ -100,6 +105,29 @@ impl Node {
             return Err(ConnectionCloseErrors(errs).into());
         }
         Ok(())
+    }
+
+    /// Run the `Node`.
+    ///
+    /// This method will start the relayer and state derivation stream.
+    /// Relayer will sync contracts and blocks from the server to node database
+    /// and notify state derivation stream of new blocks via the shared watch channel.
+    ///
+    /// Returns a [`Handle`] that can be used to close the two streams.
+    /// The streams will continue to run until the handle is dropped.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+    pub async fn run(&self, server_address: String) -> Result<Handle, CriticalError> {
+        // Run relayer.
+        let (contract_notify, _new_contract) = tokio::sync::watch::channel(());
+        let (block_notify, new_block) = tokio::sync::watch::channel(());
+        let relayer = Relayer::new(server_address.as_str())?;
+        let relayer_handle =
+            relayer.run((*self.conn_pool.0).clone(), contract_notify, block_notify)?;
+
+        // Run state derivation stream.
+        let state_handle = derive_state_stream(self.conn_pool.clone(), new_block)?;
+
+        Ok(Handle::new(relayer_handle, state_handle))
     }
 }
 

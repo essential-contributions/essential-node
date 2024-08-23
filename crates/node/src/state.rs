@@ -4,7 +4,7 @@
 use crate::{
     db::{ConnectionHandle, ConnectionPool},
     error::{CriticalError, InternalError, RecoverableError},
-    handle::Handle,
+    state_handle::Handle,
 };
 use essential_node_db::{update_state, update_state_progress};
 use essential_types::{solution::Mutation, Block, ContentAddress};
@@ -33,7 +33,7 @@ where
 ///
 /// Recoverable errors will be logged and the stream will be restarted.
 /// Critical errors will cause the stream to end.
-pub async fn derive_state_stream(
+pub fn derive_state_stream(
     conn: ConnectionPool,
     block_rx: watch::Receiver<()>,
 ) -> Result<Handle<CriticalError>, CriticalError> {

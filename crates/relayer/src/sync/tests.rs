@@ -1,8 +1,6 @@
-use essential_types::predicate::{Directive, Predicate};
-
-use crate::error::InternalError;
-
 use super::*;
+use crate::error::InternalError;
+use essential_types::predicate::{Directive, Predicate};
 
 fn new_conn_pool() -> AsyncConnectionPool {
     AsyncConnectionPool::new(3, || {

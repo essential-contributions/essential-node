@@ -5,6 +5,7 @@
 , pkg-config
 , rustPlatform
 , sqlite
+, openssl
 }:
 let
   src = builtins.path {
@@ -38,12 +39,15 @@ rustPlatform.buildRustPackage {
 
   buildAndTestSubdir = "crates/node-cli";
 
+  OPENSSL_NO_VENDOR = 1;
+
   nativeBuildInputs = lib.optionals stdenv.isLinux [
     pkg-config
   ];
 
   buildInputs = [
     sqlite
+    openssl
   ] ++ lib.optionals stdenv.isLinux [
   ] ++ lib.optionals stdenv.isDarwin [
     darwin.apple_sdk.frameworks.SystemConfiguration

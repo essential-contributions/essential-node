@@ -3,19 +3,17 @@
 //! The relayer syncs contracts and blocks.
 //! There are notify channels to signal when new data has been synced.
 
-use std::future::Future;
-
-use error::InternalError;
-use error::InternalResult;
-use futures::StreamExt;
-pub use handle::Handle;
-use reqwest::{ClientBuilder, Url};
-
 use error::CriticalError;
 pub use error::DataSyncError;
 pub use error::Error;
+use error::InternalError;
+use error::InternalResult;
 pub use error::Result;
+use futures::StreamExt;
+pub use handle::Handle;
+use reqwest::{ClientBuilder, Url};
 use rusqlite_pool::tokio::AsyncConnectionPool;
+use std::future::Future;
 use sync::stream_blocks;
 use sync::stream_contracts;
 use sync::sync_blocks;
@@ -82,7 +80,7 @@ impl Relayer {
             let relayer = self.clone();
             let notify = new_block.clone();
             async move {
-                // Run the contracts stream
+                // Run the blocks stream
                 relayer.run_blocks(conn, shutdown, notify).await
             }
         };
