@@ -81,14 +81,20 @@ fn check_missing_block(e: &InternalError) -> bool {
     )
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 /// Apply state mutations to the next block in the database.
 ///
 /// Read the last progress on state updates.
 /// Get the next block to process and apply its state mutations.
 async fn derive_next_block_state(conn: ConnectionPool) -> Result<(), InternalError> {
+    dbg!();
     let progress = get_last_progress(&conn).await?;
 
     let block = get_next_block(&conn, progress).await?;
+
+    #[cfg(feature = "tracing")]
+    tracing::debug!("Deriving state for block number {}", block.number);
+
     let block_hash = essential_hash::content_addr(&block);
 
     let mutations = block.solutions.into_iter().flat_map(|solution| {

@@ -67,6 +67,7 @@ pub async fn get_block_progress(
     .await?
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 /// Sync contracts from the provided stream.
 ///
 /// The first contract in the stream must be the last
@@ -123,6 +124,12 @@ where
             let conn = conn.clone();
             let notify = notify.clone();
             async move {
+                #[cfg(feature = "tracing")]
+                tracing::debug!(
+                    "Writing contract at l2 block number {} to database",
+                    this_l2_block_number
+                );
+
                 write_contract(&conn, contract, this_l2_block_number, notify.clone())
                     .map_err(Into::into)
                     .await
@@ -132,6 +139,7 @@ where
     Ok(())
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 /// Sync blocks from the provided stream.
 ///
 /// The first block in the stream must be the last
@@ -187,6 +195,9 @@ where
                         RecoverableError::NonSequentialBlock(block_number, block.number).into(),
                     );
                 }
+
+                #[cfg(feature = "tracing")]
+                tracing::debug!("Writing block number {} to database", block.number);
 
                 // Write the block to the database.
                 write_block(&conn, block).await?;
