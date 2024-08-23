@@ -87,7 +87,6 @@ fn check_missing_block(e: &InternalError) -> bool {
 /// Read the last progress on state updates.
 /// Get the next block to process and apply its state mutations.
 async fn derive_next_block_state(conn: ConnectionPool) -> Result<(), InternalError> {
-    dbg!();
     let progress = get_last_progress(&conn).await?;
 
     let block = get_next_block(&conn, progress).await?;
