@@ -6,13 +6,7 @@ FROM
 WHERE
     mutation.contract_ca = :contract_ca
     AND mutation.key = :key
-    AND (
-        block_solution.block_number < :block_number
-        OR (
-            block_solution.block_number = :block_number
-            AND block_solution.solution_index <= :solution_index
-        )
-    )
+    AND block_solution.block_number <= :block_number
 ORDER BY
     block_solution.block_number DESC,
     block_solution.solution_index DESC

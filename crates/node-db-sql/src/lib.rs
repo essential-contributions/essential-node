@@ -59,8 +59,12 @@ pub mod query {
     decl_const_sql_str!(LIST_BLOCKS_BY_TIME, "query/list_blocks_by_time.sql");
     decl_const_sql_str!(LIST_CONTRACTS_BY_TIME, "query/list_contracts_by_time.sql");
     decl_const_sql_str!(
-        QUERY_STATE_AT_OPTIMISTIC,
-        "query/query_state_at_optimistic.sql"
+        QUERY_STATE_AT_BLOCK_MULTIVERSE,
+        "query/query_state_at_block_multiverse.sql"
+    );
+    decl_const_sql_str!(
+        QUERY_STATE_AT_SOLUTION_MULTIVERSE,
+        "query/query_state_at_solution_multiverse.sql"
     );
 }
 
