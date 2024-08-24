@@ -121,11 +121,14 @@ impl Node {
         let (contract_notify, _new_contract) = tokio::sync::watch::channel(());
         let (block_notify, new_block) = tokio::sync::watch::channel(());
         let relayer = Relayer::new(server_address.as_str())?;
-        let relayer_handle =
-            relayer.run((*self.conn_pool.0).clone(), contract_notify, block_notify)?;
+        let relayer_handle = relayer.run(
+            (*self.conn_pool.0).clone(),
+            contract_notify,
+            block_notify.clone(),
+        )?;
 
         // Run state derivation stream.
-        let state_handle = derive_state_stream(self.conn_pool.clone(), new_block)?;
+        let state_handle = derive_state_stream(self.conn_pool.clone(), new_block, block_notify)?;
 
         Ok(Handle::new(relayer_handle, state_handle))
     }

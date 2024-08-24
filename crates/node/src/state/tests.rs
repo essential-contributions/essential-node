@@ -54,7 +54,7 @@ async fn can_derive_state() {
 
     let (state_tx, state_rx) = tokio::sync::watch::channel(());
 
-    let handle = derive_state_stream(conn_pool.clone(), state_rx).unwrap();
+    let handle = derive_state_stream(conn_pool.clone(), state_rx, state_tx.clone()).unwrap();
 
     // Initially, the state progress is none
     assert_state_progress_is_none(&conn);
@@ -109,12 +109,12 @@ async fn fork() {
         .map(essential_hash::content_addr)
         .collect::<Vec<_>>();
 
-    let (state_rx, state_tx) = tokio::sync::watch::channel(());
+    let (state_tx, state_rx) = tokio::sync::watch::channel(());
 
-    let handle = derive_state_stream(conn_pool.clone(), state_tx).unwrap();
+    let handle = derive_state_stream(conn_pool.clone(), state_rx, state_tx.clone()).unwrap();
 
     // Stream processes block 0
-    insert_block_and_send_notification(&mut conn, &blocks[0], &state_rx);
+    insert_block_and_send_notification(&mut conn, &blocks[0], &state_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // State progress is updated outside of the stream to be block 2
@@ -122,7 +122,7 @@ async fn fork() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Stream errors when processing block 1
-    insert_block_and_send_notification(&mut conn, &blocks[1], &state_rx);
+    insert_block_and_send_notification(&mut conn, &blocks[1], &state_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let err = handle.close().await.err().unwrap();

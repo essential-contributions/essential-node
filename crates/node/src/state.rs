@@ -6,7 +6,7 @@ use crate::{
     error::{CriticalError, InternalError, RecoverableError},
     state_handle::Handle,
 };
-use essential_node_db::{update_state, update_state_progress};
+use essential_node_db::{get_latest_block_number, update_state, update_state_progress};
 use essential_types::{solution::Mutation, Block, ContentAddress};
 use futures::stream::{StreamExt, TryStreamExt};
 use tokio::sync::watch;
@@ -36,6 +36,7 @@ where
 pub fn derive_state_stream(
     conn: ConnectionPool,
     block_rx: watch::Receiver<()>,
+    self_notify: watch::Sender<()>,
 ) -> Result<Handle<CriticalError>, CriticalError> {
     let (shutdown, stream_close) = watch::channel(());
 
@@ -55,7 +56,7 @@ pub fn derive_state_stream(
             let r = rx
                 .take_until(close)
                 .map(Ok)
-                .try_for_each(|_| derive_next_block_state(conn.clone()))
+                .try_for_each(|_| derive_next_block_state(conn.clone(), self_notify.clone()))
                 .await;
 
             match r {
@@ -86,7 +87,10 @@ fn check_missing_block(e: &InternalError) -> bool {
 ///
 /// Read the last progress on state updates.
 /// Get the next block to process and apply its state mutations.
-async fn derive_next_block_state(conn: ConnectionPool) -> Result<(), InternalError> {
+async fn derive_next_block_state(
+    conn: ConnectionPool,
+    self_notify: watch::Sender<()>,
+) -> Result<(), InternalError> {
     let progress = get_last_progress(&conn).await?;
 
     let block = get_next_block(&conn, progress).await?;
@@ -103,7 +107,10 @@ async fn derive_next_block_state(conn: ConnectionPool) -> Result<(), InternalErr
         })
     });
 
-    update_state_in_db(conn, mutations, block.number, block_hash).await
+    if update_state_in_db(conn, mutations, block.number, block_hash).await? {
+        let _ = self_notify.send(());
+    }
+    Ok(())
 }
 
 /// Fetch the last processed block from the database in a blocking task.
@@ -158,7 +165,7 @@ async fn update_state_in_db<S, I>(
     mutations: I,
     block_number: u64,
     block_hash: ContentAddress,
-) -> Result<(), InternalError>
+) -> Result<bool, InternalError>
 where
     S: IntoIterator<Item = Mutation>,
     I: IntoIterator<Item = Mutations<S>> + Send + 'static,
@@ -166,20 +173,30 @@ where
     #[cfg(feature = "tracing")]
     let span = tracing::Span::current();
 
-    let conn = conn.acquire().await.map_err(CriticalError::from)?;
-    let r = tokio::task::spawn_blocking(move || {
+    let mut conn = conn.acquire().await.map_err(CriticalError::from)?;
+    let r: Result<bool, InternalError> = tokio::task::spawn_blocking(move || {
         #[cfg(feature = "tracing")]
         let _guard = span.enter();
 
-        update_state_in_db_inner(conn, mutations, block_number, block_hash)
+        update_state_in_db_inner(&mut conn, mutations, block_number, block_hash)?;
+        match get_latest_block_number(&conn) {
+            Ok(Some(latest_block_number)) => {
+                if latest_block_number > block_number {
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }
+            }
+            _ => Ok(false),
+        }
     })
     .await
     .map_err(RecoverableError::Join)?;
-    Ok(r?)
+    r
 }
 
 fn update_state_in_db_inner<S, I>(
-    mut conn: ConnectionHandle,
+    conn: &mut ConnectionHandle,
     mutations: I,
     block_number: u64,
     block_hash: ContentAddress,
