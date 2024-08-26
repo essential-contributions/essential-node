@@ -96,6 +96,9 @@ impl Relayer {
         mut shutdown: watch::Receiver<()>,
         notify: watch::Sender<()>,
     ) -> InternalResult<()> {
+        #[cfg(feature = "tracing")]
+        tracing::info!("Stream starting");
+
         // Get the last progress that was made from the database.
         let progress = sync::get_contract_progress(&conn).await?;
 
@@ -121,6 +124,9 @@ impl Relayer {
         mut shutdown: watch::Receiver<()>,
         notify: watch::Sender<()>,
     ) -> InternalResult<()> {
+        #[cfg(feature = "tracing")]
+        tracing::info!("Stream starting");
+
         // Get the last progress that was made from the database.
         let progress = sync::get_block_progress(&conn).await?;
 

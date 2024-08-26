@@ -50,6 +50,104 @@ fn test_insert_block() {
 }
 
 #[test]
+fn test_finalize_block() {
+    // Number of blocks to insert.
+    const NUM_BLOCKS: u64 = 3;
+
+    // Number of blocks to finalize.
+    const NUM_FINALIZED_BLOCKS: u64 = 2;
+
+    if NUM_FINALIZED_BLOCKS > NUM_BLOCKS {
+        panic!("NUM_FINALIZED_BLOCKS must be less than or equal to NUM_BLOCKS");
+    }
+
+    // Test blocks that we'll insert.
+    let blocks = util::test_blocks(NUM_BLOCKS);
+
+    // Create an in-memory SQLite database
+    let mut conn = Connection::open_in_memory().unwrap();
+
+    // Create the necessary tables and insert the block.
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    for block in &blocks {
+        node_db::insert_block(&tx, block).unwrap();
+    }
+    tx.commit().unwrap();
+
+    let r = node_db::list_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
+    assert_eq!(blocks.len(), NUM_BLOCKS as usize);
+
+    for (block, expected_block) in blocks.iter().zip(&r) {
+        assert_eq!(block, expected_block);
+    }
+
+    // Finalize the blocks.
+    let tx = conn.transaction().unwrap();
+    for block in blocks.iter().take(NUM_FINALIZED_BLOCKS as usize) {
+        let block_hash = content_addr(block);
+        node_db::finalize_block(&tx, &block_hash).unwrap();
+    }
+    tx.commit().unwrap();
+
+    // Should not change list blocks
+    let r = node_db::list_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
+    assert_eq!(r.len(), NUM_BLOCKS as usize);
+
+    // Check the latest finalized block hash.
+    let latest_finalized_block_hash = node_db::get_latest_finalized_block_hash(&conn).unwrap();
+    let expected_latest_finalized_block_hash =
+        content_addr(&blocks[NUM_FINALIZED_BLOCKS as usize - 1]);
+    assert_eq!(
+        latest_finalized_block_hash,
+        Some(expected_latest_finalized_block_hash)
+    );
+
+    let query = "SELECT DISTINCT b.block_hash FROM block AS b JOIN finalized_block AS f ON f.block_id = b.id ORDER BY b.number ASC";
+    let mut stmt = conn.prepare(query).unwrap();
+    let rows: Vec<essential_types::Hash> = stmt
+        .query_map([], |row| row.get("block_hash"))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(rows.len(), NUM_FINALIZED_BLOCKS as usize);
+    rows.iter()
+        .zip(blocks.iter())
+        .for_each(|(block_hash, block)| {
+            let expected_block_hash = content_addr(block);
+            assert_eq!(*block_hash, expected_block_hash.0);
+        });
+}
+
+#[test]
+fn test_fork_block() {
+    let first = util::test_block(0, Duration::from_secs(1));
+    let fork_a = util::test_block(1, Duration::from_secs(1));
+    let fork_b = util::test_block(1, Duration::from_secs(2));
+
+    // Create an in-memory SQLite database
+    let mut conn = Connection::open_in_memory().unwrap();
+
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    node_db::insert_block(&tx, &first).unwrap();
+    node_db::insert_block(&tx, &fork_a).unwrap();
+    node_db::insert_block(&tx, &fork_b).unwrap();
+    tx.commit().unwrap();
+
+    let r = node_db::list_blocks(&conn, 0..10).unwrap();
+    assert_eq!(r.len(), 3);
+    assert_eq!(r[0], first);
+
+    if r[1] == fork_a {
+        assert_eq!(r[2], fork_b);
+    } else {
+        assert_eq!(r[1], fork_b);
+        assert_eq!(r[2], fork_a);
+    }
+}
+
+#[test]
 fn test_insert_contract() {
     // The test contract that we'll insert.
     let seed = 42;

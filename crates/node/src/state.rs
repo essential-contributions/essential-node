@@ -6,7 +6,9 @@ use crate::{
     error::{CriticalError, InternalError, RecoverableError},
     state_handle::Handle,
 };
-use essential_node_db::{get_latest_block_number, update_state, update_state_progress};
+use essential_node_db::{
+    get_block_number, get_latest_finalized_block_hash, update_state, update_state_progress,
+};
 use essential_types::{solution::Mutation, Block, ContentAddress};
 use futures::stream::{StreamExt, TryStreamExt};
 use tokio::sync::watch;
@@ -179,7 +181,14 @@ where
         let _guard = span.enter();
 
         update_state_in_db_inner(&mut conn, mutations, block_number, block_hash)?;
-        match get_latest_block_number(&conn) {
+        let tx = conn.transaction();
+        let latest_finalized_block_number = tx.and_then(|tx| {
+            get_latest_finalized_block_hash(&tx).and_then(|hash| {
+                hash.and_then(|hash| get_block_number(&tx, &hash).transpose())
+                    .transpose()
+            })
+        });
+        match latest_finalized_block_number {
             Ok(Some(latest_block_number)) => {
                 if latest_block_number > block_number {
                     Ok(true)

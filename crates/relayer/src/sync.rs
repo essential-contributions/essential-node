@@ -56,13 +56,18 @@ pub async fn get_block_progress(
     let mut conn = conn.acquire().await?;
     tokio::task::spawn_blocking(move || {
         let tx = conn.transaction()?;
-        let block = essential_node_db::get_latest_block(&tx)?;
+        let Some(block_hash) = essential_node_db::get_latest_finalized_block_hash(&tx)? else {
+            return Ok(None);
+        };
+        let Some(block_number) = essential_node_db::get_block_number(&tx, &block_hash)? else {
+            return Ok(None);
+        };
         tx.finish()?;
-        let progress = block.map(|block| BlockProgress {
-            last_block_number: block.number,
-            last_block_hash: essential_hash::content_addr(&block),
-        });
-        Ok(progress)
+        let progress = BlockProgress {
+            last_block_number: block_number,
+            last_block_hash: block_hash,
+        };
+        Ok(Some(progress))
     })
     .await?
 }
@@ -243,8 +248,14 @@ async fn write_contract(
 async fn write_block(conn: &AsyncConnectionPool, block: Block) -> crate::Result<()> {
     let mut conn = conn.acquire().await?;
     spawn_blocking(move || {
+        let block_hash = essential_hash::content_addr(&block);
         let tx = conn.transaction()?;
         essential_node_db::insert_block(&tx, &block)?;
+
+        // We are currently finalizing the block immediately.
+        // This will be changed in the when we have a time period
+        // before finalization can occur.
+        essential_node_db::finalize_block(&tx, &block_hash)?;
         tx.commit()?;
         Ok(())
     })

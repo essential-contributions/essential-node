@@ -24,6 +24,7 @@ pub mod create {
     decl_const_sql_str!(CONTRACT_PREDICATE, "create/contract_predicate.sql");
     decl_const_sql_str!(CONTRACT_PROGRESS, "create/contract_progress.sql");
     decl_const_sql_str!(CONTRACT, "create/contract.sql");
+    decl_const_sql_str!(FINALIZED_BLOCK, "create/finalized_block.sql");
     decl_const_sql_str!(MUTATION, "create/mutation.sql");
     decl_const_sql_str!(PREDICATE, "create/predicate.sql");
     decl_const_sql_str!(SOLUTION, "create/solution.sql");
@@ -38,6 +39,7 @@ pub mod insert {
     decl_const_sql_str!(CONTRACT, "insert/contract.sql");
     decl_const_sql_str!(CONTRACT_PREDICATE, "insert/contract_predicate.sql");
     decl_const_sql_str!(CONTRACT_PROGRESS, "insert/contract_progress.sql");
+    decl_const_sql_str!(FINALIZE_BLOCK, "insert/finalize_block.sql");
     decl_const_sql_str!(MUTATION, "insert/mutation.sql");
     decl_const_sql_str!(PREDICATE, "insert/predicate.sql");
     decl_const_sql_str!(SOLUTION, "insert/solution.sql");
@@ -49,7 +51,12 @@ pub mod query {
     decl_const_sql_str!(GET_CONTRACT_PREDICATES, "query/get_contract_predicates.sql");
     decl_const_sql_str!(GET_CONTRACT_PROGRESS, "query/get_contract_progress.sql");
     decl_const_sql_str!(GET_CONTRACT_SALT, "query/get_contract_salt.sql");
+    decl_const_sql_str!(GET_BLOCK_NUMBER, "query/get_block_number.sql");
     decl_const_sql_str!(GET_LATEST_BLOCK_NUMBER, "query/get_latest_block_number.sql");
+    decl_const_sql_str!(
+        GET_LATEST_FINALIZED_BLOCK_HASH,
+        "query/get_latest_finalized_block_hash.sql"
+    );
     decl_const_sql_str!(GET_PREDICATE, "query/get_predicate.sql");
     decl_const_sql_str!(GET_SOLUTION, "query/get_solution.sql");
     decl_const_sql_str!(GET_STATE_PROGRESS, "query/get_state_progress.sql");
@@ -59,12 +66,12 @@ pub mod query {
     decl_const_sql_str!(LIST_BLOCKS_BY_TIME, "query/list_blocks_by_time.sql");
     decl_const_sql_str!(LIST_CONTRACTS_BY_TIME, "query/list_contracts_by_time.sql");
     decl_const_sql_str!(
-        QUERY_STATE_AT_BLOCK_MULTIVERSE,
-        "query/query_state_at_block_multiverse.sql"
+        QUERY_STATE_AT_BLOCK_FINALIZED,
+        "query/query_state_at_block_finalized.sql"
     );
     decl_const_sql_str!(
-        QUERY_STATE_AT_SOLUTION_MULTIVERSE,
-        "query/query_state_at_solution_multiverse.sql"
+        QUERY_STATE_AT_SOLUTION_FINALIZED,
+        "query/query_state_at_solution_finalized.sql"
     );
 }
 
@@ -98,6 +105,7 @@ pub mod table {
     pub const CONTRACT_PREDICATE: Table =
         Table::new("contract_predicate", create::CONTRACT_PREDICATE);
     pub const CONTRACT_PROGRESS: Table = Table::new("contract_progress", create::CONTRACT_PROGRESS);
+    pub const FINALIZED_BLOCK: Table = Table::new("finalized_block", create::FINALIZED_BLOCK);
     pub const MUTATION: Table = Table::new("mutation", create::MUTATION);
     pub const PREDICATE: Table = Table::new("predicate", create::PREDICATE);
     pub const SOLUTION: Table = Table::new("solution", create::SOLUTION);
@@ -111,6 +119,7 @@ pub mod table {
         CONTRACT,
         CONTRACT_PREDICATE,
         CONTRACT_PROGRESS,
+        FINALIZED_BLOCK,
         MUTATION,
         PREDICATE,
         SOLUTION,

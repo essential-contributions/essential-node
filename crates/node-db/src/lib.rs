@@ -23,7 +23,7 @@ use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use std::{ops::Range, time::Duration};
 
-pub use query_at::multiverse;
+pub use query_at::finalized;
 
 mod error;
 mod query_at;
@@ -64,9 +64,11 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
     // Insert the header.
     let secs = block.timestamp.as_secs();
     let nanos = block.timestamp.subsec_nanos() as u64;
+    let block_hash = content_addr(block);
     tx.execute(
         sql::insert::BLOCK,
         named_params! {
+            ":block_hash": block_hash.0,
             ":number": block.number,
             ":timestamp_secs": secs,
             ":timestamp_nanos": nanos,
@@ -77,6 +79,7 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
     let mut stmt_solution = tx.prepare(sql::insert::SOLUTION)?;
     let mut stmt_block_solution = tx.prepare(sql::insert::BLOCK_SOLUTION)?;
     let mut stmt_mutation = tx.prepare(sql::insert::MUTATION)?;
+
     for (ix, solution) in block.solutions.iter().enumerate() {
         let ca_blob = encode(&content_addr(solution));
 
@@ -89,7 +92,7 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
 
         // Create a mapping between the block and the solution.
         stmt_block_solution.execute(named_params! {
-            ":block_number": block.number,
+            ":block_hash": block_hash.0,
             ":solution_hash": &ca_blob,
             ":solution_index": ix,
         })?;
@@ -114,6 +117,18 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
     stmt_block_solution.finalize()?;
     stmt_mutation.finalize()?;
 
+    Ok(())
+}
+
+/// Finalizes the block with the given hash.
+/// This sets the block to be the only block at a particular block number.
+pub fn finalize_block(conn: &Connection, block_hash: &ContentAddress) -> rusqlite::Result<()> {
+    conn.execute(
+        sql::insert::FINALIZE_BLOCK,
+        named_params! {
+            ":block_hash": block_hash.0,
+        },
+    )?;
     Ok(())
 }
 
@@ -375,20 +390,29 @@ pub fn query_state(
     Ok(value_blob.as_deref().map(decode).transpose()?)
 }
 
-/// Fetches the latest block number.
-pub fn get_latest_block_number(conn: &Connection) -> Result<Option<u64>, rusqlite::Error> {
-    conn.query_row(sql::query::GET_LATEST_BLOCK_NUMBER, [], |row| {
-        row.get::<_, Option<u64>>("number")
-    })
+/// Fetches the block number for a given block.
+pub fn get_block_number(
+    conn: &Connection,
+    block_hash: &ContentAddress,
+) -> Result<Option<u64>, rusqlite::Error> {
+    conn.query_row(
+        sql::query::GET_BLOCK_NUMBER,
+        named_params! {
+            ":block_hash": block_hash.0,
+        },
+        |row| row.get::<_, Option<u64>>("number"),
+    )
 }
 
-/// Fetches the latest block.
-pub fn get_latest_block(conn: &Transaction) -> Result<Option<Block>, QueryError> {
-    let Some(block_number) = get_latest_block_number(conn)? else {
-        return Ok(None);
-    };
-    let blocks = list_blocks(conn, block_number..block_number.saturating_add(1))?;
-    Ok(blocks.into_iter().next())
+/// Fetches the latest finalized block hash.
+pub fn get_latest_finalized_block_hash(
+    conn: &Connection,
+) -> Result<Option<ContentAddress>, rusqlite::Error> {
+    conn.query_row(sql::query::GET_LATEST_FINALIZED_BLOCK_HASH, [], |row| {
+        row.get::<_, essential_types::Hash>("block_hash")
+            .map(ContentAddress)
+    })
+    .optional()
 }
 
 /// Fetches the last progress on state derivation.
@@ -416,26 +440,32 @@ pub fn list_blocks(conn: &Connection, block_range: Range<u64>) -> Result<Vec<Blo
             ":end_block": block_range.end,
         },
         |row| {
+            let block_hash: essential_types::Hash = row.get("block_hash")?;
             let block_number: u64 = row.get("number")?;
             let timestamp_secs: u64 = row.get("timestamp_secs")?;
             let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
             let solution_blob: Vec<u8> = row.get("solution")?;
             let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
-            Ok((block_number, timestamp, solution_blob))
+            Ok((block_hash, block_number, timestamp, solution_blob))
         },
     )?;
 
     // Query yields in order of block number and solution index.
     let mut blocks: Vec<Block> = vec![];
-    let mut last_block_number = None;
+    let mut last_block_hash = None;
     for res in rows {
-        let (block_number, timestamp, solution_blob): (u64, Duration, Vec<u8>) = res?;
+        let (block_hash, block_number, timestamp, solution_blob): (
+            essential_types::Hash,
+            u64,
+            Duration,
+            Vec<u8>,
+        ) = res?;
 
         // Fetch the block associated with the block number, inserting it first if new.
-        let block = match last_block_number {
-            Some(n) if n == block_number => blocks.last_mut().expect("last block must exist"),
+        let block = match last_block_hash {
+            Some(b) if b == block_hash => blocks.last_mut().expect("last block must exist"),
             _ => {
-                last_block_number = Some(block_number);
+                last_block_hash = Some(block_hash);
                 blocks.push(Block {
                     number: block_number,
                     timestamp,
@@ -470,26 +500,32 @@ pub fn list_blocks_by_time(
             ":page_number": page_number,
         },
         |row| {
+            let block_hash: essential_types::Hash = row.get("block_hash")?;
             let block_number: u64 = row.get("number")?;
             let timestamp_secs: u64 = row.get("timestamp_secs")?;
             let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
             let solution_blob: Vec<u8> = row.get("solution")?;
             let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
-            Ok((block_number, timestamp, solution_blob))
+            Ok((block_hash, block_number, timestamp, solution_blob))
         },
     )?;
 
     // Query yields in order of block number and solution index.
     let mut blocks: Vec<Block> = vec![];
-    let mut last_block_number: Option<u64> = None;
+    let mut last_block_hash: Option<essential_types::Hash> = None;
     for res in rows {
-        let (block_number, timestamp, solution_blob): (u64, Duration, Vec<u8>) = res?;
+        let (block_hash, block_number, timestamp, solution_blob): (
+            essential_types::Hash,
+            u64,
+            Duration,
+            Vec<u8>,
+        ) = res?;
 
         // Fetch the block associated with the block number, inserting it first if new.
-        let block = match last_block_number {
-            Some(n) if n == block_number => blocks.last_mut().expect("last block must exist"),
+        let block = match last_block_hash {
+            Some(n) if n == block_hash => blocks.last_mut().expect("last block must exist"),
             _ => {
-                last_block_number = Some(block_number);
+                last_block_hash = Some(block_hash);
                 blocks.push(Block {
                     number: block_number,
                     timestamp,

@@ -257,7 +257,7 @@ fn test_list_contracts() {
 }
 
 #[test]
-fn test_query_at_multiverse() {
+fn test_query_at_finalized() {
     let mut values = 0..Word::MAX;
     let contract_addr = ContentAddress([42; 32]);
     let blocks = util::test_blocks(10)
@@ -289,6 +289,8 @@ fn test_query_at_multiverse() {
     node_db::create_tables(&tx).unwrap();
     for block in &blocks {
         node_db::insert_block(&tx, block).unwrap();
+        let block_hash = essential_hash::content_addr(block);
+        node_db::finalize_block(&tx, &block_hash).unwrap();
     }
 
     // Test queries at each block and solution.
@@ -296,7 +298,7 @@ fn test_query_at_multiverse() {
         for (si, solution) in block.solutions.iter().enumerate() {
             for (di, data) in solution.data.iter().enumerate() {
                 for (mi, mutation) in data.state_mutations.iter().enumerate() {
-                    let state = node_db::multiverse::query_state_at_block(
+                    let state = node_db::finalized::query_state_at_block(
                         &tx,
                         &contract_addr,
                         &mutation.key,
@@ -310,7 +312,7 @@ fn test_query_at_multiverse() {
                         block.number, si, di, mi, mutation.key, mutation.value
                     );
 
-                    let state = node_db::multiverse::query_state_at_solution(
+                    let state = node_db::finalized::query_state_at_solution(
                         &tx,
                         &contract_addr,
                         &mutation.key,
@@ -331,7 +333,7 @@ fn test_query_at_multiverse() {
 
     // Test queries past the end.
 
-    let state = node_db::multiverse::query_state_at_block(&tx, &contract_addr, &vec![0], 10)
+    let state = node_db::finalized::query_state_at_block(&tx, &contract_addr, &vec![0], 10)
         .unwrap()
         .unwrap();
 
@@ -340,7 +342,7 @@ fn test_query_at_multiverse() {
         blocks.last().unwrap().solutions.last().unwrap().data[0].state_mutations[0].value
     );
 
-    let state = node_db::multiverse::query_state_at_solution(&tx, &contract_addr, &vec![0], 9, 5)
+    let state = node_db::finalized::query_state_at_solution(&tx, &contract_addr, &vec![0], 9, 5)
         .unwrap()
         .unwrap();
 
@@ -350,7 +352,7 @@ fn test_query_at_multiverse() {
     );
 
     let state =
-        node_db::multiverse::query_state_at_solution(&tx, &contract_addr, &vec![0], 100, 100)
+        node_db::finalized::query_state_at_solution(&tx, &contract_addr, &vec![0], 100, 100)
             .unwrap()
             .unwrap();
 
