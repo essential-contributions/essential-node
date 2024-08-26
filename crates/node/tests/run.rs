@@ -59,7 +59,6 @@ fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block
 }
 
 #[tokio::test]
-#[ignore = "flaky"]
 async fn test_run() {
     // Setup node
     let conf = test_db_conf("test_acquire");
