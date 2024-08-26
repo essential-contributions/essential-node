@@ -1,3 +1,4 @@
+use essential_node_db::BlockHash;
 use essential_types::Block;
 use essential_types::{contract::Contract, ContentAddress};
 use futures::stream::TryStreamExt;
@@ -34,7 +35,7 @@ pub struct BlockProgress {
     pub last_block_number: u64,
     /// The address of the last block that was synced.
     /// Used to check for forks.
-    pub last_block_hash: ContentAddress,
+    pub last_block_hash: BlockHash,
 }
 
 /// Get the last contract progress from the database.
@@ -56,13 +57,18 @@ pub async fn get_block_progress(
     let mut conn = conn.acquire().await?;
     tokio::task::spawn_blocking(move || {
         let tx = conn.transaction()?;
-        let block = essential_node_db::get_latest_block(&tx)?;
+        let Some(block_hash) = essential_node_db::get_latest_finalized_block_hash(&tx)? else {
+            return Ok(None);
+        };
+        let Some(block_number) = essential_node_db::get_block_number(&tx, &block_hash)? else {
+            return Ok(None);
+        };
         tx.finish()?;
-        let progress = block.map(|block| BlockProgress {
-            last_block_number: block.number,
-            last_block_hash: essential_hash::content_addr(&block),
-        });
-        Ok(progress)
+        let progress = BlockProgress {
+            last_block_number: block_number,
+            last_block_hash: block_hash,
+        };
+        Ok(Some(progress))
     })
     .await?
 }
@@ -243,8 +249,14 @@ async fn write_contract(
 async fn write_block(conn: &AsyncConnectionPool, block: Block) -> crate::Result<()> {
     let mut conn = conn.acquire().await?;
     spawn_blocking(move || {
+        let block_hash = essential_node_db::hash_block_and_solutions(&block).0;
         let tx = conn.transaction()?;
         essential_node_db::insert_block(&tx, &block)?;
+
+        // We are currently finalizing the block immediately.
+        // This will be changed in the when we have a time period
+        // before finalization can occur.
+        essential_node_db::finalize_block(&tx, &block_hash)?;
         tx.commit()?;
         Ok(())
     })
@@ -289,12 +301,12 @@ fn check_contract_fork(
 fn check_block_fork(block: &Option<Block>, progress: &BlockProgress) -> crate::Result<()> {
     match block {
         Some(block) => {
-            let block_hash = essential_hash::content_addr(block);
+            let block_hash = essential_node_db::hash_block_and_solutions(block).0;
             if block_hash != progress.last_block_hash {
                 // There was a block but it didn't match the expected block.
                 return Err(CriticalError::DataSyncFailed(DataSyncError::Fork(
                     progress.last_block_number,
-                    progress.last_block_hash.clone(),
+                    progress.last_block_hash,
                     Some(block_hash),
                 )));
             }
@@ -303,7 +315,7 @@ fn check_block_fork(block: &Option<Block>, progress: &BlockProgress) -> crate::R
             // There was expected to be a block but there was none.
             return Err(CriticalError::DataSyncFailed(DataSyncError::Fork(
                 progress.last_block_number,
-                progress.last_block_hash.clone(),
+                progress.last_block_hash,
                 None,
             )));
         }

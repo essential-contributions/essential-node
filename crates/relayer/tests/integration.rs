@@ -15,6 +15,9 @@ use tokio::{
 
 #[tokio::test]
 async fn test_sync() {
+    #[cfg(feature = "tracing")]
+    let _ = tracing_subscriber::fmt::try_init();
+
     let (server_address, mut child) = setup_server().await;
 
     let client = ClientBuilder::new()
@@ -266,6 +269,7 @@ pub async fn setup_server() -> (String, Child) {
         .arg("--loop-freq")
         .arg("1")
         .arg("--disable-tracing")
+        .arg("--disable-time")
         .kill_on_drop(true)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

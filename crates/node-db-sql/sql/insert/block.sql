@@ -1,4 +1,4 @@
 INSERT
-    OR IGNORE INTO block (number, timestamp_secs, timestamp_nanos)
+    OR IGNORE INTO block (block_hash, number, timestamp_secs, timestamp_nanos)
 VALUES
-    (:number, :timestamp_secs, :timestamp_nanos);
+    (:block_hash, :number, :timestamp_secs, :timestamp_nanos);

@@ -1,10 +1,11 @@
 //! Basic tests for testing insertion behaviour.
 
 use essential_hash::content_addr;
-use essential_node_db as node_db;
-use essential_types::{predicate::Predicate, ContentAddress};
+use essential_node_db::{self as node_db, hash_block_and_solutions};
+use essential_types::{predicate::Predicate, ContentAddress, Hash};
 use rusqlite::Connection;
 use std::time::Duration;
+use util::get_block_hash;
 
 mod util;
 
@@ -46,6 +47,127 @@ fn test_insert_block() {
         let row = rows.next().unwrap().unwrap();
         let solution_data: Vec<u8> = row.get(0).unwrap();
         assert_eq!(solution_data, solution_blob);
+    }
+}
+
+#[test]
+fn test_finalize_block() {
+    // Number of blocks to insert.
+    const NUM_BLOCKS: u64 = 3;
+
+    // Number of blocks to finalize.
+    const NUM_FINALIZED_BLOCKS: u64 = 2;
+
+    if NUM_FINALIZED_BLOCKS > NUM_BLOCKS {
+        panic!("NUM_FINALIZED_BLOCKS must be less than or equal to NUM_BLOCKS");
+    }
+
+    // Test blocks that we'll insert.
+    let blocks = util::test_blocks(NUM_BLOCKS);
+
+    // Create an in-memory SQLite database
+    let mut conn = Connection::open_in_memory().unwrap();
+
+    // Create the necessary tables and insert the block.
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    for block in &blocks {
+        node_db::insert_block(&tx, block).unwrap();
+    }
+    tx.commit().unwrap();
+
+    let r = node_db::list_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
+    assert_eq!(blocks.len(), NUM_BLOCKS as usize);
+
+    for (block, expected_block) in blocks.iter().zip(&r) {
+        assert_eq!(block, expected_block);
+    }
+
+    // Finalize the blocks.
+    let tx = conn.transaction().unwrap();
+    for block in blocks.iter().take(NUM_FINALIZED_BLOCKS as usize) {
+        let block_hash = hash_block_and_solutions(block).0;
+        node_db::finalize_block(&tx, &block_hash).unwrap();
+    }
+    tx.commit().unwrap();
+
+    // Should not change list blocks
+    let r = node_db::list_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
+    assert_eq!(r.len(), NUM_BLOCKS as usize);
+
+    // Check the latest finalized block hash.
+    let latest_finalized_block_hash = node_db::get_latest_finalized_block_hash(&conn).unwrap();
+    let expected_latest_finalized_block_hash =
+        hash_block_and_solutions(&blocks[NUM_FINALIZED_BLOCKS as usize - 1]).0;
+    assert_eq!(
+        latest_finalized_block_hash,
+        Some(expected_latest_finalized_block_hash)
+    );
+
+    let query = "SELECT DISTINCT b.block_hash FROM block AS b JOIN finalized_block AS f ON f.block_id = b.id ORDER BY b.number ASC";
+    let mut stmt = conn.prepare(query).unwrap();
+    let rows: Vec<essential_types::Hash> = stmt
+        .query_map([], |row| row.get("block_hash"))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(rows.len(), NUM_FINALIZED_BLOCKS as usize);
+    rows.iter()
+        .zip(blocks.iter())
+        .for_each(|(block_hash, block)| {
+            let expected_block_hash = hash_block_and_solutions(block).0;
+            assert_eq!(*block_hash, *expected_block_hash);
+        });
+
+    drop(stmt);
+
+    // Check that I can't finalize two blocks with the same number
+    let fork = util::test_block(
+        NUM_FINALIZED_BLOCKS - 1,
+        Duration::from_secs(NUM_FINALIZED_BLOCKS + 1000),
+    );
+    let tx = conn.transaction().unwrap();
+    node_db::insert_block(&tx, &fork).unwrap();
+    tx.commit().unwrap();
+
+    let e = node_db::finalize_block(&conn, &hash_block_and_solutions(&fork).0).unwrap_err();
+    assert!(matches!(
+        e,
+        rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: rusqlite::ErrorCode::ConstraintViolation,
+                ..
+            },
+            _
+        )
+    ));
+}
+
+#[test]
+fn test_fork_block() {
+    let first = util::test_block(0, Duration::from_secs(1));
+    let fork_a = util::test_block(1, Duration::from_secs(1));
+    let fork_b = util::test_block(1, Duration::from_secs(2));
+
+    // Create an in-memory SQLite database
+    let mut conn = Connection::open_in_memory().unwrap();
+
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    node_db::insert_block(&tx, &first).unwrap();
+    node_db::insert_block(&tx, &fork_a).unwrap();
+    node_db::insert_block(&tx, &fork_b).unwrap();
+    tx.commit().unwrap();
+
+    let r = node_db::list_blocks(&conn, 0..10).unwrap();
+    assert_eq!(r.len(), 3);
+    assert_eq!(r[0], first);
+
+    if r[1] == fork_a {
+        assert_eq!(r[2], fork_b);
+    } else {
+        assert_eq!(r[1], fork_b);
+        assert_eq!(r[2], fork_a);
     }
 }
 
@@ -162,7 +284,7 @@ fn test_update_state_progress() {
     let mut conn = Connection::open_in_memory().unwrap();
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
-    node_db::update_state_progress(&tx, 0, &ContentAddress([0; 32]))
+    node_db::update_state_progress(&tx, 0, &get_block_hash(0))
         .expect("Failed to insert state progress");
     tx.commit().unwrap();
 
@@ -182,19 +304,19 @@ fn test_update_state_progress() {
     assert_eq!(id, 1);
     assert_eq!(block_number, 0);
     assert_eq!(
-        node_db::decode::<ContentAddress>(&block_hash).unwrap(),
-        ContentAddress([0; 32])
+        node_db::decode::<Hash>(&block_hash).unwrap(),
+        *get_block_hash(0)
     );
     assert!(result.next().is_none());
 
-    node_db::update_state_progress(&conn, u64::MAX, &ContentAddress([1; 32]))
+    node_db::update_state_progress(&conn, u64::MAX, &get_block_hash(1))
         .expect("Failed to insert state progress");
 
     drop(result);
 
     let result = node_db::get_state_progress(&conn).unwrap().unwrap();
     assert_eq!(result.0, u64::MAX);
-    assert_eq!(result.1, ContentAddress([1; 32]));
+    assert_eq!(result.1, get_block_hash(1));
 
     // Id should always be 1 because we only inserted one row.
     let mut result = stmt.query_map((), |row| row.get::<_, u64>("id")).unwrap();
