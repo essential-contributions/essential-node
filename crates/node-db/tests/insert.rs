@@ -115,8 +115,8 @@ fn test_finalize_block() {
     rows.iter()
         .zip(blocks.iter())
         .for_each(|(block_hash, block)| {
-            let expected_block_hash = hash_block_and_solutions(block).0.to_string();
-            assert_eq!(ContentAddress(*block_hash).to_string(), expected_block_hash);
+            let expected_block_hash = hash_block_and_solutions(block).0;
+            assert_eq!(*block_hash, *expected_block_hash);
         });
 
     drop(stmt);
@@ -304,8 +304,8 @@ fn test_update_state_progress() {
     assert_eq!(id, 1);
     assert_eq!(block_number, 0);
     assert_eq!(
-        ContentAddress(node_db::decode::<Hash>(&block_hash).unwrap()).to_string(),
-        get_block_hash(0).to_string()
+        node_db::decode::<Hash>(&block_hash).unwrap(),
+        *get_block_hash(0)
     );
     assert!(result.next().is_none());
 

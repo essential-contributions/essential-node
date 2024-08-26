@@ -3,23 +3,23 @@
 
 use essential_node_db_sql as sql;
 use essential_types::{ContentAddress, Key, Value};
-use rusqlite::{named_params, OptionalExtension, Transaction};
+use rusqlite::{named_params, Connection, OptionalExtension};
 
 use crate::{decode, encode, QueryError};
 
-/// Query for the most recent version value of a key in a contracts state
+/// Query the most recent value for a key in a contract's state
 /// that was set at or before the given block number.
 ///
 /// This is inclusive of the block's state (..=block_number).
 pub fn query_state_inclusive_block(
-    tx: &Transaction,
+    conn: &Connection,
     contract_ca: &ContentAddress,
     key: &Key,
     block_number: u64,
 ) -> Result<Option<Value>, QueryError> {
     let contract_ca_blob = encode(contract_ca);
     let key_blob = encode(key);
-    let mut stmt = tx.prepare(sql::query::QUERY_STATE_AT_BLOCK_FINALIZED)?;
+    let mut stmt = conn.prepare(sql::query::QUERY_STATE_AT_BLOCK_FINALIZED)?;
     let value_blob: Option<Vec<u8>> = stmt
         .query_row(
             named_params! {
@@ -38,13 +38,13 @@ pub fn query_state_inclusive_block(
 ///
 /// This is exclusive of the block's state (..block_number).
 pub fn query_state_exclusive_block(
-    tx: &Transaction,
+    conn: &Connection,
     contract_ca: &ContentAddress,
     key: &Key,
     block_number: u64,
 ) -> Result<Option<Value>, QueryError> {
     match block_number.checked_sub(1) {
-        Some(block_number) => query_state_inclusive_block(tx, contract_ca, key, block_number),
+        Some(block_number) => query_state_inclusive_block(conn, contract_ca, key, block_number),
         None => Ok(None),
     }
 }
@@ -53,10 +53,10 @@ pub fn query_state_exclusive_block(
 /// that was set at or before the given block number and
 /// solution index (within that block).
 ///
-/// This is inclusive of the block's state and inclusive of the solution's state
+/// This is inclusive of the solution's state mutations
 /// (..=(block_number, solution_index)).
 pub fn query_state_inclusive_solution(
-    tx: &Transaction,
+    conn: &Connection,
     contract_ca: &ContentAddress,
     key: &Key,
     block_number: u64,
@@ -64,7 +64,7 @@ pub fn query_state_inclusive_solution(
 ) -> Result<Option<Value>, QueryError> {
     let contract_ca_blob = encode(contract_ca);
     let key_blob = encode(key);
-    let mut stmt = tx.prepare(sql::query::QUERY_STATE_AT_SOLUTION_FINALIZED)?;
+    let mut stmt = conn.prepare(sql::query::QUERY_STATE_AT_SOLUTION_FINALIZED)?;
     let value_blob: Option<Vec<u8>> = stmt
         .query_row(
             named_params! {
@@ -85,7 +85,7 @@ pub fn query_state_inclusive_solution(
 ///
 /// This is exclusive of the solution's state (..(block_number, solution_index)).
 pub fn query_state_exclusive_solution(
-    tx: &Transaction,
+    conn: &Connection,
     contract_ca: &ContentAddress,
     key: &Key,
     block_number: u64,
@@ -93,8 +93,8 @@ pub fn query_state_exclusive_solution(
 ) -> Result<Option<Value>, QueryError> {
     match solution_index.checked_sub(1) {
         Some(solution_index) => {
-            query_state_inclusive_solution(tx, contract_ca, key, block_number, solution_index)
+            query_state_inclusive_solution(conn, contract_ca, key, block_number, solution_index)
         }
-        None => query_state_exclusive_block(tx, contract_ca, key, block_number),
+        None => query_state_exclusive_block(conn, contract_ca, key, block_number),
     }
 }

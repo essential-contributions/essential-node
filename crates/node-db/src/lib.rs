@@ -22,7 +22,10 @@ use essential_types::{
 };
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
-use std::{ops::Range, time::Duration};
+use std::{
+    ops::{Deref, Range},
+    time::Duration,
+};
 
 pub use query_range::finalized;
 
@@ -621,5 +624,13 @@ pub fn list_contracts(
 impl fmt::Display for BlockHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", ContentAddress(self.0))
+    }
+}
+
+impl Deref for BlockHash {
+    type Target = Hash;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
