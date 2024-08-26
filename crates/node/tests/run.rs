@@ -7,6 +7,7 @@ use essential_node::{
     },
     Node,
 };
+use essential_node_db::hash_block_and_solutions;
 use essential_types::{
     contract::{Contract, SignedContract},
     solution::Solution,
@@ -54,7 +55,7 @@ fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block
     assert_state_progress_is_some(
         conn,
         &fetched_blocks[fetched_blocks.len() - 1],
-        &essential_hash::content_addr(&fetched_blocks[fetched_blocks.len() - 1]),
+        &hash_block_and_solutions(&fetched_blocks[fetched_blocks.len() - 1]).0,
     );
 }
 

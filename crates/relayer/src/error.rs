@@ -1,4 +1,4 @@
-use essential_node_db::QueryError;
+use essential_node_db::{BlockHash, QueryError};
 use essential_types::ContentAddress;
 use thiserror::Error;
 
@@ -86,10 +86,13 @@ pub enum DataSyncError {
     #[error(
         "While syncing a blocks a fork was detected at block number {0}. Got: {1}, expected: {}", display_address(.2)
     )]
-    Fork(u64, ContentAddress, Option<ContentAddress>),
+    Fork(u64, BlockHash, Option<BlockHash>),
 }
 
-fn display_address(addr: &Option<ContentAddress>) -> String {
+fn display_address<T>(addr: &Option<T>) -> String
+where
+    T: core::fmt::Display,
+{
     match addr {
         Some(addr) => format!("{}", addr),
         None => "None".to_string(),

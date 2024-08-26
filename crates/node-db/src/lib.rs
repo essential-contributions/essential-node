@@ -11,6 +11,7 @@
 //! functions required for safely creating the necessary tables and inserting/
 //! querying/updating them as necessary.
 
+use core::fmt;
 pub use error::{DecodeError, QueryError};
 use essential_hash::content_addr;
 #[doc(inline)]
@@ -23,10 +24,10 @@ use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use std::{ops::Range, time::Duration};
 
-pub use query_at::finalized;
+pub use query_range::finalized;
 
 mod error;
-mod query_at;
+mod query_range;
 
 /// Encodes the given value into a blob.
 ///
@@ -48,6 +49,24 @@ where
     Ok(postcard::from_bytes(value)?)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// The internal representation of a hash for the database.
+/// This may differ from the externally used hash of a Block.
+pub struct BlockHash(Hash);
+
+/// Create a `BlockHash` and a list of `ContentAddress` for each solution.
+/// Solutions are in the same order they appear in the block.
+pub fn hash_block_and_solutions(block: &Block) -> (BlockHash, Vec<ContentAddress>) {
+    let Block {
+        number,
+        timestamp,
+        solutions,
+    } = block;
+    let solution_hashes: Vec<ContentAddress> = solutions.iter().map(content_addr).collect();
+    let block_hash = essential_hash::hash(&(number, timestamp, &solution_hashes));
+    (BlockHash(block_hash), solution_hashes)
+}
+
 /// Create all tables.
 pub fn create_tables(tx: &Transaction) -> rusqlite::Result<()> {
     for table in sql::table::ALL {
@@ -64,7 +83,7 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
     // Insert the header.
     let secs = block.timestamp.as_secs();
     let nanos = block.timestamp.subsec_nanos() as u64;
-    let block_hash = content_addr(block);
+    let (block_hash, solution_hashes) = hash_block_and_solutions(block);
     tx.execute(
         sql::insert::BLOCK,
         named_params! {
@@ -80,8 +99,8 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
     let mut stmt_block_solution = tx.prepare(sql::insert::BLOCK_SOLUTION)?;
     let mut stmt_mutation = tx.prepare(sql::insert::MUTATION)?;
 
-    for (ix, solution) in block.solutions.iter().enumerate() {
-        let ca_blob = encode(&content_addr(solution));
+    for (ix, (solution, ca)) in block.solutions.iter().zip(solution_hashes).enumerate() {
+        let ca_blob = encode(&ca);
 
         // Insert the solution.
         let solution_blob = encode(solution);
@@ -122,7 +141,7 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
 
 /// Finalizes the block with the given hash.
 /// This sets the block to be the only block at a particular block number.
-pub fn finalize_block(conn: &Connection, block_hash: &ContentAddress) -> rusqlite::Result<()> {
+pub fn finalize_block(conn: &Connection, block_hash: &BlockHash) -> rusqlite::Result<()> {
     conn.execute(
         sql::insert::FINALIZE_BLOCK,
         named_params! {
@@ -236,15 +255,14 @@ pub fn update_state(
 pub fn update_state_progress(
     conn: &Connection,
     block_number: u64,
-    block_hash: &ContentAddress,
+    block_hash: &BlockHash,
 ) -> rusqlite::Result<()> {
-    let block_hash_blob = encode(block_hash);
     let block_number = block_number as i64;
     conn.execute(
         sql::insert::STATE_PROGRESS,
         named_params! {
             ":number": block_number,
-            ":block_hash": block_hash_blob,
+            ":block_hash": block_hash.0,
         },
     )?;
     Ok(())
@@ -393,7 +411,7 @@ pub fn query_state(
 /// Fetches the block number for a given block.
 pub fn get_block_number(
     conn: &Connection,
-    block_hash: &ContentAddress,
+    block_hash: &BlockHash,
 ) -> Result<Option<u64>, rusqlite::Error> {
     conn.query_row(
         sql::query::GET_BLOCK_NUMBER,
@@ -407,28 +425,24 @@ pub fn get_block_number(
 /// Fetches the latest finalized block hash.
 pub fn get_latest_finalized_block_hash(
     conn: &Connection,
-) -> Result<Option<ContentAddress>, rusqlite::Error> {
+) -> Result<Option<BlockHash>, rusqlite::Error> {
     conn.query_row(sql::query::GET_LATEST_FINALIZED_BLOCK_HASH, [], |row| {
-        row.get::<_, essential_types::Hash>("block_hash")
-            .map(ContentAddress)
+        row.get::<_, Hash>("block_hash").map(BlockHash)
     })
     .optional()
 }
 
 /// Fetches the last progress on state derivation.
-pub fn get_state_progress(conn: &Connection) -> Result<Option<(u64, ContentAddress)>, QueryError> {
+pub fn get_state_progress(conn: &Connection) -> Result<Option<(u64, BlockHash)>, QueryError> {
     let mut stmt = conn.prepare(sql::query::GET_STATE_PROGRESS)?;
-    let value_blob: Option<(i64, Vec<u8>)> = stmt
-        .query_row([], |row| Ok((row.get("number")?, row.get("block_hash")?)))
-        .optional()?;
-    value_blob
-        .map(|(number, block_hash_blob)| {
-            Ok((
-                number as u64,
-                decode(&block_hash_blob).map_err(QueryError::Decode)?,
-            ))
+    let value: Option<(u64, BlockHash)> = stmt
+        .query_row([], |row| {
+            let number: i64 = row.get("number")?;
+            let block_hash: Hash = row.get("block_hash")?;
+            Ok((number as u64, BlockHash(block_hash)))
         })
-        .transpose()
+        .optional()?;
+    Ok(value)
 }
 
 /// Lists all blocks in the given range.
@@ -602,4 +616,10 @@ pub fn list_contracts(
     }
 
     Ok(blocks)
+}
+
+impl fmt::Display for BlockHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", ContentAddress(self.0))
+    }
 }

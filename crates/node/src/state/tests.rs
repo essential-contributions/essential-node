@@ -49,7 +49,7 @@ async fn can_derive_state() {
     let blocks = test_blocks;
     let hashes = blocks
         .iter()
-        .map(essential_hash::content_addr)
+        .map(|b| hash_block_and_solutions(b).0)
         .collect::<Vec<_>>();
 
     let (state_tx, state_rx) = tokio::sync::watch::channel(());
@@ -106,7 +106,7 @@ async fn fork() {
     let blocks = test_blocks;
     let hashes = blocks
         .iter()
-        .map(essential_hash::content_addr)
+        .map(|b| hash_block_and_solutions(b).0)
         .collect::<Vec<_>>();
 
     let (state_tx, state_rx) = tokio::sync::watch::channel(());

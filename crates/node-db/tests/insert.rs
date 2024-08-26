@@ -1,10 +1,11 @@
 //! Basic tests for testing insertion behaviour.
 
 use essential_hash::content_addr;
-use essential_node_db as node_db;
+use essential_node_db::{self as node_db, hash_block_and_solutions};
 use essential_types::{predicate::Predicate, ContentAddress};
 use rusqlite::Connection;
 use std::time::Duration;
+use util::get_block_hash;
 
 mod util;
 
@@ -85,7 +86,7 @@ fn test_finalize_block() {
     // Finalize the blocks.
     let tx = conn.transaction().unwrap();
     for block in blocks.iter().take(NUM_FINALIZED_BLOCKS as usize) {
-        let block_hash = content_addr(block);
+        let block_hash = hash_block_and_solutions(block).0;
         node_db::finalize_block(&tx, &block_hash).unwrap();
     }
     tx.commit().unwrap();
@@ -97,7 +98,7 @@ fn test_finalize_block() {
     // Check the latest finalized block hash.
     let latest_finalized_block_hash = node_db::get_latest_finalized_block_hash(&conn).unwrap();
     let expected_latest_finalized_block_hash =
-        content_addr(&blocks[NUM_FINALIZED_BLOCKS as usize - 1]);
+        hash_block_and_solutions(&blocks[NUM_FINALIZED_BLOCKS as usize - 1]).0;
     assert_eq!(
         latest_finalized_block_hash,
         Some(expected_latest_finalized_block_hash)
@@ -129,7 +130,7 @@ fn test_finalize_block() {
     node_db::insert_block(&tx, &fork).unwrap();
     tx.commit().unwrap();
 
-    let e = node_db::finalize_block(&conn, &content_addr(&fork)).unwrap_err();
+    let e = node_db::finalize_block(&conn, &hash_block_and_solutions(&fork).0).unwrap_err();
     assert!(matches!(
         e,
         rusqlite::Error::SqliteFailure(
@@ -283,7 +284,7 @@ fn test_update_state_progress() {
     let mut conn = Connection::open_in_memory().unwrap();
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
-    node_db::update_state_progress(&tx, 0, &ContentAddress([0; 32]))
+    node_db::update_state_progress(&tx, 0, &get_block_hash(0))
         .expect("Failed to insert state progress");
     tx.commit().unwrap();
 
@@ -308,14 +309,14 @@ fn test_update_state_progress() {
     );
     assert!(result.next().is_none());
 
-    node_db::update_state_progress(&conn, u64::MAX, &ContentAddress([1; 32]))
+    node_db::update_state_progress(&conn, u64::MAX, &get_block_hash(1))
         .expect("Failed to insert state progress");
 
     drop(result);
 
     let result = node_db::get_state_progress(&conn).unwrap().unwrap();
     assert_eq!(result.0, u64::MAX);
-    assert_eq!(result.1, ContentAddress([1; 32]));
+    assert_eq!(result.1, get_block_hash(1));
 
     // Id should always be 1 because we only inserted one row.
     let mut result = stmt.query_map((), |row| row.get::<_, u64>("id")).unwrap();

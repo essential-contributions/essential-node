@@ -1,3 +1,4 @@
+use essential_node_db::BlockHash;
 use essential_types::Block;
 use essential_types::{contract::Contract, ContentAddress};
 use futures::stream::TryStreamExt;
@@ -34,7 +35,7 @@ pub struct BlockProgress {
     pub last_block_number: u64,
     /// The address of the last block that was synced.
     /// Used to check for forks.
-    pub last_block_hash: ContentAddress,
+    pub last_block_hash: BlockHash,
 }
 
 /// Get the last contract progress from the database.
@@ -248,7 +249,7 @@ async fn write_contract(
 async fn write_block(conn: &AsyncConnectionPool, block: Block) -> crate::Result<()> {
     let mut conn = conn.acquire().await?;
     spawn_blocking(move || {
-        let block_hash = essential_hash::content_addr(&block);
+        let block_hash = essential_node_db::hash_block_and_solutions(&block).0;
         let tx = conn.transaction()?;
         essential_node_db::insert_block(&tx, &block)?;
 
@@ -300,12 +301,12 @@ fn check_contract_fork(
 fn check_block_fork(block: &Option<Block>, progress: &BlockProgress) -> crate::Result<()> {
     match block {
         Some(block) => {
-            let block_hash = essential_hash::content_addr(block);
+            let block_hash = essential_node_db::hash_block_and_solutions(block).0;
             if block_hash != progress.last_block_hash {
                 // There was a block but it didn't match the expected block.
                 return Err(CriticalError::DataSyncFailed(DataSyncError::Fork(
                     progress.last_block_number,
-                    progress.last_block_hash.clone(),
+                    progress.last_block_hash,
                     Some(block_hash),
                 )));
             }
@@ -314,7 +315,7 @@ fn check_block_fork(block: &Option<Block>, progress: &BlockProgress) -> crate::R
             // There was expected to be a block but there was none.
             return Err(CriticalError::DataSyncFailed(DataSyncError::Fork(
                 progress.last_block_number,
-                progress.last_block_hash.clone(),
+                progress.last_block_hash,
                 None,
             )));
         }
