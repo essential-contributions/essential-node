@@ -117,6 +117,29 @@ fn test_finalize_block() {
             let expected_block_hash = content_addr(block);
             assert_eq!(*block_hash, expected_block_hash.0);
         });
+
+    drop(stmt);
+
+    // Check that I can't finalize two blocks with the same number
+    let fork = util::test_block(
+        NUM_FINALIZED_BLOCKS - 1,
+        Duration::from_secs(NUM_FINALIZED_BLOCKS + 1000),
+    );
+    let tx = conn.transaction().unwrap();
+    node_db::insert_block(&tx, &fork).unwrap();
+    tx.commit().unwrap();
+
+    let e = node_db::finalize_block(&conn, &content_addr(&fork)).unwrap_err();
+    assert!(matches!(
+        e,
+        rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: rusqlite::ErrorCode::ConstraintViolation,
+                ..
+            },
+            _
+        )
+    ));
 }
 
 #[test]
