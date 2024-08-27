@@ -1,12 +1,12 @@
 #![allow(dead_code)]
 
 use crate::db::ConnectionPool;
-use essential_node_db::{get_state_progress, query_state, BlockHash};
+use essential_node_db::{get_state_progress, query_state};
 use essential_types::{
     contract::Contract,
     predicate::Predicate,
     solution::{Mutation, Solution, SolutionData},
-    Block, ConstraintBytecode, PredicateAddress, StateReadBytecode, Word,
+    Block, ConstraintBytecode, ContentAddress, PredicateAddress, StateReadBytecode, Word,
 };
 use rusqlite::Connection;
 use std::{process::Stdio, time::Duration};
@@ -65,7 +65,7 @@ pub fn test_solution(seed: Word) -> (Solution, Contract) {
 pub fn test_solution_data(seed: Word) -> (SolutionData, Contract) {
     let contract = test_contract(seed);
     let predicate = essential_hash::content_addr(&contract.predicates[0]);
-    let contract_address = essential_hash::contract_addr::from_contract(&contract);
+    let contract_address = essential_hash::content_addr(&contract);
     (
         SolutionData {
             predicate_to_solve: PredicateAddress {
@@ -181,7 +181,7 @@ pub async fn setup_server() -> (String, Child) {
 }
 
 // Check that the state progress in the database is block number and hash
-pub fn assert_state_progress_is_some(conn: &Connection, block: &Block, hash: &BlockHash) {
+pub fn assert_state_progress_is_some(conn: &Connection, block: &Block, hash: &ContentAddress) {
     let (progress_number, progress_hash) = get_state_progress(conn)
         .unwrap()
         .expect("progress should be some");

@@ -47,10 +47,7 @@ async fn can_derive_state() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let blocks = test_blocks;
-    let hashes = blocks
-        .iter()
-        .map(|b| hash_block_and_solutions(b).0)
-        .collect::<Vec<_>>();
+    let hashes = blocks.iter().map(content_addr).collect::<Vec<_>>();
 
     let (state_tx, state_rx) = tokio::sync::watch::channel(());
 
@@ -104,10 +101,7 @@ async fn fork() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let blocks = test_blocks;
-    let hashes = blocks
-        .iter()
-        .map(|b| hash_block_and_solutions(b).0)
-        .collect::<Vec<_>>();
+    let hashes = blocks.iter().map(content_addr).collect::<Vec<_>>();
 
     let (state_tx, state_rx) = tokio::sync::watch::channel(());
 

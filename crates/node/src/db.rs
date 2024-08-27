@@ -4,7 +4,7 @@
 //! with node-specific wrappers, short-hands and helpers.
 
 use core::ops::Range;
-use essential_node_db::{self as db, BlockHash};
+use essential_node_db::{self as db};
 use essential_types::{
     contract::Contract, predicate::Predicate, solution::Solution, Block, ContentAddress, Key, Value,
 };
@@ -194,7 +194,7 @@ impl ConnectionPool {
     /// Get the state progress, returning the last block number and hash.
     pub async fn get_state_progress(
         &self,
-    ) -> Result<Option<(u64, BlockHash)>, AcquireThenQueryError> {
+    ) -> Result<Option<(u64, ContentAddress)>, AcquireThenQueryError> {
         self.acquire_then(|h| db::get_state_progress(h)).await
     }
 

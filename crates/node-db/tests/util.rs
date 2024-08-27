@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
-use essential_node_db::{hash_block_and_solutions, BlockHash};
+use essential_hash::content_addr;
 use essential_types::{
     contract::Contract,
     predicate::Predicate,
     solution::{Solution, SolutionData},
-    Block, ConstraintBytecode, PredicateAddress, StateReadBytecode, Word,
+    Block, ConstraintBytecode, ContentAddress, PredicateAddress, StateReadBytecode, Word,
 };
 use std::time::Duration;
 
@@ -33,7 +33,7 @@ pub fn test_solution(seed: Word) -> Solution {
 pub fn test_solution_data(seed: Word) -> SolutionData {
     let contract = test_contract(seed);
     let predicate = essential_hash::content_addr(&contract.predicates[0]);
-    let contract = essential_hash::contract_addr::from_contract(&contract);
+    let contract = essential_hash::content_addr(&contract);
     SolutionData {
         predicate_to_solve: PredicateAddress {
             contract,
@@ -86,11 +86,10 @@ pub fn test_constraints(seed: Word) -> Vec<ConstraintBytecode> {
     vec![vec![b; 10]; n]
 }
 
-pub fn get_block_hash(i: u64) -> BlockHash {
-    hash_block_and_solutions(&Block {
+pub fn get_block_address(i: u64) -> ContentAddress {
+    content_addr(&Block {
         number: i,
         timestamp: Default::default(),
         solutions: Default::default(),
     })
-    .0
 }

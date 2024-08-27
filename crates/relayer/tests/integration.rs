@@ -54,7 +54,7 @@ async fn test_sync() {
     let solutions: Vec<_> = contracts
         .iter()
         .map(|c| {
-            let contract = essential_hash::contract_addr::from_contract(c);
+            let contract = essential_hash::content_addr(c);
             let predicate = essential_hash::content_addr(&c.predicates[0]);
             let addr = PredicateAddress {
                 contract,

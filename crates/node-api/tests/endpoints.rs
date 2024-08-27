@@ -31,7 +31,7 @@ async fn test_get_contract() {
     let seed = 42;
     let da_block = 100;
     let contract = std::sync::Arc::new(node::test_utils::test_contract(seed));
-    let contract_ca = essential_hash::contract_addr::from_contract(&contract);
+    let contract_ca = essential_hash::content_addr(contract.as_ref());
 
     // Insert the contract.
     let clone = contract.clone();
@@ -128,7 +128,7 @@ async fn test_query_state() {
         .insert_contract(contract.clone(), da_block)
         .await
         .unwrap();
-    let contract_ca = essential_hash::contract_addr::from_contract(&contract);
+    let contract_ca = essential_hash::content_addr(contract.as_ref());
 
     // Insert the state entries.
     for (k, v) in keys.iter().zip(&values) {

@@ -2,7 +2,7 @@ use essential_node_db::{self as node_db};
 use essential_types::{contract::Contract, solution::Mutation, ContentAddress, Word};
 use rusqlite::Connection;
 use std::time::Duration;
-use util::get_block_hash;
+use util::get_block_address;
 
 mod util;
 
@@ -23,7 +23,7 @@ fn get_contract_salt() {
     tx.commit().unwrap();
 
     // Fetch the salt.
-    let ca = essential_hash::contract_addr::from_contract(&contract);
+    let ca = essential_hash::content_addr(&contract);
     let salt = node_db::get_contract_salt(&conn, &ca).unwrap().unwrap();
 
     assert_eq!(contract.salt, salt);
@@ -46,7 +46,7 @@ fn get_contract_predicates() {
     tx.commit().unwrap();
 
     // Fetch the predicates.
-    let ca = essential_hash::contract_addr::from_contract(&contract);
+    let ca = essential_hash::content_addr(&contract);
     let predicates = node_db::get_contract_predicates(&conn, &ca)
         .unwrap()
         .unwrap();
@@ -71,7 +71,7 @@ fn test_get_contract() {
     tx.commit().unwrap();
 
     // Fetch the contract.
-    let ca = essential_hash::contract_addr::from_contract(&contract);
+    let ca = essential_hash::content_addr(&contract);
     let fetched_contract = node_db::get_contract(&conn, &ca).unwrap().unwrap();
 
     assert_eq!(contract, fetched_contract);
@@ -149,14 +149,14 @@ fn test_get_state_progress() {
     // Create the necessary tables and insert the contract progress.
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
-    node_db::update_state_progress(&tx, 42, &get_block_hash(42)).unwrap();
+    node_db::update_state_progress(&tx, 42, &get_block_address(42)).unwrap();
     tx.commit().unwrap();
 
     // Fetch the state progress.
-    let (block_number, block_hash) = node_db::get_state_progress(&conn).unwrap().unwrap();
+    let (block_number, block_address) = node_db::get_state_progress(&conn).unwrap().unwrap();
 
     assert_eq!(block_number, 42);
-    assert_eq!(block_hash, get_block_hash(42));
+    assert_eq!(block_address, get_block_address(42));
 }
 
 #[test]
@@ -290,8 +290,8 @@ fn test_query_at_finalized() {
     node_db::create_tables(&tx).unwrap();
     for block in &blocks {
         node_db::insert_block(&tx, block).unwrap();
-        let block_hash = node_db::hash_block_and_solutions(block).0;
-        node_db::finalize_block(&tx, &block_hash).unwrap();
+        let block_address = essential_hash::content_addr(block);
+        node_db::finalize_block(&tx, &block_address).unwrap();
     }
 
     // Test queries at each block and solution.

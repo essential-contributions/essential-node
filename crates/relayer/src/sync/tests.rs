@@ -62,7 +62,7 @@ async fn test_sync_contracts() {
         result,
         ContractProgress {
             l2_block_number: 1,
-            last_contract: essential_hash::contract_addr::from_contract(&Contract {
+            last_contract: essential_hash::content_addr(&Contract {
                 predicates: vec![predicate.clone()],
                 salt: [1; 32],
             })
@@ -82,7 +82,7 @@ async fn test_sync_contracts() {
 
     let progress = Some(ContractProgress {
         l2_block_number: 1,
-        last_contract: essential_hash::contract_addr::from_contract(&Contract {
+        last_contract: essential_hash::content_addr(&Contract {
             predicates: vec![predicate.clone()],
             salt: [1; 32],
         }),
@@ -116,7 +116,7 @@ async fn test_sync_contracts() {
 
     let progress = Some(ContractProgress {
         l2_block_number: 1,
-        last_contract: essential_hash::contract_addr::from_contract(&Contract {
+        last_contract: essential_hash::content_addr(&Contract {
             predicates: vec![predicate.clone()],
             salt: [1; 32],
         }),

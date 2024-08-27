@@ -22,7 +22,7 @@ fn test_state_value() {
     node_db::insert_contract(&tx, &contract, da_block).unwrap();
 
     // Write some state.
-    let contract_ca = essential_hash::contract_addr::from_contract(&contract);
+    let contract_ca = essential_hash::content_addr(&contract);
     node_db::update_state(&tx, &contract_ca, &key, &value).unwrap();
     tx.commit().unwrap();
 
@@ -58,7 +58,7 @@ fn test_state_values_with_deletion() {
     // Create tables, contract, insert values.
     node_db::create_tables(&tx).unwrap();
     node_db::insert_contract(&tx, &contract, da_block).unwrap();
-    let contract_ca = essential_hash::contract_addr::from_contract(&contract);
+    let contract_ca = essential_hash::content_addr(&contract);
     for (k, v) in keys.iter().zip(&values) {
         node_db::update_state(&tx, &contract_ca, k, v).unwrap();
     }
