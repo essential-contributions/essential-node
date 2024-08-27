@@ -54,8 +54,8 @@ pub mod query {
     decl_const_sql_str!(GET_BLOCK_NUMBER, "query/get_block_number.sql");
     decl_const_sql_str!(GET_LATEST_BLOCK_NUMBER, "query/get_latest_block_number.sql");
     decl_const_sql_str!(
-        GET_LATEST_FINALIZED_BLOCK_HASH,
-        "query/get_latest_finalized_block_hash.sql"
+        GET_LATEST_FINALIZED_BLOCK_ADDRESS,
+        "query/get_latest_finalized_block_address.sql"
     );
     decl_const_sql_str!(GET_PREDICATE, "query/get_predicate.sql");
     decl_const_sql_str!(GET_SOLUTION, "query/get_solution.sql");

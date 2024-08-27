@@ -1,5 +1,5 @@
 SELECT
-    block.block_hash
+    block.block_address
 FROM
     block
     JOIN finalized_block ON block.id = finalized_block.block_id

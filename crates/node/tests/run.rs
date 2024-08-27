@@ -1,5 +1,6 @@
 #![cfg(feature = "test-utils")]
 
+use essential_hash::content_addr;
 use essential_node::{
     test_utils::{
         assert_multiple_block_mutations, assert_state_progress_is_none,
@@ -7,7 +8,6 @@ use essential_node::{
     },
     Node,
 };
-use essential_node_db::hash_block_and_solutions;
 use essential_types::{
     contract::{Contract, SignedContract},
     solution::Solution,
@@ -55,7 +55,7 @@ fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block
     assert_state_progress_is_some(
         conn,
         &fetched_blocks[fetched_blocks.len() - 1],
-        &hash_block_and_solutions(&fetched_blocks[fetched_blocks.len() - 1]).0,
+        &content_addr(&fetched_blocks[fetched_blocks.len() - 1]),
     );
 }
 
@@ -106,12 +106,12 @@ async fn test_run() {
         .flat_map(|(_, contracts)| {
             contracts
                 .into_iter()
-                .map(|c| essential_hash::contract_addr::from_contract(&c))
+                .map(|c| essential_hash::content_addr(&c))
         })
         .collect();
     assert_eq!(fetched_contracts.len(), test_contracts.len());
     for test_contract in test_contracts.iter() {
-        let hash = essential_hash::contract_addr::from_contract(test_contract);
+        let hash = essential_hash::content_addr(test_contract);
         assert!(fetched_contracts.contains(&hash));
     }
 

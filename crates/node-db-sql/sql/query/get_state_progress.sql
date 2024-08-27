@@ -1,5 +1,5 @@
 SELECT
-    number, block_hash
+    number, block_address
 FROM
     state_progress
 WHERE

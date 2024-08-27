@@ -1,5 +1,5 @@
 SELECT
-    block.block_hash,
+    block.block_address,
     block.number,
     block.timestamp_secs,
     block.timestamp_nanos,
@@ -26,7 +26,7 @@ WHERE
     )
 ORDER BY
     block.number ASC,
-    block.block_hash ASC,
+    block.block_address ASC,
     block_solution.solution_index ASC
 LIMIT
     :page_size OFFSET :page_number * :page_size;

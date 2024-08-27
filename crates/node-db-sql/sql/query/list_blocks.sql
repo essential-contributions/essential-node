@@ -1,5 +1,5 @@
 SELECT
-    block.block_hash,
+    block.block_address,
     block.number,
     block.timestamp_secs,
     block.timestamp_nanos,
@@ -12,5 +12,5 @@ WHERE
     block.number >= :start_block AND block.number < :end_block
 ORDER BY
     block.number ASC,
-    block.block_hash ASC,
+    block.block_address ASC,
     block_solution.solution_index ASC

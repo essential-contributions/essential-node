@@ -85,7 +85,7 @@ async fn test_contract() {
     node.db().insert_contract(clone, da_block).await.unwrap();
 
     // Get the contract.
-    let ca = essential_hash::contract_addr::from_contract(&contract);
+    let ca = essential_hash::content_addr(contract.as_ref());
     let fetched = node.db().get_contract(ca).await.unwrap().unwrap();
     assert_eq!(&*contract, &fetched);
 
@@ -117,7 +117,7 @@ async fn test_state() {
         .insert_contract(contract.clone(), da_block)
         .await
         .unwrap();
-    let contract_ca = essential_hash::contract_addr::from_contract(&contract);
+    let contract_ca = essential_hash::content_addr(contract.as_ref());
 
     // Spawn a task for every insertion.
     let mut handles = vec![];
