@@ -5,6 +5,7 @@
 use error::CriticalError;
 use essential_relayer::Relayer;
 pub use node_handle::Handle;
+use rusqlite_pool::tokio::AsyncConnectionPool;
 use state::derive_state_stream;
 use thiserror::Error;
 
@@ -42,8 +43,18 @@ pub mod test_utils;
 /// # }
 /// ```
 pub struct Node {
-    /// A fixed number of connections to the node's database.
-    conn_pool: db::ConnectionPool,
+    conn_pools: ConnectionPools,
+}
+
+/// The node's DB connection pools, handling congestion and priority access to the sqlite DB.
+struct ConnectionPools {
+    /// A public connection pool providing DB access for downstream applications
+    /// or library functionality like the node's API.
+    public: db::ConnectionPool,
+    /// A private internal connection pool, ensuring the relayer and state
+    /// derivation have high-priority DB access in the case that the publicly
+    /// exposed connection pool becomes congested.
+    private: db::ConnectionPool,
 }
 
 /// All configuration options for a `Node` instance.
@@ -73,21 +84,26 @@ impl Node {
     /// Upon construction, the node's database tables are created if they have
     /// not already been created.
     pub fn new(conf: &Config) -> Result<Self, NewError> {
-        let conn_pool = db::ConnectionPool::new(&conf.db)?;
+        // Initialise the connections to the node's DB.
+        let conn_pools = ConnectionPools::new(&conf.db)?;
 
         // Create the tables.
-        let mut conn = conn_pool.try_acquire().expect("all permits available");
+        let mut conn = conn_pools
+            .private
+            .try_acquire()
+            .expect("all permits available");
         db::with_tx(&mut conn, |tx| essential_node_db::create_tables(tx))?;
 
-        Ok(Self { conn_pool })
+        Ok(Self { conn_pools })
     }
 
-    /// Access to the node's DB connection pool and in turn, DB-access-related methods.
+    /// Access to the node's public DB connection pool and in turn,
+    /// DB-access-related methods.
     ///
     /// Acquiring an instance of the [`db::ConnectionPool`] is cheap (equivalent
     /// to cloning an `Arc`).
     pub fn db(&self) -> db::ConnectionPool {
-        self.conn_pool.clone()
+        self.conn_pools.public.clone()
     }
 
     /// Manually close the `Node` and handle the result.
@@ -99,11 +115,7 @@ impl Node {
     /// to properly handle all connection results. Otherwise, connections not in
     /// the queue will be closed upon the last connection handle dropping.
     pub fn close(self) -> Result<(), CloseError> {
-        let res = self.conn_pool.0.close();
-        let errs: Vec<_> = res.into_iter().filter_map(Result::err).collect();
-        if !errs.is_empty() {
-            return Err(ConnectionCloseErrors(errs).into());
-        }
+        self.conn_pools.close()?;
         Ok(())
     }
 
@@ -122,15 +134,44 @@ impl Node {
         let (block_notify, new_block) = tokio::sync::watch::channel(());
         let relayer = Relayer::new(server_address.as_str())?;
         let relayer_handle = relayer.run(
-            (*self.conn_pool.0).clone(),
+            self.conn_pools.private.0.clone(),
             contract_notify,
             block_notify.clone(),
         )?;
 
         // Run state derivation stream.
-        let state_handle = derive_state_stream(self.conn_pool.clone(), new_block, block_notify)?;
+        let state_handle =
+            derive_state_stream(self.conn_pools.private.clone(), new_block, block_notify)?;
 
         Ok(Handle::new(relayer_handle, state_handle))
+    }
+}
+
+impl ConnectionPools {
+    /// The node's API, relayer and state derivation connection pools.
+    fn new(conf: &db::Config) -> rusqlite::Result<ConnectionPools> {
+        // The private connections should get priority, and ideally be able
+        // to roughly saturate the available CPUs while the relayer and state
+        // streams catch up with head.
+        let prv_conn_limit = num_cpus::get();
+        let prv_conn_init = || db::new_conn(&conf.source);
+        let private = db::ConnectionPool(AsyncConnectionPool::new(prv_conn_limit, prv_conn_init)?);
+        let public = db::ConnectionPool::new(conf)?;
+        Ok(Self { public, private })
+    }
+
+    /// Closes the inner connection pools, returning an error in the case that
+    /// any of the queued connections fail to close.
+    fn close(self) -> Result<(), ConnectionCloseErrors> {
+        let prv_res = close_conn_pool(&self.private.0);
+        let pub_res = close_conn_pool(&self.public.0);
+        if let Err(mut err) = prv_res {
+            if let Err(pub_err) = pub_res {
+                err.0.extend(pub_err.0);
+            }
+            return Err(err);
+        }
+        Ok(())
     }
 }
 
@@ -142,4 +183,14 @@ impl core::fmt::Display for ConnectionCloseErrors {
         }
         Ok(())
     }
+}
+
+/// Close a connection pool, returning a `ConnectionCloseErrors` in the case of any errors.
+fn close_conn_pool(conn_pool: &AsyncConnectionPool) -> Result<(), ConnectionCloseErrors> {
+    let res = conn_pool.close();
+    let errs: Vec<_> = res.into_iter().filter_map(Result::err).collect();
+    if !errs.is_empty() {
+        return Err(ConnectionCloseErrors(errs));
+    }
+    Ok(())
 }
