@@ -589,9 +589,9 @@ dependencies = [
 
 [[package]]
 name = "essential-check"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04306f9e80a21f4c0887ff96d91c04cbf05c93f77389be9abfbbe88a83fa7f42"
+checksum = "df6e016f9b30ee008451ecb09288cce5926892be57ead5204e45f3a61c553af3"
 dependencies = [
  "essential-constraint-vm",
  "essential-sign",
@@ -765,9 +765,9 @@ dependencies = [
 
 [[package]]
 name = "essential-state-read-vm"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e1335220de5757595c593e1e120800c38092ac3b45aa15fc659c50efd55ec87"
+checksum = "8569c61fa6b0b1cd3660fa4fa0162cd1c79e7fce26d1d7b7e9a4d94c3f6614ea"
 dependencies = [
  "essential-constraint-vm",
  "essential-state-asm",
