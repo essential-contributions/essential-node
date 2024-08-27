@@ -1,4 +1,6 @@
 use crate::db::AcquireThenQueryError;
+use essential_node_db::QueryError;
+use essential_types::PredicateAddress;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -21,6 +23,16 @@ pub enum RecoverableError {
     LastProgress,
     #[error("A recoverable database error occurred: {0}")]
     Rusqlite(rusqlite::Error),
+    #[error("Validation failed: {0}")]
+    Validation(#[from] ValidationError),
+}
+
+#[derive(Debug, Error)]
+pub enum ValidationError {
+    #[error("predicate not in database: {0:?}")]
+    PredicateNotFound(PredicateAddress),
+    #[error(transparent)]
+    Query(#[from] QueryError),
 }
 
 #[derive(Debug, Error)]

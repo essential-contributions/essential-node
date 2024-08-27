@@ -2,20 +2,22 @@
 //!
 //! The primary entry-point to the crate is the [`Node`] type.
 
-use error::CriticalError;
+use derive_state::derive_state_stream;
+use error::{CriticalError, RecoverableError};
 use essential_relayer::Relayer;
+use essential_types::Block;
 pub use node_handle::Handle;
 use rusqlite_pool::tokio::AsyncConnectionPool;
-use state::derive_state_stream;
 use thiserror::Error;
 
 pub mod db;
+mod derive_state;
 mod error;
 mod node_handle;
-mod state;
 mod state_handle;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_utils;
+mod validate;
 
 /// The Essential `Node`.
 ///
@@ -144,6 +146,10 @@ impl Node {
             derive_state_stream(self.conn_pools.private.clone(), new_block, block_notify)?;
 
         Ok(Handle::new(relayer_handle, state_handle))
+    }
+
+    pub async fn validate(&self, block: &Block) -> Result<(), RecoverableError> {
+        validate::validate(self.db(), self.conn_pools.private.clone(), block).await
     }
 }
 
