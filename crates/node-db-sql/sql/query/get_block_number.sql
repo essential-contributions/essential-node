@@ -3,6 +3,6 @@ SELECT
 FROM
     block
 WHERE
-    block.block_hash = :block_hash
+    block.block_address = :block_address
 LIMIT
     1;

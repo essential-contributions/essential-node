@@ -3,9 +3,9 @@ use crate::{
     error::{CriticalError, InternalError, RecoverableError},
     state_handle::Handle,
 };
+use essential_hash::content_addr;
 use essential_node_db::{
-    get_block_number, get_latest_finalized_block_hash, hash_block_and_solutions, update_state,
-    update_state_progress, BlockHash,
+    get_block_number, get_latest_finalized_block_address, update_state, update_state_progress,
 };
 use essential_types::{solution::Mutation, Block, ContentAddress};
 use futures::stream::{StreamExt, TryStreamExt};
@@ -98,7 +98,7 @@ async fn derive_next_block_state(
     #[cfg(feature = "tracing")]
     tracing::debug!("Deriving state for block number {}", block.number);
 
-    let block_hash = hash_block_and_solutions(&block).0;
+    let block_address = content_addr(&block);
 
     let mutations = block.solutions.into_iter().flat_map(|solution| {
         solution.data.into_iter().map(|data| Mutations {
@@ -107,7 +107,7 @@ async fn derive_next_block_state(
         })
     });
 
-    if update_state_in_db(conn, mutations, block.number, block_hash).await? {
+    if update_state_in_db(conn, mutations, block.number, block_address).await? {
         let _ = self_notify.send(());
     }
     Ok(())
@@ -116,7 +116,7 @@ async fn derive_next_block_state(
 /// Fetch the last processed block from the database in a blocking task.
 async fn get_last_progress(
     conn: &ConnectionPool,
-) -> Result<Option<(u64, BlockHash)>, RecoverableError> {
+) -> Result<Option<(u64, ContentAddress)>, RecoverableError> {
     conn.get_state_progress()
         .await
         .map_err(|_err| RecoverableError::LastProgress)
@@ -125,7 +125,7 @@ async fn get_last_progress(
 /// Fetch the next block to process from the database in a blocking task.
 async fn get_next_block(
     conn: &ConnectionPool,
-    progress: Option<(u64, BlockHash)>,
+    progress: Option<(u64, ContentAddress)>,
 ) -> Result<Block, InternalError> {
     let range = progress.as_ref().map_or(0..1, |(block_num, _)| {
         *block_num..block_num.saturating_add(2) // List previous and current block
@@ -143,7 +143,7 @@ async fn get_next_block(
             let previous_block = iter.next().ok_or(CriticalError::Fork)?;
             // Make sure the block is inserted into the database before deriving state
             let current_block = iter.next().ok_or(RecoverableError::BlockNotFound(number))?;
-            if hash_block_and_solutions(&previous_block).0 != hash {
+            if content_addr(&previous_block) != hash {
                 return Err(CriticalError::Fork.into());
             }
             current_block
@@ -164,7 +164,7 @@ async fn update_state_in_db<S, I>(
     conn: ConnectionPool,
     mutations: I,
     block_number: u64,
-    block_hash: BlockHash,
+    block_address: ContentAddress,
 ) -> Result<bool, InternalError>
 where
     S: IntoIterator<Item = Mutation>,
@@ -178,10 +178,10 @@ where
         #[cfg(feature = "tracing")]
         let _guard = span.enter();
 
-        update_state_in_db_inner(&mut conn, mutations, block_number, block_hash)?;
+        update_state_in_db_inner(&mut conn, mutations, block_number, block_address)?;
         let tx = conn.transaction();
         let latest_finalized_block_number = tx.and_then(|tx| {
-            get_latest_finalized_block_hash(&tx).and_then(|hash| {
+            get_latest_finalized_block_address(&tx).and_then(|hash| {
                 hash.and_then(|hash| get_block_number(&tx, &hash).transpose())
                     .transpose()
             })
@@ -206,7 +206,7 @@ fn update_state_in_db_inner<S, I>(
     conn: &mut ConnectionHandle,
     mutations: I,
     block_number: u64,
-    block_hash: BlockHash,
+    block_address: ContentAddress,
 ) -> Result<(), CriticalError>
 where
     S: IntoIterator<Item = Mutation>,
@@ -220,12 +220,12 @@ where
         }
     }
 
-    update_state_progress(&tx, block_number, &block_hash)?;
+    update_state_progress(&tx, block_number, &block_address)?;
 
     tx.commit()?;
 
     #[cfg(feature = "tracing")]
-    tracing::debug!(number = block_number, hash = %block_hash);
+    tracing::debug!(number = block_number, hash = %block_address);
 
     Ok(())
 }

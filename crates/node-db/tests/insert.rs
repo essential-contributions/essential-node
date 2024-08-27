@@ -1,11 +1,11 @@
 //! Basic tests for testing insertion behaviour.
 
 use essential_hash::content_addr;
-use essential_node_db::{self as node_db, hash_block_and_solutions};
+use essential_node_db::{self as node_db};
 use essential_types::{predicate::Predicate, ContentAddress, Hash};
 use rusqlite::Connection;
 use std::time::Duration;
-use util::get_block_hash;
+use util::get_block_address;
 
 mod util;
 
@@ -86,8 +86,8 @@ fn test_finalize_block() {
     // Finalize the blocks.
     let tx = conn.transaction().unwrap();
     for block in blocks.iter().take(NUM_FINALIZED_BLOCKS as usize) {
-        let block_hash = hash_block_and_solutions(block).0;
-        node_db::finalize_block(&tx, &block_hash).unwrap();
+        let block_address = content_addr(block);
+        node_db::finalize_block(&tx, &block_address).unwrap();
     }
     tx.commit().unwrap();
 
@@ -96,27 +96,28 @@ fn test_finalize_block() {
     assert_eq!(r.len(), NUM_BLOCKS as usize);
 
     // Check the latest finalized block hash.
-    let latest_finalized_block_hash = node_db::get_latest_finalized_block_hash(&conn).unwrap();
-    let expected_latest_finalized_block_hash =
-        hash_block_and_solutions(&blocks[NUM_FINALIZED_BLOCKS as usize - 1]).0;
+    let latest_finalized_block_address =
+        node_db::get_latest_finalized_block_address(&conn).unwrap();
+    let expected_latest_finalized_block_address =
+        content_addr(&blocks[NUM_FINALIZED_BLOCKS as usize - 1]);
     assert_eq!(
-        latest_finalized_block_hash,
-        Some(expected_latest_finalized_block_hash)
+        latest_finalized_block_address,
+        Some(expected_latest_finalized_block_address)
     );
 
-    let query = "SELECT DISTINCT b.block_hash FROM block AS b JOIN finalized_block AS f ON f.block_id = b.id ORDER BY b.number ASC";
+    let query = "SELECT DISTINCT b.block_address FROM block AS b JOIN finalized_block AS f ON f.block_id = b.id ORDER BY b.number ASC";
     let mut stmt = conn.prepare(query).unwrap();
     let rows: Vec<essential_types::Hash> = stmt
-        .query_map([], |row| row.get("block_hash"))
+        .query_map([], |row| row.get("block_address"))
         .unwrap()
         .map(Result::unwrap)
         .collect();
     assert_eq!(rows.len(), NUM_FINALIZED_BLOCKS as usize);
     rows.iter()
         .zip(blocks.iter())
-        .for_each(|(block_hash, block)| {
-            let expected_block_hash = hash_block_and_solutions(block).0;
-            assert_eq!(*block_hash, *expected_block_hash);
+        .for_each(|(block_address, block)| {
+            let expected_block_address = content_addr(block);
+            assert_eq!(*block_address, expected_block_address.0);
         });
 
     drop(stmt);
@@ -130,7 +131,7 @@ fn test_finalize_block() {
     node_db::insert_block(&tx, &fork).unwrap();
     tx.commit().unwrap();
 
-    let e = node_db::finalize_block(&conn, &hash_block_and_solutions(&fork).0).unwrap_err();
+    let e = node_db::finalize_block(&conn, &content_addr(&fork)).unwrap_err();
     assert!(matches!(
         e,
         rusqlite::Error::SqliteFailure(
@@ -200,7 +201,7 @@ fn test_insert_contract() {
             ))
         })
         .unwrap();
-    let expected_contract_ca = essential_hash::contract_addr::from_contract(&contract);
+    let expected_contract_ca = essential_hash::content_addr(&contract);
     assert_eq!(
         expected_contract_ca,
         node_db::decode(&contract_ca_blob).unwrap()
@@ -284,39 +285,39 @@ fn test_update_state_progress() {
     let mut conn = Connection::open_in_memory().unwrap();
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
-    node_db::update_state_progress(&tx, 0, &get_block_hash(0))
+    node_db::update_state_progress(&tx, 0, &get_block_address(0))
         .expect("Failed to insert state progress");
     tx.commit().unwrap();
 
     let mut stmt = conn
-        .prepare("SELECT id, number, block_hash FROM state_progress WHERE id = 1")
+        .prepare("SELECT id, number, block_address FROM state_progress WHERE id = 1")
         .unwrap();
     let mut result = stmt
         .query_map((), |row| {
             Ok((
                 row.get::<_, u64>("id")?,
                 row.get::<_, u64>("number")?,
-                row.get::<_, Vec<u8>>("block_hash")?,
+                row.get::<_, Vec<u8>>("block_address")?,
             ))
         })
         .unwrap();
-    let (id, block_number, block_hash) = result.next().unwrap().unwrap();
+    let (id, block_number, block_address) = result.next().unwrap().unwrap();
     assert_eq!(id, 1);
     assert_eq!(block_number, 0);
     assert_eq!(
-        node_db::decode::<Hash>(&block_hash).unwrap(),
-        *get_block_hash(0)
+        node_db::decode::<Hash>(&block_address).unwrap(),
+        get_block_address(0).0
     );
     assert!(result.next().is_none());
 
-    node_db::update_state_progress(&conn, u64::MAX, &get_block_hash(1))
+    node_db::update_state_progress(&conn, u64::MAX, &get_block_address(1))
         .expect("Failed to insert state progress");
 
     drop(result);
 
     let result = node_db::get_state_progress(&conn).unwrap().unwrap();
     assert_eq!(result.0, u64::MAX);
-    assert_eq!(result.1, get_block_hash(1));
+    assert_eq!(result.1, get_block_address(1));
 
     // Id should always be 1 because we only inserted one row.
     let mut result = stmt.query_map((), |row| row.get::<_, u64>("id")).unwrap();
