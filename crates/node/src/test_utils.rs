@@ -138,6 +138,8 @@ pub async fn setup_server() -> (String, Child) {
         .arg("--loop-freq")
         .arg("1")
         .arg("--disable-tracing")
+        .arg("--disable-time")
+        // .env("RUST_LOG", "info,[deploy]=debug")
         .kill_on_drop(true)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
