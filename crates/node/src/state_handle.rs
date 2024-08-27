@@ -1,6 +1,3 @@
-// TODO: remove when state derivation is actually used
-#![allow(dead_code)]
-
 use tokio::sync::watch;
 
 /// Handle for joining or closing the stream.
