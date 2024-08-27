@@ -18,7 +18,7 @@ use tokio::sync::{AcquireError, TryAcquireError};
 ///
 /// The handle is safe to clone and share between threads.
 #[derive(Clone)]
-pub struct ConnectionPool(pub(crate) Arc<AsyncConnectionPool>);
+pub struct ConnectionPool(pub(crate) AsyncConnectionPool);
 
 /// A temporary connection handle to a [`Node`][`crate::Node`]'s [`ConnectionPool`].
 ///
@@ -66,7 +66,7 @@ pub type AcquireThenQueryError = AcquireThenError<db::QueryError>;
 impl ConnectionPool {
     /// Create the connection pool from the given configuration.
     pub(crate) fn new(conf: &Config) -> rusqlite::Result<Self> {
-        Ok(Self(Arc::new(new_conn_pool(conf)?)))
+        Ok(Self(new_conn_pool(conf)?))
     }
 
     /// Acquire a temporary database [`ConnectionHandle`] from the inner pool.
@@ -296,10 +296,15 @@ where
 
 /// Initialise the connection pool from the given configuration.
 fn new_conn_pool(conf: &Config) -> rusqlite::Result<AsyncConnectionPool> {
-    AsyncConnectionPool::new(conf.conn_limit, || match &conf.source {
+    AsyncConnectionPool::new(conf.conn_limit, || new_conn(&conf.source))
+}
+
+/// Create a new connection given a DB source.
+pub(crate) fn new_conn(source: &Source) -> rusqlite::Result<rusqlite::Connection> {
+    match source {
         Source::Memory(id) => new_mem_conn(id),
         Source::Path(p) => rusqlite::Connection::open(p),
-    })
+    }
 }
 
 /// Create an in-memory connection with the given ID
