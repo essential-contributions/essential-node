@@ -1,6 +1,3 @@
-// TODO: remove when state derivation is actually used
-#![allow(dead_code)]
-
 use crate::{
     db::{ConnectionHandle, ConnectionPool},
     error::{CriticalError, InternalError, RecoverableError},
