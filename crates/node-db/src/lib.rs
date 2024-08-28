@@ -251,6 +251,23 @@ pub fn update_state_progress(
     Ok(())
 }
 
+/// Updates the progress on validation.
+pub fn update_validation_progress(
+    conn: &Connection,
+    block_number: u64,
+    block_address: &ContentAddress,
+) -> rusqlite::Result<()> {
+    let block_number = block_number as i64;
+    conn.execute(
+        sql::insert::VALIDATION_PROGRESS,
+        named_params! {
+            ":number": block_number,
+            ":block_address": block_address.0,
+        },
+    )?;
+    Ok(())
+}
+
 /// Deletes the state for a given contract content address and key.
 pub fn delete_state(
     conn: &Connection,
@@ -418,6 +435,21 @@ pub fn get_latest_finalized_block_address(
 /// Fetches the last progress on state derivation.
 pub fn get_state_progress(conn: &Connection) -> Result<Option<(u64, ContentAddress)>, QueryError> {
     let mut stmt = conn.prepare(sql::query::GET_STATE_PROGRESS)?;
+    let value: Option<(u64, ContentAddress)> = stmt
+        .query_row([], |row| {
+            let number: i64 = row.get("number")?;
+            let block_address: Hash = row.get("block_address")?;
+            Ok((number as u64, ContentAddress(block_address)))
+        })
+        .optional()?;
+    Ok(value)
+}
+
+/// Fetches the last progress on validation.
+pub fn get_validation_progress(
+    conn: &Connection,
+) -> Result<Option<(u64, ContentAddress)>, QueryError> {
+    let mut stmt = conn.prepare(sql::query::GET_VALIDATION_PROGRESS)?;
     let value: Option<(u64, ContentAddress)> = stmt
         .query_row([], |row| {
             let number: i64 = row.get("number")?;

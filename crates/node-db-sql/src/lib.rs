@@ -30,6 +30,7 @@ pub mod create {
     decl_const_sql_str!(SOLUTION, "create/solution.sql");
     decl_const_sql_str!(STATE, "create/state.sql");
     decl_const_sql_str!(STATE_PROGRESS, "create/state_progress.sql");
+    decl_const_sql_str!(VALIDATION_PROGRESS, "create/validation_progress.sql");
 }
 
 /// Statements for inserting rows into the tables.
@@ -44,6 +45,7 @@ pub mod insert {
     decl_const_sql_str!(PREDICATE, "insert/predicate.sql");
     decl_const_sql_str!(SOLUTION, "insert/solution.sql");
     decl_const_sql_str!(STATE_PROGRESS, "insert/state_progress.sql");
+    decl_const_sql_str!(VALIDATION_PROGRESS, "insert/validation_progress.sql");
 }
 
 /// Statements for making queries.
@@ -61,6 +63,7 @@ pub mod query {
     decl_const_sql_str!(GET_SOLUTION, "query/get_solution.sql");
     decl_const_sql_str!(GET_STATE_PROGRESS, "query/get_state_progress.sql");
     decl_const_sql_str!(GET_STATE, "query/get_state.sql");
+    decl_const_sql_str!(GET_VALIDATION_PROGRESS, "query/get_validation_progress.sql");
     decl_const_sql_str!(LIST_BLOCKS, "query/list_blocks.sql");
     decl_const_sql_str!(LIST_CONTRACTS, "query/list_contracts.sql");
     decl_const_sql_str!(LIST_BLOCKS_BY_TIME, "query/list_blocks_by_time.sql");
@@ -111,6 +114,8 @@ pub mod table {
     pub const SOLUTION: Table = Table::new("solution", create::SOLUTION);
     pub const STATE: Table = Table::new("state", create::STATE);
     pub const STATE_PROGRESS: Table = Table::new("state_progress", create::STATE_PROGRESS);
+    pub const VALIDATION_PROGRESS: Table =
+        Table::new("validation_progress", create::VALIDATION_PROGRESS);
 
     /// All tables in a list. Useful for initialisation and testing.
     pub const ALL: &[Table] = &[
@@ -125,5 +130,6 @@ pub mod table {
         SOLUTION,
         STATE,
         STATE_PROGRESS,
+        VALIDATION_PROGRESS,
     ];
 }

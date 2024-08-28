@@ -333,3 +333,57 @@ fn test_update_state_progress() {
         .unwrap();
     assert_eq!(num_rows, 1);
 }
+
+#[test]
+fn test_update_validation_progress() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    node_db::update_validation_progress(&tx, 0, &get_block_address(0))
+        .expect("Failed to insert validation progress");
+    tx.commit().unwrap();
+
+    let mut stmt = conn
+        .prepare("SELECT id, number, block_address FROM validation_progress WHERE id = 1")
+        .unwrap();
+    let mut result = stmt
+        .query_map((), |row| {
+            Ok((
+                row.get::<_, u64>("id")?,
+                row.get::<_, u64>("number")?,
+                row.get::<_, Vec<u8>>("block_address")?,
+            ))
+        })
+        .unwrap();
+    let (id, block_number, block_address) = result.next().unwrap().unwrap();
+    assert_eq!(id, 1);
+    assert_eq!(block_number, 0);
+    assert_eq!(
+        node_db::decode::<Hash>(&block_address).unwrap(),
+        get_block_address(0).0
+    );
+    assert!(result.next().is_none());
+
+    node_db::update_validation_progress(&conn, u64::MAX, &get_block_address(1))
+        .expect("Failed to insert validation progress");
+
+    drop(result);
+
+    let result = node_db::get_validation_progress(&conn).unwrap().unwrap();
+    assert_eq!(result.0, u64::MAX);
+    assert_eq!(result.1, get_block_address(1));
+
+    // Id should always be 1 because we only inserted one row.
+    let mut result = stmt.query_map((), |row| row.get::<_, u64>("id")).unwrap();
+    let id = result.next().unwrap().unwrap();
+    assert_eq!(id, 1);
+    drop(result);
+
+    // Check the db only has one row.
+    let num_rows = conn
+        .query_row("SELECT COUNT(id) FROM validation_progress", (), |row| {
+            row.get::<_, i64>("COUNT(id)")
+        })
+        .unwrap();
+    assert_eq!(num_rows, 1);
+}
