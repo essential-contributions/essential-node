@@ -135,7 +135,7 @@ async fn get_next_block(
             let tx = conn.transaction().map_err(RecoverableError::Rusqlite)?;
             let range = match &progress {
                 Some(block_address) => {
-                    let block_number = essential_node_db::get_block_number(&tx, &block_address)
+                    let block_number = essential_node_db::get_block_number(&tx, block_address)
                         .map_err(RecoverableError::Rusqlite)?
                         .ok_or(RecoverableError::BlockNotFound(block_address.clone()))?;
                     block_number..block_number.saturating_add(2)
