@@ -627,20 +627,17 @@ where
     FFut: Future<Output = Option<Conn>>,
     Conn: AsRef<Connection>,
     // `await_new_block` returns a future that resolves when a new block is available.
-    G: Clone + FnMut() -> GFut,
+    G: Clone + Fn() -> GFut,
     GFut: Future<Output = Option<()>>,
 {
     futures::stream::unfold(start_block, move |block_ix| {
         let acquire_conn = acquire_conn.clone();
-        let mut await_new_block = await_new_block.clone();
+        let await_new_block = await_new_block.clone();
         let next_block_ix = block_ix + 1;
         async move {
             loop {
-                // Acquire a connection.
-                // Returns `None` if the source of connections is closed.
-                let conn = acquire_conn().await?;
-                // Query for the current block.
-                match list_blocks(conn.as_ref(), block_ix..next_block_ix) {
+                // Acquire a connection and query for the current block.
+                match list_blocks(acquire_conn().await?.as_ref(), block_ix..next_block_ix) {
                     // If some error occurred, emit the error.
                     Err(err) => return Some((Err(err), block_ix)),
                     // If the query succeeded, pop the single block.

@@ -603,8 +603,10 @@ dependencies = [
  "futures",
  "postcard",
  "rusqlite",
+ "rusqlite-pool",
  "serde",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]

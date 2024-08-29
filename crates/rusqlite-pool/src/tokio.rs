@@ -98,6 +98,18 @@ impl AsyncConnectionPool {
     }
 }
 
+impl AsRef<rusqlite::Connection> for AsyncConnectionHandle {
+    fn as_ref(&self) -> &rusqlite::Connection {
+        self
+    }
+}
+
+impl AsRef<crate::ConnectionHandle> for AsyncConnectionHandle {
+    fn as_ref(&self) -> &crate::ConnectionHandle {
+        self
+    }
+}
+
 impl core::ops::Deref for AsyncConnectionHandle {
     type Target = crate::ConnectionHandle;
     fn deref(&self) -> &Self::Target {

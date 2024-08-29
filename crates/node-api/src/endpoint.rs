@@ -15,7 +15,9 @@ use essential_types::{
 };
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
+use std::sync::Arc;
 use thiserror::Error;
+use tokio::sync::Mutex;
 
 /// A range in blocks, used for the `list-blocks` and `list-contracts` endpoints.
 ///
@@ -162,15 +164,10 @@ pub mod subscribe_blocks {
         Query(start_block): Query<u64>,
     ) -> Sse<impl Stream<Item = Result<sse::Event, SubscriptionError>>> {
         // Create the `await_new_block` fn.
-        let new_block = state.new_block.clone();
+        let new_block = state.new_block.clone().map(|rx| Arc::new(Mutex::new(rx)));
         let await_new_block = move || {
             let new_block = new_block.clone();
-            async move {
-                match new_block {
-                    None => None,
-                    Some(mut rx) => rx.changed().await.ok(),
-                }
-            }
+            async move { new_block?.lock().await.changed().await.ok() }
         };
 
         // The block stream.

@@ -16,3 +16,7 @@ postcard = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+rusqlite-pool = { workspace = true, features = ["tokio"] }
+tokio = { workspace = true }
