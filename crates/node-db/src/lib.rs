@@ -134,6 +134,22 @@ pub fn finalize_block(conn: &Connection, block_address: &ContentAddress) -> rusq
     Ok(())
 }
 
+/// Inserts a failed solution.
+pub fn insert_failed_solution(
+    conn: &Connection,
+    block_address: &ContentAddress,
+    solution_hash: &ContentAddress,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        sql::insert::FAILED_SOLUTION,
+        named_params! {
+            ":block_address": block_address.0,
+            ":solution_hash": solution_hash.0,
+        },
+    )?;
+    Ok(())
+}
+
 /// For the given contract:
 ///
 /// 1. Insert it into the `contract` table.
@@ -631,4 +647,22 @@ pub fn list_contracts(
     }
 
     Ok(blocks)
+}
+
+/// List failed solutions as (block number, solution hash).
+pub fn list_failed_solutions(conn: &Connection) -> Result<Vec<(u64, ContentAddress)>, QueryError> {
+    let mut stmt = conn.prepare(sql::query::LIST_FAILED_SOLUTIONS)?;
+    let rows = stmt.query_map([], |row| {
+        dbg!(0);
+        let block_number: u64 = row.get("number")?;
+        let solution_hash: Hash = row.get("content_hash")?;
+        Ok((block_number, ContentAddress(solution_hash)))
+    })?;
+
+    let mut failed_solutions = vec![];
+    for res in rows {
+        let (block_number, solution_hash) = res?;
+        failed_solutions.push((block_number, solution_hash));
+    }
+    Ok(failed_solutions)
 }

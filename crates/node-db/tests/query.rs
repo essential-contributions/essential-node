@@ -160,6 +160,24 @@ fn test_get_state_progress() {
 }
 
 #[test]
+fn test_get_validation_progress() {
+    // Create an in-memory SQLite database.
+    let mut conn = Connection::open_in_memory().unwrap();
+
+    // Create the necessary tables and insert the contract progress.
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    node_db::update_validation_progress(&tx, 42, &get_block_address(42)).unwrap();
+    tx.commit().unwrap();
+
+    // Fetch the state progress.
+    let (block_number, block_address) = node_db::get_validation_progress(&conn).unwrap().unwrap();
+
+    assert_eq!(block_number, 42);
+    assert_eq!(block_address, get_block_address(42));
+}
+
+#[test]
 fn test_list_blocks() {
     // The test blocks.
     let blocks = util::test_blocks(100);

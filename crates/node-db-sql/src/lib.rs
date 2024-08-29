@@ -24,6 +24,7 @@ pub mod create {
     decl_const_sql_str!(CONTRACT_PREDICATE, "create/contract_predicate.sql");
     decl_const_sql_str!(CONTRACT_PROGRESS, "create/contract_progress.sql");
     decl_const_sql_str!(CONTRACT, "create/contract.sql");
+    decl_const_sql_str!(FAILED_SOLUTION, "create/failed_solution.sql");
     decl_const_sql_str!(FINALIZED_BLOCK, "create/finalized_block.sql");
     decl_const_sql_str!(MUTATION, "create/mutation.sql");
     decl_const_sql_str!(PREDICATE, "create/predicate.sql");
@@ -40,6 +41,7 @@ pub mod insert {
     decl_const_sql_str!(CONTRACT, "insert/contract.sql");
     decl_const_sql_str!(CONTRACT_PREDICATE, "insert/contract_predicate.sql");
     decl_const_sql_str!(CONTRACT_PROGRESS, "insert/contract_progress.sql");
+    decl_const_sql_str!(FAILED_SOLUTION, "insert/failed_solution.sql");
     decl_const_sql_str!(FINALIZE_BLOCK, "insert/finalize_block.sql");
     decl_const_sql_str!(MUTATION, "insert/mutation.sql");
     decl_const_sql_str!(PREDICATE, "insert/predicate.sql");
@@ -68,6 +70,7 @@ pub mod query {
     decl_const_sql_str!(LIST_CONTRACTS, "query/list_contracts.sql");
     decl_const_sql_str!(LIST_BLOCKS_BY_TIME, "query/list_blocks_by_time.sql");
     decl_const_sql_str!(LIST_CONTRACTS_BY_TIME, "query/list_contracts_by_time.sql");
+    decl_const_sql_str!(LIST_FAILED_SOLUTIONS, "query/list_failed_solutions.sql");
     decl_const_sql_str!(
         QUERY_STATE_AT_BLOCK_FINALIZED,
         "query/query_state_at_block_finalized.sql"
@@ -108,6 +111,7 @@ pub mod table {
     pub const CONTRACT_PREDICATE: Table =
         Table::new("contract_predicate", create::CONTRACT_PREDICATE);
     pub const CONTRACT_PROGRESS: Table = Table::new("contract_progress", create::CONTRACT_PROGRESS);
+    pub const FAILED_SOLUTION: Table = Table::new("failed_solution", create::FAILED_SOLUTION);
     pub const FINALIZED_BLOCK: Table = Table::new("finalized_block", create::FINALIZED_BLOCK);
     pub const MUTATION: Table = Table::new("mutation", create::MUTATION);
     pub const PREDICATE: Table = Table::new("predicate", create::PREDICATE);
@@ -124,6 +128,7 @@ pub mod table {
         CONTRACT,
         CONTRACT_PREDICATE,
         CONTRACT_PROGRESS,
+        FAILED_SOLUTION,
         FINALIZED_BLOCK,
         MUTATION,
         PREDICATE,

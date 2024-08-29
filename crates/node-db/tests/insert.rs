@@ -77,7 +77,7 @@ fn test_finalize_block() {
     tx.commit().unwrap();
 
     let r = node_db::list_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
-    assert_eq!(blocks.len(), NUM_BLOCKS as usize);
+    assert_eq!(r.len(), NUM_BLOCKS as usize);
 
     for (block, expected_block) in blocks.iter().zip(&r) {
         assert_eq!(block, expected_block);
@@ -142,6 +142,39 @@ fn test_finalize_block() {
             _
         )
     ));
+}
+
+#[test]
+fn test_failed_solution() {
+    // Test blocks that we'll insert.
+    let block = &util::test_blocks(1)[0];
+
+    // Create an in-memory SQLite database
+    let mut conn = Connection::open_in_memory().unwrap();
+
+    // Create the necessary tables and insert the block.
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    node_db::insert_block(&tx, &block).unwrap();
+    tx.commit().unwrap();
+
+    let r = node_db::list_blocks(&conn, 0..10).unwrap();
+    assert_eq!(r.len(), 1);
+    assert_eq!(block, &r[0]);
+
+    // Insert failed solution.
+    let block_address = content_addr(block);
+    let solution_hash = content_addr(block.solutions.first().unwrap());
+    node_db::insert_failed_solution(&conn, &block_address, &solution_hash).unwrap();
+
+    // Check failed solutions.
+    // TODO: fix
+    let failed_solutions = node_db::list_failed_solutions(&conn).unwrap();
+    assert_eq!(failed_solutions.len(), 1);
+    assert_eq!(failed_solutions[0].0, block.number);
+    assert_eq!(failed_solutions[0].1, solution_hash);
+
+    // TODO: test multiple solutions behavior
 }
 
 #[test]
