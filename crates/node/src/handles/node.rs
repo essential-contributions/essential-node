@@ -3,14 +3,14 @@ use crate::error::CriticalError;
 /// Handle for closing or joining the relayer and state derivation streams.
 pub struct Handle {
     relayer: essential_relayer::Handle,
-    state: crate::state_handle::Handle<CriticalError>,
+    state: crate::handles::state::Handle<CriticalError>,
 }
 
 impl Handle {
     /// Create a new handle.
     pub(crate) fn new(
         relayer: essential_relayer::Handle,
-        state: crate::state_handle::Handle<CriticalError>,
+        state: crate::handles::state::Handle<CriticalError>,
     ) -> Self {
         Self { relayer, state }
     }

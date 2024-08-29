@@ -1,6 +1,6 @@
 use tokio::sync::watch;
 
-/// Handle for joining or closing the stream.
+/// Handle for joining or closing the state derivation stream.
 pub struct Handle<E> {
     join: tokio::task::JoinHandle<Result<(), E>>,
     close: Close,

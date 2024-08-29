@@ -6,15 +6,14 @@ use derive_state::derive_state_stream;
 use error::{CriticalError, RecoverableError};
 use essential_relayer::Relayer;
 use essential_types::Block;
-pub use node_handle::Handle;
+pub use handles::node::Handle;
 use rusqlite_pool::tokio::AsyncConnectionPool;
 use thiserror::Error;
 
 pub mod db;
 mod derive_state;
 mod error;
-mod node_handle;
-mod state_handle;
+mod handles;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_utils;
 mod validate;
