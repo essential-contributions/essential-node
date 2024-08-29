@@ -1,7 +1,7 @@
 SELECT
-    number, block_address
+    block.block_address
 FROM
-    validation_progress
-WHERE
-    id = 1
-LIMIT 1
+    block
+    JOIN validation_progress ON block.id = validation_progress.block_id
+LIMIT
+    1

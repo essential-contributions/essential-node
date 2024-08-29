@@ -181,11 +181,10 @@ pub async fn setup_server() -> (String, Child) {
 }
 
 // Check that the state progress in the database is block number and hash
-pub fn assert_state_progress_is_some(conn: &Connection, block: &Block, hash: &ContentAddress) {
-    let (progress_number, progress_hash) = get_state_progress(conn)
+pub fn assert_state_progress_is_some(conn: &Connection, hash: &ContentAddress) {
+    let progress_hash = get_state_progress(conn)
         .unwrap()
         .expect("progress should be some");
-    assert_eq!(progress_number, block.number);
     assert_eq!(progress_hash, *hash);
 }
 

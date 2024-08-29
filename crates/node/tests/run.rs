@@ -54,7 +54,6 @@ fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block
     // Assert state progress is latest block
     assert_state_progress_is_some(
         conn,
-        &fetched_blocks[fetched_blocks.len() - 1],
         &content_addr(&fetched_blocks[fetched_blocks.len() - 1]),
     );
 }

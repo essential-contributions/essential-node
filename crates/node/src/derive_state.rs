@@ -1,7 +1,7 @@
 use crate::{
     db::{ConnectionHandle, ConnectionPool},
     error::{CriticalError, InternalError, RecoverableError},
-    state_handle::Handle,
+    handles::state::Handle,
 };
 use essential_hash::content_addr;
 use essential_node_db::{
@@ -116,7 +116,7 @@ async fn derive_next_block_state(
 /// Fetch the last processed block from the database in a blocking task.
 async fn get_last_progress(
     conn: &ConnectionPool,
-) -> Result<Option<(u64, ContentAddress)>, RecoverableError> {
+) -> Result<Option<ContentAddress>, RecoverableError> {
     conn.get_state_progress()
         .await
         .map_err(|_err| RecoverableError::LastProgress)
@@ -125,24 +125,42 @@ async fn get_last_progress(
 /// Fetch the next block to process from the database in a blocking task.
 async fn get_next_block(
     conn: &ConnectionPool,
-    progress: Option<(u64, ContentAddress)>,
+    progress: Option<ContentAddress>,
 ) -> Result<Block, InternalError> {
-    let range = progress.as_ref().map_or(0..1, |(block_num, _)| {
-        *block_num..block_num.saturating_add(2) // List previous and current block
-    });
+    let mut conn = conn.acquire().await.map_err(CriticalError::from)?;
+    let blocks = tokio::task::spawn_blocking::<_, Result<_, InternalError>>({
+        let progress = progress.clone();
 
-    let blocks = conn
-        .list_blocks(range)
-        .await
-        .map_err(RecoverableError::ReadState)?;
+        move || {
+            let tx = conn.transaction().map_err(RecoverableError::Rusqlite)?;
+            let range = match &progress {
+                Some(block_address) => {
+                    let block_number = essential_node_db::get_block_number(&tx, &block_address)
+                        .map_err(RecoverableError::Rusqlite)?
+                        .ok_or(RecoverableError::BlockNotFound(block_address.clone()))?;
+                    block_number..block_number.saturating_add(2)
+                }
+                None => 0..1,
+            };
+
+            let blocks =
+                essential_node_db::list_blocks(&tx, range).map_err(RecoverableError::from)?;
+
+            Ok(blocks)
+        }
+    })
+    .await
+    .map_err(RecoverableError::Join)??;
 
     let block = match progress {
         // Get the next block
-        Some((number, hash)) => {
+        Some(hash) => {
             let mut iter = blocks.into_iter();
             let previous_block = iter.next().ok_or(CriticalError::Fork)?;
             // Make sure the block is inserted into the database before deriving state
-            let current_block = iter.next().ok_or(RecoverableError::BlockNotFound(number))?;
+            let current_block = iter
+                .next()
+                .ok_or(RecoverableError::BlockNotFound(hash.clone()))?;
             if content_addr(&previous_block) != hash {
                 return Err(CriticalError::Fork.into());
             }
@@ -152,7 +170,7 @@ async fn get_next_block(
         None => blocks
             .into_iter()
             .next()
-            .ok_or(RecoverableError::BlockNotFound(0))?,
+            .ok_or(RecoverableError::FirstBlockNotFound)?,
     };
 
     Ok(block)
@@ -220,7 +238,7 @@ where
         }
     }
 
-    update_state_progress(&tx, block_number, &block_address)?;
+    update_state_progress(&tx, &block_address)?;
 
     tx.commit()?;
 

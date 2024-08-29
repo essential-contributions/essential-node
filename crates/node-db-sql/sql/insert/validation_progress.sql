@@ -1,4 +1,14 @@
 INSERT
-    OR REPLACE INTO validation_progress (id, number, block_address)
+    OR REPLACE INTO validation_progress (id, block_id)
 VALUES
-    (1, :number, :block_address);
+    (
+        1,
+        (
+            SELECT
+                id
+            FROM
+                block
+            WHERE
+                block.block_address = :block_address
+        )
+    );

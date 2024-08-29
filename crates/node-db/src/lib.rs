@@ -253,14 +253,11 @@ pub fn update_state(
 /// Updates the progress on state derivation.
 pub fn update_state_progress(
     conn: &Connection,
-    block_number: u64,
     block_address: &ContentAddress,
 ) -> rusqlite::Result<()> {
-    let block_number = block_number as i64;
     conn.execute(
         sql::insert::STATE_PROGRESS,
         named_params! {
-            ":number": block_number,
             ":block_address": block_address.0,
         },
     )?;
@@ -270,14 +267,11 @@ pub fn update_state_progress(
 /// Updates the progress on validation.
 pub fn update_validation_progress(
     conn: &Connection,
-    block_number: u64,
     block_address: &ContentAddress,
 ) -> rusqlite::Result<()> {
-    let block_number = block_number as i64;
     conn.execute(
         sql::insert::VALIDATION_PROGRESS,
         named_params! {
-            ":number": block_number,
             ":block_address": block_address.0,
         },
     )?;
@@ -449,28 +443,24 @@ pub fn get_latest_finalized_block_address(
 }
 
 /// Fetches the last progress on state derivation.
-pub fn get_state_progress(conn: &Connection) -> Result<Option<(u64, ContentAddress)>, QueryError> {
+pub fn get_state_progress(conn: &Connection) -> Result<Option<ContentAddress>, QueryError> {
     let mut stmt = conn.prepare(sql::query::GET_STATE_PROGRESS)?;
-    let value: Option<(u64, ContentAddress)> = stmt
+    let value: Option<ContentAddress> = stmt
         .query_row([], |row| {
-            let number: i64 = row.get("number")?;
             let block_address: Hash = row.get("block_address")?;
-            Ok((number as u64, ContentAddress(block_address)))
+            Ok(ContentAddress(block_address))
         })
         .optional()?;
     Ok(value)
 }
 
 /// Fetches the last progress on validation.
-pub fn get_validation_progress(
-    conn: &Connection,
-) -> Result<Option<(u64, ContentAddress)>, QueryError> {
+pub fn get_validation_progress(conn: &Connection) -> Result<Option<ContentAddress>, QueryError> {
     let mut stmt = conn.prepare(sql::query::GET_VALIDATION_PROGRESS)?;
-    let value: Option<(u64, ContentAddress)> = stmt
+    let value: Option<ContentAddress> = stmt
         .query_row([], |row| {
-            let number: i64 = row.get("number")?;
             let block_address: Hash = row.get("block_address")?;
-            Ok((number as u64, ContentAddress(block_address)))
+            Ok(ContentAddress(block_address))
         })
         .optional()?;
     Ok(value)

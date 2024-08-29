@@ -194,7 +194,7 @@ impl ConnectionPool {
     /// Get the state progress, returning the last block number and hash.
     pub async fn get_state_progress(
         &self,
-    ) -> Result<Option<(u64, ContentAddress)>, AcquireThenQueryError> {
+    ) -> Result<Option<ContentAddress>, AcquireThenQueryError> {
         self.acquire_then(|h| db::get_state_progress(h)).await
     }
 

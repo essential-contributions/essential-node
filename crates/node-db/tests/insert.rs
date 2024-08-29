@@ -177,6 +177,7 @@ fn test_failed_solution() {
     // TODO: test multiple solutions behavior
 }
 
+
 #[test]
 fn test_fork_block() {
     let first = util::test_block(0, Duration::from_secs(1));
@@ -318,7 +319,7 @@ fn test_update_state_progress() {
     let mut conn = Connection::open_in_memory().unwrap();
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
-    node_db::update_state_progress(&tx, 0, &get_block_address(0))
+    node_db::update_state_progress(&tx, &get_block_address(0))
         .expect("Failed to insert state progress");
     tx.commit().unwrap();
 
@@ -343,14 +344,13 @@ fn test_update_state_progress() {
     );
     assert!(result.next().is_none());
 
-    node_db::update_state_progress(&conn, u64::MAX, &get_block_address(1))
+    node_db::update_state_progress(&conn, &get_block_address(1))
         .expect("Failed to insert state progress");
 
     drop(result);
 
     let result = node_db::get_state_progress(&conn).unwrap().unwrap();
-    assert_eq!(result.0, u64::MAX);
-    assert_eq!(result.1, get_block_address(1));
+    assert_eq!(result, get_block_address(1));
 
     // Id should always be 1 because we only inserted one row.
     let mut result = stmt.query_map((), |row| row.get::<_, u64>("id")).unwrap();
@@ -372,7 +372,7 @@ fn test_update_validation_progress() {
     let mut conn = Connection::open_in_memory().unwrap();
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
-    node_db::update_validation_progress(&tx, 0, &get_block_address(0))
+    node_db::update_validation_progress(&tx, &get_block_address(0))
         .expect("Failed to insert validation progress");
     tx.commit().unwrap();
 
@@ -397,14 +397,13 @@ fn test_update_validation_progress() {
     );
     assert!(result.next().is_none());
 
-    node_db::update_validation_progress(&conn, u64::MAX, &get_block_address(1))
+    node_db::update_validation_progress(&conn, &get_block_address(1))
         .expect("Failed to insert validation progress");
 
     drop(result);
 
     let result = node_db::get_validation_progress(&conn).unwrap().unwrap();
-    assert_eq!(result.0, u64::MAX);
-    assert_eq!(result.1, get_block_address(1));
+    assert_eq!(result, get_block_address(1));
 
     // Id should always be 1 because we only inserted one row.
     let mut result = stmt.query_map((), |row| row.get::<_, u64>("id")).unwrap();

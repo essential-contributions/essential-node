@@ -60,7 +60,7 @@ async fn can_derive_state() {
     insert_block_and_send_notification(&mut conn, &blocks[0], &state_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
     // Assert state progress is block 0
-    assert_state_progress_is_some(&conn, &blocks[0], &hashes[0]);
+    assert_state_progress_is_some(&conn, &hashes[0]);
     // Assert mutations in block 0 are in database
     assert_multiple_block_mutations(&conn, &[&blocks[0]]);
 
@@ -71,7 +71,7 @@ async fn can_derive_state() {
     insert_block_and_send_notification(&mut conn, &blocks[2], &state_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
     // Assert state progress is block 2
-    assert_state_progress_is_some(&conn, &blocks[2], &hashes[2]);
+    assert_state_progress_is_some(&conn, &hashes[2]);
     // Assert mutations in block 1 and 2 are in database
     assert_multiple_block_mutations(&conn, &[&blocks[1], &blocks[2]]);
 
@@ -79,7 +79,7 @@ async fn can_derive_state() {
     insert_block_and_send_notification(&mut conn, &blocks[3], &state_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
     // Assert state progress is block 3
-    assert_state_progress_is_some(&conn, &blocks[3], &hashes[3]);
+    assert_state_progress_is_some(&conn, &hashes[3]);
     // Assert mutations in block 3 are in database
     assert_multiple_block_mutations(&conn, &[&blocks[3]]);
 
@@ -112,7 +112,7 @@ async fn fork() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // State progress is updated outside of the stream to be block 2
-    update_state_progress(&conn, blocks[2].number, &hashes[2]).unwrap();
+    update_state_progress(&conn, &hashes[2]).unwrap();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Stream errors when processing block 1
