@@ -83,19 +83,17 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
     let mut stmt_mutation = tx.prepare(sql::insert::MUTATION)?;
 
     for (ix, (solution, ca)) in block.solutions.iter().zip(solution_hashes).enumerate() {
-        let ca_blob = encode(&ca);
-
         // Insert the solution.
         let solution_blob = encode(solution);
         stmt_solution.execute(named_params! {
-            ":content_hash": ca_blob,
+            ":content_hash": ca.0,
             ":solution": solution_blob,
         })?;
 
         // Create a mapping between the block and the solution.
         stmt_block_solution.execute(named_params! {
             ":block_address": block_address.0,
-            ":solution_hash": &ca_blob,
+            ":solution_hash": &ca.0,
             ":solution_index": ix,
         })?;
 
@@ -105,7 +103,7 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
                 let key_blob = encode(&mutation.key);
                 let value_blob = encode(&mutation.value);
                 stmt_mutation.execute(named_params! {
-                    ":solution_hash": ca_blob,
+                    ":solution_hash": ca.0,
                     ":data_index": data_ix,
                     ":mutation_index": mutation_ix,
                     ":contract_ca": contract_ca_blob,
@@ -134,14 +132,14 @@ pub fn finalize_block(conn: &Connection, block_address: &ContentAddress) -> rusq
     Ok(())
 }
 
-/// Inserts a failed solution.
-pub fn insert_failed_solution(
+/// Inserts a failed block.
+pub fn insert_failed_block(
     conn: &Connection,
     block_address: &ContentAddress,
     solution_hash: &ContentAddress,
 ) -> rusqlite::Result<()> {
     conn.execute(
-        sql::insert::FAILED_SOLUTION,
+        sql::insert::FAILED_BLOCK,
         named_params! {
             ":block_address": block_address.0,
             ":solution_hash": solution_hash.0,
@@ -639,20 +637,19 @@ pub fn list_contracts(
     Ok(blocks)
 }
 
-/// List failed solutions as (block number, solution hash).
-pub fn list_failed_solutions(conn: &Connection) -> Result<Vec<(u64, ContentAddress)>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::LIST_FAILED_SOLUTIONS)?;
+/// List failed blocks as (block number, solution hash).
+pub fn list_failed_blocks(conn: &Connection) -> Result<Vec<(u64, ContentAddress)>, QueryError> {
+    let mut stmt = conn.prepare(sql::query::LIST_FAILED_BLOCKS)?;
     let rows = stmt.query_map([], |row| {
-        dbg!(0);
         let block_number: u64 = row.get("number")?;
         let solution_hash: Hash = row.get("content_hash")?;
         Ok((block_number, ContentAddress(solution_hash)))
     })?;
 
-    let mut failed_solutions = vec![];
+    let mut failed_blocks = vec![];
     for res in rows {
         let (block_number, solution_hash) = res?;
-        failed_solutions.push((block_number, solution_hash));
+        failed_blocks.push((block_number, solution_hash));
     }
-    Ok(failed_solutions)
+    Ok(failed_blocks)
 }

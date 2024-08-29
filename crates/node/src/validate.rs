@@ -90,7 +90,7 @@ pub async fn validate(
             .await;
 
             if let Err(_err) = res {
-                // TODO: write to db as failed solution
+                // TODO: write to db as failed block
                 todo!();
             }
         }

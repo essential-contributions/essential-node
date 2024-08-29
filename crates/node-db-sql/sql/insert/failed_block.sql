@@ -1,5 +1,5 @@
 INSERT 
-    OR IGNORE INTO failed_solution (block_id, solution_id)
+    OR IGNORE INTO failed_block (block_id, solution_id)
 VALUES
     (
         (SELECT id FROM block WHERE block.block_address = :block_address LIMIT 1),

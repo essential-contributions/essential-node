@@ -145,7 +145,7 @@ fn test_finalize_block() {
 }
 
 #[test]
-fn test_failed_solution() {
+fn test_failed_block() {
     // Test blocks that we'll insert.
     let block = &util::test_blocks(1)[0];
 
@@ -162,21 +162,19 @@ fn test_failed_solution() {
     assert_eq!(r.len(), 1);
     assert_eq!(block, &r[0]);
 
-    // Insert failed solution.
+    // Insert failed block.
     let block_address = content_addr(block);
     let solution_hash = content_addr(block.solutions.first().unwrap());
-    node_db::insert_failed_solution(&conn, &block_address, &solution_hash).unwrap();
+    node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
 
-    // Check failed solutions.
-    // TODO: fix
-    let failed_solutions = node_db::list_failed_solutions(&conn).unwrap();
-    assert_eq!(failed_solutions.len(), 1);
-    assert_eq!(failed_solutions[0].0, block.number);
-    assert_eq!(failed_solutions[0].1, solution_hash);
+    // Check failed blocks.
+    let failed_blocks = node_db::list_failed_blocks(&conn).unwrap();
+    assert_eq!(failed_blocks.len(), 1);
+    assert_eq!(failed_blocks[0].0, block.number);
+    assert_eq!(failed_blocks[0].1, solution_hash);
 
     // TODO: test multiple solutions behavior
 }
-
 
 #[test]
 fn test_fork_block() {

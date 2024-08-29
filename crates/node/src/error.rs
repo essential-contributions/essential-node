@@ -1,6 +1,6 @@
 use crate::db::AcquireThenQueryError;
 use essential_node_db::QueryError;
-use essential_types::PredicateAddress;
+use essential_types::{ContentAddress, PredicateAddress};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -13,10 +13,14 @@ pub(super) enum InternalError {
 
 #[derive(Debug, Error)]
 pub enum RecoverableError {
+    #[error("block 0 not found")]
+    FirstBlockNotFound,
     #[error("block {0} not found")]
-    BlockNotFound(u64),
+    BlockNotFound(ContentAddress),
     #[error("could not read state")]
     ReadState(AcquireThenQueryError),
+    #[error(transparent)]
+    Query(#[from] QueryError),
     #[error("failed to join handle")]
     Join(#[from] tokio::task::JoinError),
     #[error("failed to get last block")]
