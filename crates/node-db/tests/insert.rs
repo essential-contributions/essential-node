@@ -155,7 +155,7 @@ fn test_failed_block() {
     // Create the necessary tables and insert the block.
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
-    node_db::insert_block(&tx, &block).unwrap();
+    node_db::insert_block(&tx, block).unwrap();
     tx.commit().unwrap();
 
     let r = node_db::list_blocks(&conn, 0..10).unwrap();
