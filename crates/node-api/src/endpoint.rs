@@ -24,8 +24,15 @@ use tokio::sync::Mutex;
 /// The range is non-inclusive of the `end`, i.e. it is equivalent to `start..end`.
 #[derive(Deserialize)]
 pub struct BlockRange {
-    pub start: u64,
-    pub end: u64,
+    start: u64,
+    end: u64,
+}
+
+/// Type to deserialize a block number query parameter.
+#[derive(Deserialize)]
+pub struct StartBlock {
+    /// The block number to start from.
+    start_block: u64,
 }
 
 /// Any endpoint error that might occur.
@@ -161,7 +168,7 @@ pub mod subscribe_blocks {
     pub const PATH: &str = "/subscribe-blocks";
     pub async fn handler(
         State(state): State<crate::State>,
-        Query(start_block): Query<u64>,
+        Query(StartBlock { start_block }): Query<StartBlock>,
     ) -> Sse<impl Stream<Item = Result<sse::Event, SubscriptionError>>> {
         // Create the `await_new_block` fn.
         let new_block = state.new_block.clone().map(|rx| Arc::new(Mutex::new(rx)));

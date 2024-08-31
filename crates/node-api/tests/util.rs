@@ -56,16 +56,12 @@ async fn await_server_online(port: u16, timeout_duration: std::time::Duration) {
 /// Spawns a test server, then calls the given asynchronous function. Upon
 /// completion, closes the server, panicking if any errors occurred.
 pub async fn with_test_server<Fut>(
-    conn_pool: node::db::ConnectionPool,
+    state: node_api::State,
     f: impl FnOnce(u16) -> Fut,
 ) -> Fut::Output
 where
     Fut: Future,
 {
-    let state = node_api::State {
-        conn_pool,
-        new_block: None,
-    };
     let router = node_api::router(state);
     let listener = test_listener().await;
     let port = listener.local_addr().unwrap().port();
@@ -94,4 +90,12 @@ pub async fn reqwest_get(port: u16, endpoint_path: &str) -> reqwest::Response {
         .send()
         .await
         .unwrap()
+}
+
+/// State that only has a DB connection pool and no new block TX (for non-subscription tests).
+pub fn state_db_only(conn_pool: node::db::ConnectionPool) -> node_api::State {
+    node_api::State {
+        conn_pool,
+        new_block: None,
+    }
 }

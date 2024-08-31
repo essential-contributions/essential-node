@@ -64,13 +64,13 @@ async fn subscribe_blocks() {
             tx.commit().unwrap();
             new_block_tx.clone().send(()).unwrap();
         }
-        // After writing, drop the connection pool and new block tx.
+        // After writing, drop the new block tx, closing the stream.
         assert_eq!(new_block_tx.receiver_count(), 1);
         std::mem::drop(new_block_tx);
     });
 
-    // The stream should yield the remaining 90 blocks and then complete after
-    // the `new_block_tx` drops.
+    // The stream should yield the remaining blocks and then complete after the
+    // `new_block_tx` drops.
     let fetched_blocks: Vec<_> = stream.map(Result::unwrap).collect().await;
     assert_eq!(&blocks[10..], &fetched_blocks);
 

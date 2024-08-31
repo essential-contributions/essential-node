@@ -623,29 +623,28 @@ pub fn subscribe_blocks<F, FFut, Conn, G, GFut>(
 ) -> impl Stream<Item = Result<Block, QueryError>>
 where
     // `acquire_conn` returns a future that resolves to an optional connection handle.
-    F: Clone + Fn() -> FFut,
+    F: Fn() -> FFut,
     FFut: Future<Output = Option<Conn>>,
     Conn: AsRef<Connection>,
     // `await_new_block` returns a future that resolves when a new block is available.
-    G: Clone + Fn() -> GFut,
+    G: FnMut() -> GFut,
     GFut: Future<Output = Option<()>>,
 {
-    futures::stream::unfold(start_block, move |block_ix| {
-        let acquire_conn = acquire_conn.clone();
-        let await_new_block = await_new_block.clone();
-        let next_block_ix = block_ix + 1;
+    let init = (start_block, acquire_conn, await_new_block);
+    futures::stream::unfold(init, move |(block_ix, acq_conn, mut new_block)| {
+        let next_ix = block_ix + 1;
         async move {
             loop {
                 // Acquire a connection and query for the current block.
-                match list_blocks(acquire_conn().await?.as_ref(), block_ix..next_block_ix) {
+                match list_blocks(acq_conn().await?.as_ref(), block_ix..next_ix) {
                     // If some error occurred, emit the error.
-                    Err(err) => return Some((Err(err), block_ix)),
+                    Err(err) => return Some((Err(err), (block_ix, acq_conn, new_block))),
                     // If the query succeeded, pop the single block.
                     Ok(mut vec) => match vec.pop() {
                         // If there were no matching blocks, await the next.
-                        None => await_new_block().await?,
+                        None => new_block().await?,
                         // If we have the block, emit it.
-                        Some(block) => return Some((Ok(block), next_block_ix)),
+                        Some(block) => return Some((Ok(block), (next_ix, acq_conn, new_block))),
                     },
                 }
             }
