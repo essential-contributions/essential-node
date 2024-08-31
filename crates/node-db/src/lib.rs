@@ -392,10 +392,9 @@ pub fn get_solution(
     conn: &Connection,
     ca: &ContentAddress,
 ) -> Result<Option<Solution>, QueryError> {
-    let ca_blob = encode(ca);
     let mut stmt = conn.prepare(sql::query::GET_SOLUTION)?;
     let solution_blob: Option<Vec<u8>> = stmt
-        .query_row([ca_blob], |row| row.get("solution"))
+        .query_row([ca.0], |row| row.get("solution"))
         .optional()?;
     Ok(solution_blob.as_deref().map(decode).transpose()?)
 }
