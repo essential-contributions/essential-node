@@ -147,7 +147,7 @@ fn test_finalize_block() {
 #[test]
 fn test_failed_block() {
     // Test blocks that we'll insert.
-    let block = &util::test_blocks(1)[0];
+    let blocks = util::test_blocks(2);
 
     // Create an in-memory SQLite database
     let mut conn = Connection::open_in_memory().unwrap();
@@ -155,25 +155,48 @@ fn test_failed_block() {
     // Create the necessary tables and insert the block.
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
-    node_db::insert_block(&tx, block).unwrap();
+    for block in &blocks {
+        node_db::insert_block(&tx, block).unwrap();
+    }
     tx.commit().unwrap();
 
     let r = node_db::list_blocks(&conn, 0..10).unwrap();
-    assert_eq!(r.len(), 1);
-    assert_eq!(block, &r[0]);
+    assert_eq!(r.len(), 2);
+    assert_eq!(&blocks[0], &r[0]);
+    assert_eq!(&blocks[1], &r[1]);
 
     // Insert failed block.
-    let block_address = content_addr(block);
-    let solution_hash = content_addr(block.solutions.first().unwrap());
+    let block_address = content_addr(&blocks[0]);
+    let solution_hash = content_addr(blocks[0].solutions.first().unwrap());
     node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
 
     // Check failed blocks.
     let failed_blocks = node_db::list_failed_blocks(&conn).unwrap();
     assert_eq!(failed_blocks.len(), 1);
-    assert_eq!(failed_blocks[0].0, block.number);
+    assert_eq!(failed_blocks[0].0, blocks[0].number);
     assert_eq!(failed_blocks[0].1, solution_hash);
 
-    // TODO: test multiple solutions behavior
+    // Same failed block should not be inserted again.
+    node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
+    let failed_blocks = node_db::list_failed_blocks(&conn).unwrap();
+    assert_eq!(failed_blocks.len(), 1);
+    assert_eq!(failed_blocks[0].0, blocks[0].number);
+    assert_eq!(failed_blocks[0].1, solution_hash);
+
+    // Insert another failed block.
+    let block_address = content_addr(&blocks[1]);
+    let solution_hash = content_addr(blocks[1].solutions.first().unwrap());
+    node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
+
+    let r = node_db::list_blocks(&conn, 0..10).unwrap();
+    assert_eq!(r.len(), 2);
+    assert_eq!(&blocks[1], &r[1]);
+
+    // Check failed blocks.
+    let failed_blocks = node_db::list_failed_blocks(&conn).unwrap();
+    assert_eq!(failed_blocks.len(), 2);
+    assert_eq!(failed_blocks[1].0, blocks[1].number);
+    assert_eq!(failed_blocks[1].1, solution_hash);
 }
 
 #[test]
