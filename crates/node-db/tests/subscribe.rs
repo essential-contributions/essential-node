@@ -10,6 +10,22 @@ fn new_mem_conn(unique_id: &str) -> rusqlite::Result<Connection> {
     rusqlite::Connection::open_with_flags_and_vfs(conn_str, Default::default(), "memdb")
 }
 
+struct AcquireConn(AsyncConnectionPool);
+
+struct AwaitNewBlock(tokio::sync::watch::Receiver<()>);
+
+impl node_db::AcquireConnection for AcquireConn {
+    async fn acquire_connection(&self) -> Option<impl 'static + AsRef<Connection>> {
+        self.0.acquire().await.ok()
+    }
+}
+
+impl node_db::AwaitNewBlock for AwaitNewBlock {
+    async fn await_new_block(&mut self) -> Option<()> {
+        self.0.changed().await.ok()
+    }
+}
+
 #[tokio::test]
 async fn subscribe_blocks() {
     // The test blocks.
@@ -20,20 +36,8 @@ async fn subscribe_blocks() {
     let conn_init = || new_mem_conn("subscribe_blocks");
     let conn_pool = AsyncConnectionPool::new(conn_limit, conn_init).unwrap();
 
-    // A fn to acquire a connection.
-    let conn_pool2 = conn_pool.clone();
-    let acquire_conn = move || {
-        let conn_pool = conn_pool2.clone();
-        async move { conn_pool.clone().acquire().await.ok() }
-    };
-
     // A fn for notifying of new blocks.
     let (new_block_tx, new_block_rx) = tokio::sync::watch::channel(());
-    let new_block_rx = std::sync::Arc::new(tokio::sync::Mutex::new(new_block_rx));
-    let await_new_block = move || {
-        let rx = new_block_rx.clone();
-        async move { rx.lock().await.changed().await.ok() }
-    };
 
     // Write the first 10 blocks to the DB. We'll write the rest later.
     let mut conn = conn_pool.acquire().await.unwrap();
@@ -47,7 +51,9 @@ async fn subscribe_blocks() {
 
     // Subscribe to blocks.
     let start_block = 0;
-    let stream = node_db::subscribe_blocks(start_block, acquire_conn, await_new_block);
+    let acq_conn = AcquireConn(conn_pool.clone());
+    let new_block = AwaitNewBlock(new_block_rx);
+    let stream = node_db::subscribe_blocks(start_block, acq_conn, new_block);
     let mut stream = std::pin::pin!(stream);
 
     // There should be 10 blocks available already.

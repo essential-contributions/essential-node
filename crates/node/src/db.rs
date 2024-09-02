@@ -4,15 +4,15 @@
 //! with node-specific wrappers, short-hands and helpers.
 
 use core::ops::Range;
-pub use essential_node_db::QueryError;
-use essential_node_db::{self as db};
+use essential_node_db as db;
+pub use essential_node_db::{AwaitNewBlock, QueryError};
 use essential_types::{
     contract::Contract, predicate::Predicate, solution::Solution, Block, ContentAddress, Key, Value,
 };
 use futures::Stream;
 use rusqlite::Transaction;
 use rusqlite_pool::tokio::{AsyncConnectionHandle, AsyncConnectionPool};
-use std::{future::Future, path::PathBuf, sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 use thiserror::Error;
 use tokio::sync::{AcquireError, TryAcquireError};
 
@@ -233,22 +233,12 @@ impl ConnectionPool {
     }
 
     /// Subscribe to all blocks from the given starting block number.
-    pub fn subscribe_blocks<F, Fut>(
+    pub fn subscribe_blocks(
         &self,
         start_block: u64,
-        await_new_block: F,
-    ) -> impl Stream<Item = Result<Block, QueryError>>
-    where
-        F: Clone + Fn() -> Fut,
-        Fut: Future<Output = Option<()>>,
-    {
-        // The `acquire_conn` function for acquiring connections.
-        let conn_pool = self.clone();
-        let acquire_conn = move || {
-            let conn_pool = conn_pool.clone();
-            async move { conn_pool.clone().acquire().await.ok() }
-        };
-        db::subscribe_blocks(start_block, acquire_conn, await_new_block)
+        await_new_block: impl AwaitNewBlock,
+    ) -> impl Stream<Item = Result<Block, QueryError>> {
+        db::subscribe_blocks(start_block, self.clone(), await_new_block)
     }
 }
 
@@ -288,6 +278,12 @@ impl core::ops::Deref for ConnectionHandle {
 impl core::ops::DerefMut for ConnectionHandle {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl essential_node_db::AcquireConnection for ConnectionPool {
+    async fn acquire_connection(&self) -> Option<impl 'static + AsRef<rusqlite::Connection>> {
+        self.acquire().await.ok()
     }
 }
 

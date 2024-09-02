@@ -15,24 +15,24 @@ use essential_types::{
 };
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
-use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::Mutex;
 
 /// A range in blocks, used for the `list-blocks` and `list-contracts` endpoints.
 ///
 /// The range is non-inclusive of the `end`, i.e. it is equivalent to `start..end`.
 #[derive(Deserialize)]
 pub struct BlockRange {
-    start: u64,
-    end: u64,
+    /// Start of the range.
+    pub start: u64,
+    /// The end of the range (exclusive).
+    pub end: u64,
 }
 
 /// Type to deserialize a block number query parameter.
 #[derive(Deserialize)]
 pub struct StartBlock {
     /// The block number to start from.
-    start_block: u64,
+    pub start_block: u64,
 }
 
 /// Any endpoint error that might occur.
@@ -55,6 +55,9 @@ pub enum SubscriptionError {
     Query(#[from] db::QueryError),
 }
 
+/// Provides an [`db::AwaitNewBlock`] implementation for the API.
+struct AwaitNewBlock(Option<tokio::sync::watch::Receiver<()>>);
+
 impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
         use axum::http::StatusCode;
@@ -63,6 +66,15 @@ impl IntoResponse for Error {
                 (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
             }
             Error::HexDecode(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+        }
+    }
+}
+
+impl db::AwaitNewBlock for AwaitNewBlock {
+    async fn await_new_block(&mut self) -> Option<()> {
+        match self.0 {
+            None => None,
+            Some(ref mut rx) => rx.changed().await.ok(),
         }
     }
 }
@@ -170,17 +182,9 @@ pub mod subscribe_blocks {
         State(state): State<crate::State>,
         Query(StartBlock { start_block }): Query<StartBlock>,
     ) -> Sse<impl Stream<Item = Result<sse::Event, SubscriptionError>>> {
-        // Create the `await_new_block` fn.
-        let new_block = state.new_block.clone().map(|rx| Arc::new(Mutex::new(rx)));
-        let await_new_block = move || {
-            let new_block = new_block.clone();
-            async move { new_block?.lock().await.changed().await.ok() }
-        };
-
         // The block stream.
-        let blocks = state
-            .conn_pool
-            .subscribe_blocks(start_block, await_new_block);
+        let new_block = AwaitNewBlock(state.new_block.clone());
+        let blocks = state.conn_pool.subscribe_blocks(start_block, new_block);
 
         // Map the stream of blocks to SSE events.
         let sse_events = blocks.map(|res| {
