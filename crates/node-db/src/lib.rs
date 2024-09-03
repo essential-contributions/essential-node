@@ -649,8 +649,11 @@ pub fn subscribe_blocks(
         async move {
             loop {
                 // Acquire a connection and query for the current block.
-                let range = block_ix..next_ix;
-                match list_blocks(acq_conn.acquire_connection().await?.as_ref(), range) {
+                let conn = acq_conn.acquire_connection().await?;
+                let res = list_blocks(conn.as_ref(), block_ix..next_ix);
+                // Drop the connection ASAP in case it needs returning to a pool.
+                std::mem::drop(conn);
+                match res {
                     // If some error occurred, emit the error.
                     Err(err) => return Some((Err(err), (block_ix, acq_conn, new_block))),
                     // If the query succeeded, pop the single block.
