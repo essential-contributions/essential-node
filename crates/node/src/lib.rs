@@ -142,10 +142,13 @@ impl Node {
         )?;
 
         // Run state derivation stream.
-        let state_handle =
-            state_derivation_stream(self.conn_pools.private.clone(), new_block, block_notify)?;
+        let state_handle = state_derivation_stream(
+            self.conn_pools.private.clone(),
+            new_block.clone(),
+            block_notify,
+        )?;
 
-        Ok(Handle::new(relayer_handle, state_handle))
+        Ok(Handle::new(relayer_handle, state_handle, new_block))
     }
 
     pub async fn validate(&self, block: &Block) -> Result<(), RecoverableError> {

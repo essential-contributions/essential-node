@@ -3,7 +3,16 @@ use essential_node_api as node_api;
 use essential_types::{
     contract::Contract, convert::bytes_from_word, predicate::Predicate, Block, Value, Word,
 };
-use util::{client, get_url, init_tracing_subscriber, reqwest_get, test_node, with_test_server};
+use futures::{StreamExt, TryStreamExt};
+use tokio_util::{
+    bytes::{self, Buf},
+    codec::FramedRead,
+    io::StreamReader,
+};
+use util::{
+    client, get_url, init_tracing_subscriber, reqwest_get, state_db_only, test_node,
+    with_test_server,
+};
 
 mod util;
 
@@ -13,7 +22,7 @@ async fn test_health_check() {
     init_tracing_subscriber();
 
     let node = test_node("test_health_check");
-    with_test_server(node.db(), |port| async move {
+    with_test_server(state_db_only(node.db()), |port| async move {
         let response = reqwest_get(port, node_api::endpoint::health_check::PATH).await;
         assert!(response.status().is_success());
     })
@@ -38,7 +47,7 @@ async fn test_get_contract() {
     node.db().insert_contract(clone, da_block).await.unwrap();
 
     // Request the contract from the server.
-    let response_contract = with_test_server(node.db(), |port| async move {
+    let response_contract = with_test_server(state_db_only(node.db()), |port| async move {
         let response = reqwest_get(port, &format!("/get-contract/{contract_ca}")).await;
         assert!(response.status().is_success());
         response.json::<Contract>().await.unwrap()
@@ -65,7 +74,7 @@ async fn test_get_contract_invalid_ca() {
     node.db().insert_contract(clone, da_block).await.unwrap();
 
     // Request the contract from the server.
-    with_test_server(node.db(), |port| async move {
+    with_test_server(state_db_only(node.db()), |port| async move {
         let response = reqwest_get(port, "/get-contract/INVALID_CA").await;
         assert!(response.status().is_client_error());
     })
@@ -89,7 +98,7 @@ async fn test_get_predicate() {
     node.db().insert_contract(clone, da_block).await.unwrap();
 
     // Check that we can request each predicate individually.
-    with_test_server(node.db(), |port| async move {
+    with_test_server(state_db_only(node.db()), |port| async move {
         for predicate in &contract.predicates {
             let predicate_ca = essential_hash::content_addr(predicate);
             let response = reqwest_get(port, &format!("/get-predicate/{predicate_ca}")).await;
@@ -139,7 +148,7 @@ async fn test_query_state() {
     }
 
     // Query each of the keys and check they match what we expect.
-    with_test_server(node.db(), |port| async move {
+    with_test_server(state_db_only(node.db()), |port| async move {
         for (k, v) in keys.iter().zip(&values) {
             let key_bytes: Vec<_> = k.iter().copied().flat_map(bytes_from_word).collect();
             let key = hex::encode(&key_bytes);
@@ -172,7 +181,7 @@ async fn test_list_blocks() {
     }
 
     // Fetch all blocks.
-    let fetched_blocks = with_test_server(node.db(), |port| async move {
+    let fetched_blocks = with_test_server(state_db_only(node.db()), |port| async move {
         let response = client()
             .get(get_url(
                 port,
@@ -225,7 +234,7 @@ async fn test_list_contracts() {
     let end = 3;
 
     // Fetch the blocks.
-    let fetched_contracts = with_test_server(node.db(), |port| async move {
+    let fetched_contracts = with_test_server(state_db_only(node.db()), |port| async move {
         let response = client()
             .get(get_url(
                 port,
@@ -245,5 +254,149 @@ async fn test_list_contracts() {
     {
         assert_eq!(ix as u64 + start, *block);
         assert_eq!(expected, contracts);
+    }
+}
+
+#[tokio::test]
+async fn test_subscribe_blocks() {
+    #[cfg(feature = "tracing")]
+    init_tracing_subscriber();
+
+    let node = test_node("test_subscribe_contracts");
+
+    // The test blocks.
+    let (blocks, _) = node::test_utils::test_blocks(1000);
+
+    // A fn for notifying of new blocks.
+    let (new_block_tx, new_block_rx) = tokio::sync::watch::channel(());
+
+    // Write the first 10 blocks to the DB. We'll write the rest later.
+    let db = node.db();
+    for block in &blocks[..10] {
+        let block = std::sync::Arc::new(block.clone());
+        db.insert_block(block).await.unwrap();
+    }
+
+    // Start a test server and subscribe to blocks.
+    let blocks2 = blocks.clone();
+    let state = node_api::State {
+        conn_pool: node.db(),
+        new_block: Some(new_block_rx),
+    };
+    let server = with_test_server(state, |port| async move {
+        let response = reqwest_get(port, "/subscribe-blocks?start_block=0").await;
+
+        // Create the stream from the response.
+        let bytes_stream = StreamReader::new(
+            response
+                .bytes_stream()
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))),
+        );
+        let mut frame_stream = FramedRead::new(bytes_stream, SseDecoder::<Block>::new());
+
+        // There should always be 10 blocks available to begin as we wrote those first.
+        let fetched_blocks: Vec<_> = frame_stream
+            .by_ref()
+            .take(10)
+            .map(Result::unwrap)
+            .collect()
+            .await;
+
+        assert_eq!(&blocks2[..10], &fetched_blocks);
+
+        // The stream should yield the remaining blocks and then complete after the
+        // `new_block_tx` drops.
+        let fetched_blocks: Vec<_> = frame_stream.map(Result::unwrap).collect().await;
+        assert_eq!(&blocks2[10..], &fetched_blocks);
+    });
+
+    // Write the remaining blocks asynchronously, notifying on each new block.
+    let blocks_remaining = blocks[10..].to_vec();
+    let write_remaining_blocks = tokio::spawn(async move {
+        for block in blocks_remaining {
+            db.insert_block(block.into()).await.unwrap();
+            new_block_tx.clone().send(()).unwrap();
+        }
+        // After writing, drop the new block tx, closing the stream.
+        std::mem::drop(new_block_tx);
+    });
+
+    let ((), res) = tokio::join!(server, write_remaining_blocks);
+    res.unwrap();
+}
+
+// -------------------------------------------------------------------
+// TODO: Following copied from `relayer/src/sync/streams` to decode SSE.
+//       Move into it's own crate? Or use `tokio_sse_codec` crate?
+
+/// Decoder for the server SSE stream.
+struct SseDecoder<T>(core::marker::PhantomData<T>);
+
+impl<T> SseDecoder<T> {
+    fn new() -> Self {
+        Self(core::marker::PhantomData)
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("SSE decode error")]
+pub enum SseDecodeError {
+    #[error("an I/O error occurred: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+impl<T> tokio_util::codec::Decoder for SseDecoder<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    type Item = T;
+    type Error = SseDecodeError;
+
+    fn decode(&mut self, buf: &mut bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        // SSE streams are separated by two new lines.
+        let end = buf
+            .iter()
+            .zip(buf.iter().skip(1))
+            .position(|(&a, &b)| a == b'\n' && b == b'\n');
+
+        match end {
+            Some(end) => {
+                // Parse the data from the stream as utf8.
+                let Ok(s) = std::str::from_utf8(&buf[..end]) else {
+                    // If this fails we still have to advance the buffer.
+                    buf.advance(end + 2);
+
+                    // This will skip this bad data.
+                    return Ok(None);
+                };
+
+                // SSE streams have a `data:` prefix.
+                let s = s.trim_start_matches("data: ").trim();
+
+                // Parse the data from the stream.
+                let data = serde_json::from_str::<T>(s);
+
+                let r = match data {
+                    // Success data found.
+                    Ok(data) => Ok(Some(data)),
+                    // Error parsing the data.
+                    Err(_) => {
+                        // Check if it's just a Keep-alive signal.
+                        if s == ":" {
+                            Ok(None)
+                        } else {
+                            // This is a stream error.
+                            panic!("stream error: {s}");
+                        }
+                    }
+                };
+
+                // Advance the buffer.
+                buf.advance(end + 2);
+                r
+            }
+            // Need more data
+            None => Ok(None),
+        }
     }
 }

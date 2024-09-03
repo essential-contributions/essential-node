@@ -125,7 +125,11 @@ async fn run(args: Args) -> anyhow::Result<()> {
     let relayer_and_state = node.run(args.server_address)?;
 
     // Run the API.
-    let router = node_api::router(node.db());
+    let api_state = node_api::State {
+        new_block: Some(relayer_and_state.new_block()),
+        conn_pool: node.db(),
+    };
+    let router = node_api::router(api_state);
     let listener = tokio::net::TcpListener::bind(args.bind_address).await?;
     #[cfg(feature = "tracing")]
     tracing::info!("Starting API server at {}", listener.local_addr()?);

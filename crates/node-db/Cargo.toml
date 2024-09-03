@@ -11,7 +11,12 @@ repository.workspace = true
 essential-hash = { workspace = true }
 essential-node-db-sql = { workspace = true }
 essential-types = { workspace = true }
+futures = { workspace = true }
 postcard = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+rusqlite-pool = { workspace = true, features = ["tokio"] }
+tokio = { workspace = true }

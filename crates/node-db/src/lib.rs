@@ -19,6 +19,7 @@ use essential_types::{
     contract::Contract, predicate::Predicate, solution::Solution, Block, ContentAddress, Hash, Key,
     Value,
 };
+use futures::Stream;
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use std::{ops::Range, time::Duration};
@@ -27,6 +28,28 @@ pub use query_range::finalized;
 
 mod error;
 mod query_range;
+
+/// Types that may be provided to [`subscribe_blocks`] to provide access to
+/// [`Connection`]s while streaming.
+pub trait AcquireConnection {
+    /// Asynchronously acquire a handle to a [`Connection`].
+    ///
+    /// Returns `Some` in the case a connection could be acquired, or `None` in
+    /// the case that the connection source is no longer available.
+    #[allow(async_fn_in_trait)]
+    async fn acquire_connection(&self) -> Option<impl 'static + AsRef<Connection>>;
+}
+
+/// Types that may be provided to [`subscribe_blocks`] to asynchronously await
+/// the availability of a new block.
+pub trait AwaitNewBlock {
+    /// Wait for a new block to become available.
+    ///
+    /// Returns a future that resolves to `Some` when a new block is ready, or
+    /// `None` when the notification source is no longer available.
+    #[allow(async_fn_in_trait)]
+    async fn await_new_block(&mut self) -> Option<()>;
+}
 
 /// Encodes the given value into a blob.
 ///
@@ -651,4 +674,49 @@ pub fn list_failed_blocks(conn: &Connection) -> Result<Vec<(u64, ContentAddress)
         failed_blocks.push((block_number, solution_hash));
     }
     Ok(failed_blocks)
+}
+
+/// Subscribe to all blocks from the given starting block number.
+///
+/// The given `acquire_conn` type will be used on each iteration to
+/// asynchronously acquire a handle to a new rusqlite `Connection` from a source
+/// such as a connection pool. If the returned future completes with `None`, it
+/// is assumed the source of `Connection`s has closed, and in turn the `Stream`
+/// will close.
+///
+/// The given `await_new_block` type will be used as a signal to check whether
+/// or not a new block is available within the DB. The returned stream will
+/// yield immediately for each block until a DB query indicates there are no
+/// more blocks, at which point `await_new_block` is called before continuing.
+/// If `await_new_block` returns `None`, the source of new block notifications
+/// is assumed to have been closed and the stream will close.
+pub fn subscribe_blocks(
+    start_block: u64,
+    acquire_conn: impl AcquireConnection,
+    await_new_block: impl AwaitNewBlock,
+) -> impl Stream<Item = Result<Block, QueryError>> {
+    let init = (start_block, acquire_conn, await_new_block);
+    futures::stream::unfold(init, move |(block_ix, acq_conn, mut new_block)| {
+        let next_ix = block_ix + 1;
+        async move {
+            loop {
+                // Acquire a connection and query for the current block.
+                let conn = acq_conn.acquire_connection().await?;
+                let res = list_blocks(conn.as_ref(), block_ix..next_ix);
+                // Drop the connection ASAP in case it needs returning to a pool.
+                std::mem::drop(conn);
+                match res {
+                    // If some error occurred, emit the error.
+                    Err(err) => return Some((Err(err), (block_ix, acq_conn, new_block))),
+                    // If the query succeeded, pop the single block.
+                    Ok(mut vec) => match vec.pop() {
+                        // If there were no matching blocks, await the next.
+                        None => new_block.await_new_block().await?,
+                        // If we have the block, emit it.
+                        Some(block) => return Some((Ok(block), (next_ix, acq_conn, new_block))),
+                    },
+                }
+            }
+        }
+    })
 }

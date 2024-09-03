@@ -4,10 +4,12 @@
 //! with node-specific wrappers, short-hands and helpers.
 
 use core::ops::Range;
-use essential_node_db::{self as db};
+use essential_node_db as db;
+pub use essential_node_db::{AwaitNewBlock, QueryError};
 use essential_types::{
     contract::Contract, predicate::Predicate, solution::Solution, Block, ContentAddress, Key, Value,
 };
+use futures::Stream;
 use rusqlite::Transaction;
 use rusqlite_pool::tokio::{AsyncConnectionHandle, AsyncConnectionPool};
 use std::{path::PathBuf, sync::Arc, time::Duration};
@@ -236,6 +238,15 @@ impl ConnectionPool {
         self.acquire_then(move |h| db::list_contracts(h, block_range))
             .await
     }
+
+    /// Subscribe to all blocks from the given starting block number.
+    pub fn subscribe_blocks(
+        &self,
+        start_block: u64,
+        await_new_block: impl AwaitNewBlock,
+    ) -> impl Stream<Item = Result<Block, QueryError>> {
+        db::subscribe_blocks(start_block, self.clone(), await_new_block)
+    }
 }
 
 impl Config {
@@ -258,6 +269,12 @@ impl Source {
     }
 }
 
+impl AsRef<rusqlite::Connection> for ConnectionHandle {
+    fn as_ref(&self) -> &rusqlite::Connection {
+        self
+    }
+}
+
 impl core::ops::Deref for ConnectionHandle {
     type Target = AsyncConnectionHandle;
     fn deref(&self) -> &Self::Target {
@@ -268,6 +285,12 @@ impl core::ops::Deref for ConnectionHandle {
 impl core::ops::DerefMut for ConnectionHandle {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl essential_node_db::AcquireConnection for ConnectionPool {
+    async fn acquire_connection(&self) -> Option<impl 'static + AsRef<rusqlite::Connection>> {
+        self.acquire().await.ok()
     }
 }
 

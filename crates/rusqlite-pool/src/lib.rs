@@ -98,6 +98,12 @@ impl ConnectionPool {
     }
 }
 
+impl AsRef<Connection> for ConnectionHandle {
+    fn as_ref(&self) -> &Connection {
+        self
+    }
+}
+
 impl core::ops::Deref for ConnectionHandle {
     type Target = Connection;
     fn deref(&self) -> &Self::Target {
