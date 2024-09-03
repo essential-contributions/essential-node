@@ -2,7 +2,10 @@
 
 use axum::{
     extract::{Path, Query, State},
-    response::IntoResponse,
+    response::{
+        sse::{self, Sse},
+        IntoResponse,
+    },
     Json,
 };
 use essential_node::db;
@@ -10,6 +13,7 @@ use essential_types::{
     contract::Contract, convert::word_from_bytes, predicate::Predicate, Block, ContentAddress,
     Value, Word,
 };
+use futures::{Stream, StreamExt};
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -18,8 +22,17 @@ use thiserror::Error;
 /// The range is non-inclusive of the `end`, i.e. it is equivalent to `start..end`.
 #[derive(Deserialize)]
 pub struct BlockRange {
+    /// Start of the range.
     pub start: u64,
+    /// The end of the range (exclusive).
     pub end: u64,
+}
+
+/// Type to deserialize a block number query parameter.
+#[derive(Deserialize)]
+pub struct StartBlock {
+    /// The block number to start from.
+    pub start_block: u64,
 }
 
 /// Any endpoint error that might occur.
@@ -31,6 +44,20 @@ pub enum Error {
     ConnPoolQuery(#[from] db::AcquireThenQueryError),
 }
 
+/// An error produced by a subscription endpoint stream.
+#[derive(Debug, Error)]
+pub enum SubscriptionError {
+    /// An axum error occurred.
+    #[error("an axum error occurred: {0}")]
+    Axum(#[from] axum::Error),
+    /// A DB query failure occurred.
+    #[error("DB query failed: {0}")]
+    Query(#[from] db::QueryError),
+}
+
+/// Provides an [`db::AwaitNewBlock`] implementation for the API.
+struct AwaitNewBlock(Option<tokio::sync::watch::Receiver<()>>);
+
 impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
         use axum::http::StatusCode;
@@ -39,6 +66,15 @@ impl IntoResponse for Error {
                 (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
             }
             Error::HexDecode(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+        }
+    }
+}
+
+impl db::AwaitNewBlock for AwaitNewBlock {
+    async fn await_new_block(&mut self) -> Option<()> {
+        match self.0 {
+            None => None,
+            Some(ref mut rx) => rx.changed().await.ok(),
         }
     }
 }
@@ -56,11 +92,11 @@ pub mod get_contract {
     use super::*;
     pub const PATH: &str = "/get-contract/:contract-ca";
     pub async fn handler(
-        State(conn_pool): State<db::ConnectionPool>,
+        State(state): State<crate::State>,
         Path(contract_ca): Path<String>,
     ) -> Result<Json<Option<Contract>>, Error> {
         let ca: ContentAddress = contract_ca.parse()?;
-        let contract = conn_pool.get_contract(ca).await?;
+        let contract = state.conn_pool.get_contract(ca).await?;
         Ok(Json(contract))
     }
 }
@@ -72,11 +108,11 @@ pub mod get_predicate {
     use super::*;
     pub const PATH: &str = "/get-predicate/:predicate-ca";
     pub async fn handler(
-        State(conn_pool): State<db::ConnectionPool>,
+        State(state): State<crate::State>,
         Path(predicate_ca): Path<String>,
     ) -> Result<Json<Option<Predicate>>, Error> {
         let ca = predicate_ca.parse()?;
-        let predicate = conn_pool.get_predicate(ca).await?;
+        let predicate = state.conn_pool.get_predicate(ca).await?;
         Ok(Json(predicate))
     }
 }
@@ -88,10 +124,11 @@ pub mod list_blocks {
     use super::*;
     pub const PATH: &str = "/list-blocks";
     pub async fn handler(
-        State(conn_pool): State<db::ConnectionPool>,
+        State(state): State<crate::State>,
         Query(block_range): Query<BlockRange>,
     ) -> Result<Json<Vec<Block>>, Error> {
-        let blocks = conn_pool
+        let blocks = state
+            .conn_pool
             .list_blocks(block_range.start..block_range.end)
             .await?;
         Ok(Json(blocks))
@@ -105,10 +142,11 @@ pub mod list_contracts {
     use super::*;
     pub const PATH: &str = "/list-contracts";
     pub async fn handler(
-        State(conn_pool): State<db::ConnectionPool>,
+        State(state): State<crate::State>,
         Query(block_range): Query<BlockRange>,
     ) -> Result<Json<Vec<(u64, Vec<Contract>)>>, Error> {
-        let contracts = conn_pool
+        let contracts = state
+            .conn_pool
             .list_contracts(block_range.start..block_range.end)
             .await?;
         Ok(Json(contracts))
@@ -123,14 +161,39 @@ pub mod query_state {
     use super::*;
     pub const PATH: &str = "/query-state/:contract-ca/:key";
     pub async fn handler(
-        State(conn_pool): State<db::ConnectionPool>,
+        State(state): State<crate::State>,
         Path((contract_ca, key)): Path<(String, String)>,
     ) -> Result<Json<Option<Value>>, Error> {
         let contract_ca: ContentAddress = contract_ca.parse()?;
         let key: Vec<u8> = hex::decode(key)?;
         let key = key_words_from_bytes(&key);
-        let value = conn_pool.query_state(contract_ca, key).await?;
+        let value = state.conn_pool.query_state(contract_ca, key).await?;
         Ok(Json(value))
+    }
+}
+
+/// The `subscribe-blocks` get endpoint.
+///
+/// Produces an event for every block starting from the given block number.
+pub mod subscribe_blocks {
+    use super::*;
+    pub const PATH: &str = "/subscribe-blocks";
+    pub async fn handler(
+        State(state): State<crate::State>,
+        Query(StartBlock { start_block }): Query<StartBlock>,
+    ) -> Sse<impl Stream<Item = Result<sse::Event, SubscriptionError>>> {
+        // The block stream.
+        let new_block = AwaitNewBlock(state.new_block.clone());
+        let blocks = state.conn_pool.subscribe_blocks(start_block, new_block);
+
+        // Map the stream of blocks to SSE events.
+        let sse_events = blocks.map(|res| {
+            let block = res?;
+            let event = sse::Event::default().json_data(block)?;
+            Ok(event)
+        });
+
+        Sse::new(sse_events).keep_alive(sse::KeepAlive::default())
     }
 }
 

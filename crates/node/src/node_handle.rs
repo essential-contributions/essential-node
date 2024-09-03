@@ -4,6 +4,7 @@ use crate::error::CriticalError;
 pub struct Handle {
     relayer: essential_relayer::Handle,
     state: crate::state_handle::Handle<CriticalError>,
+    new_block: tokio::sync::watch::Receiver<()>,
 }
 
 impl Handle {
@@ -11,18 +12,28 @@ impl Handle {
     pub(crate) fn new(
         relayer: essential_relayer::Handle,
         state: crate::state_handle::Handle<CriticalError>,
+        new_block: tokio::sync::watch::Receiver<()>,
     ) -> Self {
-        Self { relayer, state }
+        Self {
+            relayer,
+            state,
+            new_block,
+        }
     }
 
     /// Close the relayer and state derivation streams.
     ///
     /// If this future is dropped then both streams will be closed.
     pub async fn close(self) -> Result<(), CriticalError> {
-        let Self { relayer, state } = self;
+        let Self { relayer, state, .. } = self;
         state.close().await?;
         relayer.close().await?;
         Ok(())
+    }
+
+    /// Returns a new-block notification receiver.
+    pub fn new_block(&self) -> tokio::sync::watch::Receiver<()> {
+        self.new_block.clone()
     }
 
     /// Join the relayer and state derivation streams.
@@ -31,7 +42,7 @@ impl Handle {
     ///
     /// If this future is dropped then both streams will be closed.
     pub async fn join(self) -> Result<(), CriticalError> {
-        let Self { relayer, state } = self;
+        let Self { relayer, state, .. } = self;
 
         let relayer_future = relayer.join();
         tokio::pin!(relayer_future);
