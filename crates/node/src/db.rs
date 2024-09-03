@@ -198,6 +198,13 @@ impl ConnectionPool {
         self.acquire_then(|h| db::get_state_progress(h)).await
     }
 
+    /// Get the validation progress, returning the last block number and hash.
+    pub async fn get_validation_progress(
+        &self,
+    ) -> Result<Option<ContentAddress>, AcquireThenQueryError> {
+        self.acquire_then(|h| db::get_validation_progress(h)).await
+    }
+
     /// Lists all blocks in the given range.
     pub async fn list_blocks(
         &self,

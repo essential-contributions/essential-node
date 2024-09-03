@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::db::ConnectionPool;
-use essential_node_db::{get_state_progress, query_state};
+use essential_node_db::{get_state_progress, get_validation_progress, query_state};
 use essential_types::{
     contract::Contract,
     predicate::Predicate,
@@ -184,13 +184,26 @@ pub async fn setup_server() -> (String, Child) {
 pub fn assert_state_progress_is_some(conn: &Connection, hash: &ContentAddress) {
     let progress_hash = get_state_progress(conn)
         .unwrap()
-        .expect("progress should be some");
+        .expect("state progress should be some");
     assert_eq!(progress_hash, *hash);
 }
 
 // Check that the state progress in the database is none
 pub fn assert_state_progress_is_none(conn: &Connection) {
     assert!(get_state_progress(conn).unwrap().is_none());
+}
+
+// Check that the validation progress in the database is block number and hash
+pub fn assert_validation_progress_is_some(conn: &Connection, hash: &ContentAddress) {
+    let progress_hash = get_validation_progress(conn)
+        .unwrap()
+        .expect("validation progress should be some");
+    assert_eq!(progress_hash, *hash);
+}
+
+// Check that the validation in the database is none
+pub fn assert_validation_progress_is_none(conn: &Connection) {
+    assert!(get_validation_progress(conn).unwrap().is_none());
 }
 
 // Check state

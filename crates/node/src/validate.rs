@@ -15,18 +15,16 @@ use futures::FutureExt;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
 #[derive(Clone)]
-struct State {
+// TODO: public just for the Error type
+pub struct State {
     block_number: u64,
     solution_index: u64,
     pre_state: bool,
     conn_pool: db::ConnectionPool,
 }
 
-pub async fn validate(
-    db: ConnectionPool,
-    private_db: ConnectionPool,
-    block: &Block,
-) -> Result<(), RecoverableError> {
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+pub async fn validate(conn_pool: &ConnectionPool, block: &Block) -> Result<(), RecoverableError> {
     let mut predicates: HashMap<PredicateAddress, Predicate> = HashMap::new();
 
     // TODO: read predicates in one go with a tx
@@ -34,8 +32,7 @@ pub async fn validate(
     for (solution_index, solution) in block.solutions.iter().enumerate() {
         for data in &solution.data {
             // Read predicates from database.
-            let db = db.clone();
-            let conn = db.acquire().await.unwrap();
+            let conn = conn_pool.acquire().await.unwrap();
             let predicate_addr = data.predicate_to_solve.clone();
             if !(predicates.contains_key(&predicate_addr)) {
                 let res = tokio::task::spawn_blocking(move || {
@@ -62,37 +59,29 @@ pub async fn validate(
             }
 
             // Check predicates.
-
             let pre_state = State {
                 block_number: block.number,
                 solution_index: solution_index as u64,
                 pre_state: true,
-                conn_pool: private_db.clone(),
+                conn_pool: conn_pool.clone(),
             };
-
             let post_state = State {
                 block_number: block.number,
                 solution_index: solution_index as u64,
                 pre_state: false,
-                conn_pool: private_db.clone(),
+                conn_pool: conn_pool.clone(),
             };
-
             let get_predicate =
                 |addr: &PredicateAddress| Arc::new(predicates.get(addr).cloned().unwrap());
-
-            let res = check_predicates(
+            check_predicates(
                 &pre_state,
                 &post_state,
                 Arc::new(solution.clone()),
                 get_predicate,
                 Arc::new(CheckPredicateConfig::default()),
             )
-            .await;
-
-            if let Err(_err) = res {
-                // TODO: write to db as failed block
-                todo!();
-            }
+            .await
+            .map_err(|err| RecoverableError::Validation(ValidationError::Validation(err)))?;
         }
     }
 

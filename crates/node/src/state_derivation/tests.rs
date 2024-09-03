@@ -51,7 +51,7 @@ async fn can_derive_state() {
 
     let (state_tx, state_rx) = tokio::sync::watch::channel(());
 
-    let handle = derive_state_stream(conn_pool.clone(), state_rx, state_tx.clone()).unwrap();
+    let handle = state_derivation_stream(conn_pool.clone(), state_rx, state_tx.clone()).unwrap();
 
     // Initially, the state progress is none
     assert_state_progress_is_none(&conn);
@@ -106,7 +106,7 @@ async fn fork() {
 
     let (state_tx, state_rx) = tokio::sync::watch::channel(());
 
-    let handle = derive_state_stream(conn_pool.clone(), state_rx, state_tx.clone()).unwrap();
+    let handle = state_derivation_stream(conn_pool.clone(), state_rx, state_tx.clone()).unwrap();
 
     // Stream processes block 0
     insert_block_and_send_notification(&mut conn, &blocks[0], &state_tx);

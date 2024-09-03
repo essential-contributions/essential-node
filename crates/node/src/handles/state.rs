@@ -28,7 +28,7 @@ impl<E> Handle<E> {
     }
 }
 
-/// Flatten the result of a join handle into the relayer result.
+/// Flatten the result of a join handle into the state derivation result.
 fn flatten_result<E>(
     result: std::result::Result<Result<(), E>, tokio::task::JoinError>,
 ) -> Result<(), E> {

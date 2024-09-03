@@ -1,4 +1,5 @@
 use crate::db::AcquireThenQueryError;
+use essential_check::solution::PredicatesError;
 use essential_node_db::QueryError;
 use essential_types::{ContentAddress, PredicateAddress};
 use thiserror::Error;
@@ -37,6 +38,17 @@ pub enum ValidationError {
     PredicateNotFound(PredicateAddress),
     #[error(transparent)]
     Query(#[from] QueryError),
+    #[error("database connection pool closed")]
+    DbPoolClosed(#[from] tokio::sync::AcquireError),
+    #[error("recoverable database error {0}")]
+    Rusqlite(rusqlite::Error),
+    #[error(transparent)]
+    Validation(
+        #[from]
+        PredicatesError<
+            <crate::validate::State as essential_check::state_read_vm::StateRead>::Error,
+        >,
+    ),
 }
 
 #[derive(Debug, Error)]
