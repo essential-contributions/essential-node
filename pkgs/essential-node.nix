@@ -28,7 +28,8 @@ let
         lib.lists.any (dir: isPathInIncludeDirs dir) includeDirs
     ;
   };
-  crateDir = "${src}/crates/node-api";
+  crateSubdir = "crates/node-cli";
+  crateDir = "${src}/${crateSubdir}";
   crateTOML = "${crateDir}/Cargo.toml";
   lockFile = "${src}/Cargo.lock";
 in
@@ -37,7 +38,7 @@ rustPlatform.buildRustPackage {
   pname = "essential-node";
   version = (builtins.fromTOML (builtins.readFile crateTOML)).package.version;
 
-  buildAndTestSubdir = "crates/node-cli";
+  buildAndTestSubdir = crateSubdir;
 
   OPENSSL_NO_VENDOR = 1;
 
