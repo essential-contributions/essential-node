@@ -4,7 +4,8 @@ use essential_hash::content_addr;
 use essential_node::{
     test_utils::{
         assert_multiple_block_mutations, assert_state_progress_is_none,
-        assert_state_progress_is_some, setup_server, test_blocks, test_db_conf,
+        assert_state_progress_is_some, assert_validation_progress_is_none,
+        assert_validation_progress_is_some, setup_server, test_blocks, test_db_conf,
     },
     Node,
 };
@@ -32,6 +33,7 @@ async fn submit_solutions(client: &Client, solve_url: &Url, solutions: &Vec<Solu
 // Fetch blocks from node database and assert that they contain the same solutions as expected.
 // Assert state mutations in the blocks have been applied to database.
 // Assert state progress is the latest fetched block.
+// Assert validation progress is the latest fetched block.
 fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block>) {
     let fetched_blocks = &essential_node_db::list_blocks(
         conn,
@@ -53,6 +55,11 @@ fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block
     }
     // Assert state progress is latest block
     assert_state_progress_is_some(
+        conn,
+        &content_addr(&fetched_blocks[fetched_blocks.len() - 1]),
+    );
+    // Assert validation progress is latest block
+    assert_validation_progress_is_some(
         conn,
         &content_addr(&fetched_blocks[fetched_blocks.len() - 1]),
     );
@@ -114,8 +121,9 @@ async fn test_run() {
         assert!(fetched_contracts.contains(&hash));
     }
 
-    // Initially, the state progress is none
+    // Initially, the state progress and validation progress are none
     assert_state_progress_is_none(&conn);
+    assert_validation_progress_is_none(&conn);
 
     // Submit test block 0's solutions to server
     submit_solutions(&client, &solve_url, &test_blocks[0].solutions).await;

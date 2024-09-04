@@ -1,9 +1,10 @@
 use crate::error::CriticalError;
 
-/// Handle for closing or joining the relayer and state derivation streams.
+/// Handle for closing or joining the relayer, state derivation and validation streams.
 pub struct Handle {
     relayer: essential_relayer::Handle,
     state: crate::handles::state::Handle<CriticalError>,
+    validation: crate::handles::validation::Handle<CriticalError>,
     new_block: tokio::sync::watch::Receiver<()>,
 }
 
@@ -12,22 +13,30 @@ impl Handle {
     pub(crate) fn new(
         relayer: essential_relayer::Handle,
         state: crate::handles::state::Handle<CriticalError>,
+        validation: crate::handles::validation::Handle<CriticalError>,
         new_block: tokio::sync::watch::Receiver<()>,
     ) -> Self {
         Self {
             relayer,
             state,
+            validation,
             new_block,
         }
     }
 
-    /// Close the relayer and state derivation streams.
+    /// Close the relayer, state derivation and validation streams.
     ///
-    /// If this future is dropped then both streams will be closed.
+    /// If this future is dropped then all three streams will be closed.
     pub async fn close(self) -> Result<(), CriticalError> {
-        let Self { relayer, state, .. } = self;
+        let Self {
+            relayer,
+            state,
+            validation,
+            ..
+        } = self;
         state.close().await?;
         relayer.close().await?;
+        validation.close().await?;
         Ok(())
     }
 
@@ -36,13 +45,18 @@ impl Handle {
         self.new_block.clone()
     }
 
-    /// Join the relayer and state derivation streams.
+    /// Join the relayer, state derivation and validation streams.
     ///
-    /// Waits for either stream to finish and awaits the other one.
+    /// Waits for all three streams to finish.
     ///
     /// If this future is dropped then both streams will be closed.
     pub async fn join(self) -> Result<(), CriticalError> {
-        let Self { relayer, state, .. } = self;
+        let Self {
+            relayer,
+            state,
+            validation,
+            ..
+        } = self;
 
         let relayer_future = relayer.join();
         tokio::pin!(relayer_future);
@@ -50,22 +64,15 @@ impl Handle {
         let state_future = state.join();
         tokio::pin!(state_future);
 
-        let f = futures::future::select(relayer_future, state_future).await;
+        let validation_future = validation.join();
+        tokio::pin!(validation_future);
 
-        match f {
-            futures::future::Either::Left((r, other)) => match r {
-                Ok(()) => {
-                    other.await?;
-                }
-                Err(e) => return Err(e.into()),
-            },
-            futures::future::Either::Right((r, other)) => match r {
-                Ok(()) => {
-                    other.await?;
-                }
-                Err(e) => return Err(e),
-            },
-        }
+        let (relayer_res, state_res, validation_res) =
+            futures::future::join3(relayer_future, state_future, validation_future).await;
+
+        relayer_res?;
+        state_res?;
+        validation_res?;
 
         Ok(())
     }

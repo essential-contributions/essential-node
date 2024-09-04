@@ -8,6 +8,7 @@ pub use handles::node::Handle;
 use rusqlite_pool::tokio::AsyncConnectionPool;
 use state_derivation::state_derivation_stream;
 use thiserror::Error;
+use validation::validation_stream;
 
 pub mod db;
 mod error;
@@ -144,10 +145,22 @@ impl Node {
         let state_handle = state_derivation_stream(
             self.conn_pools.private.clone(),
             new_block.clone(),
+            block_notify.clone(),
+        )?;
+
+        // Run validation stream.
+        let validation_handle = validation_stream(
+            self.conn_pools.private.clone(),
+            new_block.clone(),
             block_notify,
         )?;
 
-        Ok(Handle::new(relayer_handle, state_handle, new_block))
+        Ok(Handle::new(
+            relayer_handle,
+            state_handle,
+            validation_handle,
+            new_block,
+        ))
     }
 }
 
