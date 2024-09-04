@@ -62,6 +62,7 @@ pub fn test_solution(seed: Word) -> (Solution, Contract) {
     )
 }
 
+// TODO: maybe one data per solution is not the best?
 pub fn test_solution_data(seed: Word) -> (SolutionData, Contract) {
     let contract = test_contract(seed);
     let predicate = essential_hash::content_addr(&contract.predicates[0]);

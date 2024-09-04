@@ -1,6 +1,6 @@
 use crate::{
     db::{self, ConnectionPool},
-    error::{RecoverableError, ValidationError},
+    error::ValidationError,
 };
 use essential_check::{
     solution::{check_predicates, CheckPredicateConfig},
@@ -12,11 +12,14 @@ use essential_node_db::{
 };
 use essential_types::{predicate::Predicate, Block, ContentAddress, Key, PredicateAddress, Word};
 use futures::FutureExt;
-use std::{collections::HashMap, pin::Pin, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    pin::Pin,
+    sync::Arc,
+};
 
 #[derive(Clone)]
-// TODO: public just for the Error type
-pub struct State {
+struct State {
     block_number: u64,
     solution_index: u64,
     pre_state: bool,
@@ -24,65 +27,74 @@ pub struct State {
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-pub async fn validate(conn_pool: &ConnectionPool, block: &Block) -> Result<(), RecoverableError> {
-    let mut predicates: HashMap<PredicateAddress, Predicate> = HashMap::new();
+pub async fn validate(conn_pool: &ConnectionPool, block: &Block) -> Result<(), ValidationError> {
+    // Read predicates from database.
+    let predicate_addresses: HashSet<PredicateAddress> = block
+        .solutions
+        .iter()
+        .flat_map(|solution| {
+            solution
+                .data
+                .iter()
+                .map(|data| data.predicate_to_solve.clone())
+        })
+        .collect();
 
-    // TODO: read predicates in one go with a tx
+    let mut conn = conn_pool.acquire().await?;
 
-    for (solution_index, solution) in block.solutions.iter().enumerate() {
-        for data in &solution.data {
-            // Read predicates from database.
-            let conn = conn_pool.acquire().await.unwrap();
-            let predicate_addr = data.predicate_to_solve.clone();
-            if !(predicates.contains_key(&predicate_addr)) {
-                let res = tokio::task::spawn_blocking(move || {
-                    get_predicate(&conn, &predicate_addr.predicate)
-                })
-                .await
-                .map_err(RecoverableError::Join)?;
+    let predicates = tokio::task::spawn_blocking(move || {
+        let tx = conn.transaction()?;
+        let mut predicates: HashMap<PredicateAddress, Predicate> =
+            HashMap::with_capacity(predicate_addresses.len());
 
-                match res {
-                    Ok(predicate) => match predicate {
-                        Some(p) => {
-                            predicates.insert(data.predicate_to_solve.clone(), p);
-                        }
-                        None => {
-                            return Err(RecoverableError::Validation(
-                                ValidationError::PredicateNotFound(data.predicate_to_solve.clone()),
-                            ));
-                        }
-                    },
-                    Err(err) => {
-                        return Err(RecoverableError::Validation(ValidationError::Query(err)));
+        for predicate_address in predicate_addresses {
+            let predicate_addr = predicate_address.clone();
+            let r = get_predicate(&tx, &predicate_addr.predicate);
+
+            match r {
+                Ok(predicate) => match predicate {
+                    Some(p) => {
+                        predicates.insert(predicate_address.clone(), p);
                     }
+                    None => {
+                        return Err(ValidationError::PredicateNotFound(
+                            predicate_address.clone(),
+                        ));
+                    }
+                },
+                Err(err) => {
+                    return Err(ValidationError::Query(err));
                 }
             }
-
-            // Check predicates.
-            let pre_state = State {
-                block_number: block.number,
-                solution_index: solution_index as u64,
-                pre_state: true,
-                conn_pool: conn_pool.clone(),
-            };
-            let post_state = State {
-                block_number: block.number,
-                solution_index: solution_index as u64,
-                pre_state: false,
-                conn_pool: conn_pool.clone(),
-            };
-            let get_predicate =
-                |addr: &PredicateAddress| Arc::new(predicates.get(addr).cloned().unwrap());
-            check_predicates(
-                &pre_state,
-                &post_state,
-                Arc::new(solution.clone()),
-                get_predicate,
-                Arc::new(CheckPredicateConfig::default()),
-            )
-            .await
-            .map_err(|err| RecoverableError::Validation(ValidationError::Validation(err)))?;
         }
+        Ok(predicates)
+    })
+    .await??;
+
+    // Check predicates.
+    for (solution_index, solution) in block.solutions.iter().enumerate() {
+        let pre_state = State {
+            block_number: block.number,
+            solution_index: solution_index as u64,
+            pre_state: true,
+            conn_pool: conn_pool.clone(),
+        };
+        let post_state = State {
+            block_number: block.number,
+            solution_index: solution_index as u64,
+            pre_state: false,
+            conn_pool: conn_pool.clone(),
+        };
+        let get_predicate =
+            |addr: &PredicateAddress| Arc::new(predicates.get(addr).cloned().unwrap());
+        check_predicates(
+            &pre_state,
+            &post_state,
+            Arc::new(solution.clone()),
+            get_predicate,
+            Arc::new(CheckPredicateConfig::default()),
+        )
+        .await?;
     }
 
     Ok(())

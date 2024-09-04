@@ -84,7 +84,7 @@ async fn validate_next_block(
             let mut conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
             let r: Result<(), InternalError> = tokio::task::spawn_blocking(move || {
                 update_validation_progress(&conn, &content_addr(&block))
-                    .map_err(|err| RecoverableError::Validation(ValidationError::Rusqlite(err)))?;
+                    .map_err(ValidationError::from)?;
                 let tx = conn.transaction();
                 let latest_finalized_block_number = tx.and_then(|tx| {
                     get_latest_finalized_block_address(&tx).and_then(|hash| {
@@ -97,7 +97,6 @@ async fn validate_next_block(
                         let _ = self_notify.send(());
                     }
                 }
-
                 Ok(())
             })
             .await

@@ -28,8 +28,6 @@ pub enum RecoverableError {
     LastProgress,
     #[error("A recoverable database error occurred: {0}")]
     Rusqlite(rusqlite::Error),
-    #[error("Validation failed: {0}")]
-    Validation(#[from] ValidationError),
 }
 
 #[derive(Debug, Error)]
@@ -41,14 +39,11 @@ pub enum ValidationError {
     #[error("database connection pool closed")]
     DbPoolClosed(#[from] tokio::sync::AcquireError),
     #[error("recoverable database error {0}")]
-    Rusqlite(rusqlite::Error),
+    Rusqlite(#[from] rusqlite::Error),
     #[error(transparent)]
-    Validation(
-        #[from]
-        PredicatesError<
-            <crate::validate::State as essential_check::state_read_vm::StateRead>::Error,
-        >,
-    ),
+    Validation(#[from] PredicatesError<QueryError>),
+    #[error("failed to join handle")]
+    Join(#[from] tokio::task::JoinError),
 }
 
 #[derive(Debug, Error)]
@@ -63,4 +58,10 @@ pub enum CriticalError {
     DbPoolClosed(#[from] tokio::sync::AcquireError),
     #[error(transparent)]
     Relayer(#[from] essential_relayer::Error),
+}
+
+impl From<ValidationError> for InternalError {
+    fn from(e: ValidationError) -> Self {
+        todo!("convert ValidationError to InternalError for validation stream")
+    }
 }
