@@ -526,7 +526,7 @@ pub fn list_blocks(conn: &Connection, block_range: Range<u64>) -> Result<Vec<Blo
                     timestamp,
                     solutions: vec![],
                 });
-                blocks.last_mut().unwrap()
+                blocks.last_mut().expect("last block must exist")
             }
         };
 
@@ -586,7 +586,7 @@ pub fn list_blocks_by_time(
                     timestamp,
                     solutions: vec![],
                 });
-                blocks.last_mut().unwrap()
+                blocks.last_mut().expect("last block must exist")
             }
         };
 

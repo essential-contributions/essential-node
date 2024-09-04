@@ -31,7 +31,7 @@ pub enum RecoverableError {
     #[error("predicate not in database: {0:?}")]
     PredicateNotFound(PredicateAddress),
     #[error(transparent)]
-    Validation(#[from] PredicatesError<QueryError>),
+    Validation(#[from] PredicatesError<StateReadError>),
 }
 
 #[derive(Debug, Error)]
@@ -45,7 +45,7 @@ pub enum ValidationError {
     #[error("recoverable database error {0}")]
     Rusqlite(#[from] rusqlite::Error),
     #[error(transparent)]
-    Validation(#[from] PredicatesError<QueryError>),
+    Validation(#[from] PredicatesError<StateReadError>),
     #[error("failed to join handle")]
     Join(#[from] tokio::task::JoinError),
 }
@@ -62,6 +62,20 @@ pub enum CriticalError {
     DbPoolClosed(#[from] tokio::sync::AcquireError),
     #[error(transparent)]
     Relayer(#[from] essential_relayer::Error),
+}
+
+#[derive(Debug, Error)]
+pub enum StateReadError {
+    #[error(transparent)]
+    Query(#[from] QueryError),
+    #[error("database connection pool closed")]
+    DbPoolClosed(#[from] tokio::sync::AcquireError),
+    #[error("recoverable database error {0}")]
+    Rusqlite(#[from] rusqlite::Error),
+    #[error("failed to join handle")]
+    Join(#[from] tokio::task::JoinError),
+    #[error("invalid key range")]
+    KeyRangeError,
 }
 
 impl From<ValidationError> for InternalError {

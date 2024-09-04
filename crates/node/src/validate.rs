@@ -1,6 +1,6 @@
 use crate::{
     db::{self, ConnectionPool},
-    error::ValidationError,
+    error::{StateReadError, ValidationError},
 };
 use essential_check::{
     solution::{check_predicates, CheckPredicateConfig},
@@ -8,7 +8,7 @@ use essential_check::{
 };
 use essential_node_db::{
     finalized::{query_state_exclusive_solution, query_state_inclusive_solution},
-    get_predicate, QueryError,
+    get_predicate,
 };
 use essential_types::{predicate::Predicate, Block, ContentAddress, Key, PredicateAddress, Word};
 use futures::FutureExt;
@@ -85,8 +85,14 @@ pub async fn validate(conn_pool: &ConnectionPool, block: &Block) -> Result<(), V
             pre_state: false,
             conn_pool: conn_pool.clone(),
         };
-        let get_predicate =
-            |addr: &PredicateAddress| Arc::new(predicates.get(addr).cloned().unwrap());
+        let get_predicate = |addr: &PredicateAddress| {
+            Arc::new(
+                predicates
+                    .get(addr)
+                    .cloned()
+                    .expect("predicate must have been read in the previous step"),
+            )
+        };
         check_predicates(
             &pre_state,
             &post_state,
@@ -101,7 +107,7 @@ pub async fn validate(conn_pool: &ConnectionPool, block: &Block) -> Result<(), V
 }
 
 impl StateRead for State {
-    type Error = QueryError;
+    type Error = StateReadError;
 
     type Future =
         Pin<Box<dyn std::future::Future<Output = Result<Vec<Vec<Word>>, Self::Error>> + Send>>;
@@ -120,51 +126,39 @@ impl StateRead for State {
         } = self.clone();
 
         async move {
-            let mut conn = conn_pool.acquire().await.unwrap();
+            let mut conn = conn_pool.acquire().await?;
 
             tokio::task::spawn_blocking(move || {
-                let tx = conn.transaction().unwrap(); // TODO: don't
+                let tx = conn.transaction()?;
                 let mut values = vec![];
 
                 for _ in 0..num_values {
-                    if pre_state {
-                        // TODO: maybe map instead
-                        match query_state_exclusive_solution(
+                    let value = if pre_state {
+                        query_state_exclusive_solution(
                             &tx,
                             &contract_addr,
                             &key,
                             block_number,
                             solution_index,
-                        )
-                        .unwrap()
-                        {
-                            Some(value) => values.push(value),
-                            None => values.push(vec![]),
-                        }
+                        )?
+                        .unwrap_or_default()
                     } else {
-                        // TODO: maybe map instead
-                        match query_state_inclusive_solution(
+                        query_state_inclusive_solution(
                             &tx,
                             &contract_addr,
                             &key,
                             block_number,
                             solution_index,
-                        )
-                        .unwrap()
-                        {
-                            Some(value) => values.push(value),
-                            None => values.push(vec![]),
-                        }
+                        )?
+                        .unwrap_or_default()
                     };
+                    values.push(value);
 
-                    // TODO: handle error
-                    key = next_key(key).unwrap();
+                    key = next_key(key).ok_or_else(|| StateReadError::KeyRangeError)?;
                 }
                 Ok(values)
             })
-            .await
-            // TODO: handle error
-            .unwrap()
+            .await?
         }
         .boxed()
     }
