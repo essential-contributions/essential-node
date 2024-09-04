@@ -28,6 +28,10 @@ pub enum RecoverableError {
     LastProgress,
     #[error("A recoverable database error occurred: {0}")]
     Rusqlite(rusqlite::Error),
+    #[error("predicate not in database: {0:?}")]
+    PredicateNotFound(PredicateAddress),
+    #[error(transparent)]
+    Validation(#[from] PredicatesError<QueryError>),
 }
 
 #[derive(Debug, Error)]
@@ -62,6 +66,21 @@ pub enum CriticalError {
 
 impl From<ValidationError> for InternalError {
     fn from(e: ValidationError) -> Self {
-        todo!("convert ValidationError to InternalError for validation stream")
+        match e {
+            ValidationError::PredicateNotFound(addr) => {
+                InternalError::Recoverable(RecoverableError::PredicateNotFound(addr))
+            }
+            ValidationError::Query(err) => InternalError::Recoverable(RecoverableError::Query(err)),
+            ValidationError::DbPoolClosed(err) => {
+                InternalError::Critical(CriticalError::DbPoolClosed(err))
+            }
+            ValidationError::Rusqlite(err) => {
+                InternalError::Recoverable(RecoverableError::Rusqlite(err))
+            }
+            ValidationError::Validation(err) => {
+                InternalError::Recoverable(RecoverableError::Validation(err))
+            }
+            ValidationError::Join(err) => InternalError::Recoverable(RecoverableError::Join(err)),
+        }
     }
 }
