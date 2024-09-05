@@ -51,7 +51,7 @@ async fn can_validate() {
 
     let (block_tx, block_rx) = tokio::sync::watch::channel(());
 
-    let handle = validation_stream(conn_pool.clone(), block_rx, block_tx.clone()).unwrap();
+    let handle = validation_stream(conn_pool.clone(), block_rx).unwrap();
 
     // Initially, the validation progress is none
     assert_validation_progress_is_none(&conn);

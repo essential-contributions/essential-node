@@ -138,22 +138,16 @@ impl Node {
         let relayer_handle = relayer.run(
             self.conn_pools.private.0.clone(),
             contract_notify,
-            block_notify.clone(),
+            block_notify,
         )?;
 
         // Run state derivation stream.
-        let state_handle = state_derivation_stream(
-            self.conn_pools.private.clone(),
-            new_block.clone(),
-            block_notify.clone(),
-        )?;
+        let state_handle =
+            state_derivation_stream(self.conn_pools.private.clone(), new_block.clone())?;
 
         // Run validation stream.
-        let validation_handle = validation_stream(
-            self.conn_pools.private.clone(),
-            new_block.clone(),
-            block_notify,
-        )?;
+        let validation_handle =
+            validation_stream(self.conn_pools.private.clone(), new_block.clone())?;
 
         Ok(Handle::new(
             relayer_handle,
