@@ -132,7 +132,6 @@ async fn get_next_block(
     let mut conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
     let blocks = tokio::task::spawn_blocking::<_, Result<_, InternalError>>({
         let progress = progress.clone();
-
         move || {
             let tx = conn.transaction().map_err(RecoverableError::Rusqlite)?;
             let range = match &progress {

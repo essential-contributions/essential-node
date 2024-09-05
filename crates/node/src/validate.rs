@@ -48,18 +48,15 @@ pub async fn validate(conn_pool: &ConnectionPool, block: &Block) -> Result<(), V
             HashMap::with_capacity(predicate_addresses.len());
 
         for predicate_address in predicate_addresses {
-            let predicate_addr = predicate_address.clone();
-            let r = get_predicate(&tx, &predicate_addr.predicate);
+            let r = get_predicate(&tx, &predicate_address.predicate);
 
             match r {
                 Ok(predicate) => match predicate {
                     Some(p) => {
-                        predicates.insert(predicate_address.clone(), p);
+                        predicates.insert(predicate_address, p);
                     }
                     None => {
-                        return Err(ValidationError::PredicateNotFound(
-                            predicate_address.clone(),
-                        ));
+                        return Err(ValidationError::PredicateNotFound(predicate_address));
                     }
                 },
                 Err(err) => {
