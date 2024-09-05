@@ -67,12 +67,11 @@ impl Handle {
         let validation_future = validation.join();
         tokio::pin!(validation_future);
 
-        let (relayer_res, state_res, validation_res) =
-            futures::future::join3(relayer_future, state_future, validation_future).await;
-
-        relayer_res?;
-        state_res?;
-        validation_res?;
+        tokio::select! {
+            r = relayer_future => {r?},
+            r = state_future => {r?},
+            r = validation_future => {r?},
+        }
 
         Ok(())
     }
