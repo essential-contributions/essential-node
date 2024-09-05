@@ -36,18 +36,19 @@ where
 pub fn state_derivation_stream(
     conn_pool: ConnectionPool,
     block_rx: watch::Receiver<()>,
-    self_notify: watch::Sender<()>,
 ) -> Result<Handle<CriticalError>, CriticalError> {
     let (shutdown, stream_close) = watch::channel(());
 
     let jh = tokio::spawn(async move {
         let mut missing_block = false;
         loop {
+            let (self_notify, self_notify_rx) = watch::channel(());
             let rx = if missing_block {
                 WatchStream::from_changes(block_rx.clone())
             } else {
                 WatchStream::new(block_rx.clone())
             };
+            let rx = futures::stream::select(rx, WatchStream::from_changes(self_notify_rx));
             let mut stream_close = stream_close.clone();
             let close = async move {
                 let _ = stream_close.changed().await;
