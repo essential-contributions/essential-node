@@ -10,9 +10,14 @@ use essential_types::{
 #[cfg(test)]
 mod tests;
 
+mod check_exists;
+mod read_contract_addr;
+mod read_predicate_addr;
+
 use crate::utils::{constraint, state};
 
 const CONTRACT_ADDR_STORAGE_INDEX: Word = 0;
+const PREDICATE_ADDR_STORAGE_INDEX: Word = CONTRACT_ADDR_STORAGE_INDEX + 1;
 
 const SALT_INDEX: Word = 0;
 const PREDICATES_SIZE_INDEX: Word = 1;
@@ -34,8 +39,11 @@ pub fn create() -> Contract {
 }
 
 fn deploy() -> Predicate {
-    let state_read = vec![read_contract_addr()];
-    let constraints = vec![];
+    let state_read = vec![
+        read_contract_addr::read_contract_addr(),
+        read_predicate_addr::read_predicate_addr(),
+    ];
+    let constraints = vec![delta_contract(), check_exists::check_exists()];
     Predicate {
         state_read,
         constraints,
@@ -43,16 +51,33 @@ fn deploy() -> Predicate {
     }
 }
 
-fn push_predicate_i() -> Vec<sasm::Op> {
-    state::ops![
+pub enum DeployedPredicate<'p> {
+    New(&'p Predicate),
+    Existing(&'p ContentAddress),
+}
+
+fn s_push_predicate_i() -> Vec<sasm::Op> {
+    to_state(push_predicate_i())
+}
+
+fn push_predicate_i() -> Vec<asm::Op> {
+    constraint::ops![
         REPEAT_COUNTER,
         PUSH: PREDICATES_OFFSET,
         ADD,
     ]
 }
 
-fn read_dec_var(slot_ix: Word, value_ix: Word, len: Word) -> Vec<sasm::Op> {
-    state::ops![
+fn to_state(ops: Vec<asm::Op>) -> Vec<sasm::Op> {
+    ops.into_iter().map(sasm::Op::from).collect()
+}
+
+fn s_read_dec_var(slot_ix: Word, value_ix: Word, len: Word) -> Vec<sasm::Op> {
+    to_state(read_dec_var(slot_ix, value_ix, len))
+}
+
+fn read_dec_var(slot_ix: Word, value_ix: Word, len: Word) -> Vec<asm::Op> {
+    constraint::ops![
         PUSH: slot_ix,
         PUSH: value_ix,
         PUSH: len,
@@ -60,10 +85,14 @@ fn read_dec_var(slot_ix: Word, value_ix: Word, len: Word) -> Vec<sasm::Op> {
     ]
 }
 
-fn read_predicate_tag() -> Vec<sasm::Op> {
-    state::opsv![
+fn s_read_predicate_tag() -> Vec<sasm::Op> {
+    to_state(read_predicate_tag())
+}
+
+fn read_predicate_tag() -> Vec<asm::Op> {
+    constraint::opsv![
         push_predicate_i(),
-        state::ops![
+        constraint::ops![
             PUSH: TAG_VALUE_IX,
             PUSH: 1,
             DECISION_VAR,
@@ -71,10 +100,14 @@ fn read_predicate_tag() -> Vec<sasm::Op> {
     ]
 }
 
-fn read_predicate_padding_len() -> Vec<sasm::Op> {
-    state::opsv![
+fn s_read_predicate_padding_len() -> Vec<sasm::Op> {
+    to_state(read_predicate_padding_len())
+}
+
+fn read_predicate_padding_len() -> Vec<asm::Op> {
+    constraint::opsv![
         push_predicate_i(),
-        state::ops![
+        constraint::ops![
             PUSH: PADDING_LEN_VALUE_IX,
             PUSH: 1,
             DECISION_VAR,
@@ -82,42 +115,100 @@ fn read_predicate_padding_len() -> Vec<sasm::Op> {
     ]
 }
 
-fn read_predicate_len() -> Vec<sasm::Op> {
-    state::opsv![push_predicate_i(), state::ops![DECISION_VAR_LEN,]]
+fn s_read_predicate_len() -> Vec<sasm::Op> {
+    to_state(read_predicate_len())
+}
+fn read_predicate_len() -> Vec<asm::Op> {
+    constraint::opsv![push_predicate_i(), constraint::ops![DECISION_VAR_LEN,]]
 }
 
-fn read_predicate_words_len() -> Vec<sasm::Op> {
-    state::opsv![
+fn s_read_predicate_words_len() -> Vec<sasm::Op> {
+    to_state(read_predicate_words_len())
+}
+
+fn read_predicate_words_len() -> Vec<asm::Op> {
+    constraint::opsv![
         read_predicate_len(),
-        state::ops![
+        constraint::ops![
             PUSH: WORDS_VALUE_IX,
             SUB,
         ]
     ]
 }
 
-fn read_predicate_words() -> Vec<sasm::Op> {
-    state::opsv![
+fn s_read_predicate_words() -> Vec<sasm::Op> {
+    to_state(read_predicate_words())
+}
+
+fn read_predicate_words() -> Vec<asm::Op> {
+    constraint::opsv![
         push_predicate_i(),
-        state::ops![
+        constraint::ops![
             PUSH: WORDS_VALUE_IX,
         ],
         read_predicate_words_len(),
-        state::ops![DECISION_VAR,]
+        constraint::ops![DECISION_VAR,]
     ]
 }
 
-fn read_predicate_size() -> Vec<sasm::Op> {
+fn s_read_predicate_size() -> Vec<sasm::Op> {
+    to_state(read_predicate_size())
+}
+
+fn read_predicate_size() -> Vec<asm::Op> {
     read_dec_var(PREDICATES_SIZE_INDEX, 0, 1)
 }
 
-fn read_salt() -> Vec<sasm::Op> {
-    read_dec_var(SALT_INDEX, 0, 1)
+fn s_read_salt() -> Vec<sasm::Op> {
+    to_state(read_salt())
 }
 
-fn match_tag(tag: Word, body: Vec<sasm::Op>) -> Vec<sasm::Op> {
+fn read_salt() -> Vec<asm::Op> {
+    read_dec_var(SALT_INDEX, 0, 4)
+}
+
+fn alloc(amount: Word) -> Vec<sasm::Op> {
+    state::ops![
+        PUSH: amount,
+        ALLOC_SLOTS,
+    ]
+}
+
+fn single_key(key_len: Word, slot_ix: Word) -> Vec<sasm::Op> {
+    state::ops![
+        PUSH: key_len,
+        PUSH: 1,
+        PUSH: slot_ix,
+        KEY_RANGE,
+    ]
+}
+
+fn single_key_at_counter(key_len: Word) -> Vec<sasm::Op> {
+    state::ops![
+        PUSH: key_len,
+        PUSH: 1,
+        REPEAT_COUNTER,
+        KEY_RANGE,
+    ]
+}
+
+fn slot_size(slot_ix: Word) -> Vec<sasm::Op> {
+    state::ops![
+        PUSH: slot_ix,
+        VALUE_LEN,
+    ]
+}
+
+fn clear_slot(slot_ix: Word) -> Vec<sasm::Op> {
+    state::ops![
+        PUSH: slot_ix,
+        CLEAR,
+    ]
+}
+
+fn s_match_tag(tag: Word, body: Vec<sasm::Op>) -> Vec<sasm::Op> {
     state::opsv![
-        read_predicate_tag(),
+        s_read_predicate_tag(),
         state::ops![
             PUSH: tag,
             EQ,
@@ -130,161 +221,110 @@ fn match_tag(tag: Word, body: Vec<sasm::Op>) -> Vec<sasm::Op> {
     ]
 }
 
-fn new_tag_body() -> Vec<sasm::Op> {
-    state::opsv![
-        read_predicate_words(),
-        read_predicate_words_len(),
-        read_predicate_padding_len(),
-        state::ops![SHA_256]
+fn match_tag(tag: Word, body: Vec<asm::Op>) -> Vec<asm::Op> {
+    constraint::opsv![
+        read_predicate_tag(),
+        constraint::ops![
+            PUSH: tag,
+            EQ,
+            NOT,
+            PUSH: (body.len() + 1) as Word,
+            SWAP,
+            JUMP_FORWARD_IF,
+        ],
+        body,
     ]
 }
 
-fn read_contract_addr() -> Vec<u8> {
-    use state::ops;
-    state::opsi![
-        // for i in 0..predicates_size
-        read_predicate_size(),
-        ops![
-            PUSH: 1,
-            REPEAT
-        ],
-        // match tag
-        // NEW_TAG
-        match_tag(NEW_TAG, new_tag_body()),
-        //
-        // EXISTING_TAG
-        match_tag(EXISTING_TAG, read_predicate_words()),
-        //
-        // loop end
-        ops![REPEAT_END,],
-        // salt
-        //
-        read_salt(),
-        //
-        // sha256([predicate_hashes..., salt])
-        read_predicate_size(),
-        ops![
-            PUSH: 4,
-            MUL,
-            PUSH: 1,
-            ADD,
+fn s_panic_on_no_match() -> Vec<sasm::Op> {
+    to_state(panic_on_no_match())
+}
+fn panic_on_no_match() -> Vec<asm::Op> {
+    constraint::opsv![
+        read_predicate_tag(),
+        constraint::ops![
+            DUP,
+            PUSH: NUM_TAGS,
+            GTE,
+            SWAP,
             PUSH: 0,
-            SHA_256,
+            LT,
+            OR,
+            PANIC_IF,
         ],
     ]
 }
 
-fn read_contract_addr2() -> Vec<u8> {
-    state::opsc![
-        sasm::Stack::Push(PREDICATES_SIZE_INDEX),
-        sasm::Stack::Push(0),
-        sasm::Stack::Push(1),
-        sasm::Access::DecisionVar,
-        sasm::Stack::Push(1),
-        sasm::Stack::Repeat,
-        // Get predicate i
-        // Get predicate i slot_ix
-        sasm::Access::RepeatCounter,
-        sasm::Stack::Push(PREDICATES_OFFSET),
-        sasm::Alu::Add,
-        sasm::Stack::Dup,
-        // Read tag
-        sasm::Stack::Push(0),
-        sasm::Stack::Push(1),
-        sasm::Access::DecisionVar,
-        sasm::Stack::Swap,
-        sasm::Stack::Dup,
-        // Get predicate i slot_ix length
-        sasm::Access::DecisionVarLen,
-        sasm::Stack::Push(2),
-        sasm::Alu::Sub,
-        sasm::Stack::Push(2),
-        sasm::Stack::Swap,
-        sasm::Access::DecisionVar,
-        // Read padding len
-        sasm::Access::RepeatCounter,
-        sasm::Stack::Push(PREDICATES_OFFSET),
-        sasm::Alu::Add,
-        sasm::Stack::Dup,
-        sasm::Stack::Push(1),
-        sasm::Stack::Push(1),
-        sasm::Access::DecisionVar,
-        sasm::Stack::Swap,
-        // Read tag
-        sasm::Stack::Push(0),
-        sasm::Stack::Push(1),
-        sasm::Access::DecisionVar,
-        // Jump to tag code
-        sasm::Stack::Push(NEW_TAG),
-        sasm::Pred::Eq,
-        sasm::Pred::Not,
-        // Dist to jump
-        sasm::Stack::Push(14),
-        sasm::Stack::Swap,
-        sasm::TotalControlFlow::JumpForwardIf,
-        // case NEW_TAG
-        sasm::Access::RepeatCounter,
-        sasm::Stack::Push(PREDICATES_OFFSET),
-        sasm::Alu::Add,
-        sasm::Access::DecisionVarLen,
-        sasm::Stack::Push(2),
-        sasm::Alu::Sub,
-        sasm::Stack::Swap,
-        sasm::Crypto::Sha256,
-        // Store tag and hash
-        sasm::Stack::Push(1),
-        sasm::StateSlots::AllocSlots,
-        sasm::Stack::Push(5),
-        sasm::Access::RepeatCounter,
-        sasm::StateSlots::Store,
-        // End case NEW_TAG
-        //
-        // Read tag
-        sasm::Access::RepeatCounter,
-        sasm::Stack::Push(PREDICATES_OFFSET),
-        sasm::Alu::Add,
-        sasm::Stack::Push(0),
-        sasm::Stack::Push(1),
-        sasm::Access::DecisionVar,
-        // Jump to tag code
-        sasm::Stack::Push(EXISTING_TAG),
-        sasm::Pred::Eq,
-        sasm::Pred::Not,
-        // Dist to jump
-        sasm::Stack::Push(1),
-        sasm::Stack::Swap,
-        sasm::TotalControlFlow::JumpForwardIf,
-        // case EXISTING_TAG
-        // End case EXISTING_TAG
-
-        // Read tag
-        sasm::Access::RepeatCounter,
-        sasm::Stack::Push(PREDICATES_OFFSET),
-        sasm::Alu::Add,
-        sasm::Stack::Push(0),
-        sasm::Stack::Push(1),
-        sasm::Access::DecisionVar,
-        sasm::Stack::Dup,
-        sasm::Stack::Push(NUM_TAGS - 1),
-        sasm::Pred::Gt,
-        sasm::Stack::Swap,
-        sasm::Stack::Push(0),
-        sasm::Pred::Lt,
-        sasm::Pred::Or,
-        sasm::TotalControlFlow::PanicIf,
-        sasm::Stack::RepeatEnd,
+fn read_state_slot(slot_ix: Word, value_ix: Word, len: Word, delta: bool) -> Vec<asm::Op> {
+    constraint::ops![
+        PUSH: slot_ix,
+        PUSH: value_ix,
+        PUSH: len,
+        PUSH: delta as Word,
+        STATE,
     ]
 }
 
-enum DeployedPredicate<'p> {
-    New(&'p Predicate),
-    Existing(&'p ContentAddress),
+fn state_slot_len(slot_ix: Word, delta: bool) -> Vec<asm::Op> {
+    constraint::ops![
+        PUSH: slot_ix,
+        PUSH: delta as Word,
+        STATE_LEN,
+    ]
 }
 
-fn predicates_to_dec_vars<'p>(
+fn state_slot_is_nil(slot_ix: Word, delta: bool) -> Vec<asm::Op> {
+    constraint::opsv![
+        state_slot_len(slot_ix, delta),
+        constraint::ops![
+            PUSH: 0,
+            EQ,
+        ]
+    ]
+}
+
+fn jump_if(body: Vec<asm::Op>) -> Vec<asm::Op> {
+    constraint::opsv![
+        constraint::ops![
+            PUSH: (body.len() + 1) as Word,
+            SWAP,
+            JUMP_FORWARD_IF,
+        ],
+        body,
+    ]
+}
+
+fn delta_contract() -> Vec<u8> {
+    use constraint::ops;
+    constraint::opsi![
+        state_slot_is_nil(CONTRACT_ADDR_STORAGE_INDEX, false),
+        state_slot_is_nil(CONTRACT_ADDR_STORAGE_INDEX, true),
+        jump_if(constraint::opsv![
+            read_state_slot(CONTRACT_ADDR_STORAGE_INDEX, 0, 1, true),
+            ops![
+                PUSH: 1,
+                EQ,
+                AND,
+            ]
+        ]),
+        state_slot_len(CONTRACT_ADDR_STORAGE_INDEX, true),
+        ops![
+            PUSH: 1,
+            EQ,
+            AND,
+        ]
+    ]
+}
+
+pub fn predicates_to_dec_vars<'p>(
     salt: &Hash,
     predicates: impl IntoIterator<Item = DeployedPredicate<'p>>,
 ) -> Vec<Value> {
+    let mut predicates = predicates.into_iter().collect::<Vec<_>>();
+    predicates.sort_by_key(|p| match p {
+        DeployedPredicate::New(p) => essential_hash::content_addr(*p),
+        DeployedPredicate::Existing(addr) => (*addr).clone(),
+    });
     let predicates: Vec<_> = predicates
         .into_iter()
         .map(|p| match p {
@@ -305,15 +345,11 @@ fn predicates_to_dec_vars<'p>(
                         }
                     });
                 v.extend(iter);
-                dbg!(v.len());
-                dbg!(&v);
                 v
             }
             DeployedPredicate::Existing(addr) => {
                 let mut v = vec![EXISTING_TAG, 0];
                 v.extend(word_4_from_u8_32(addr.0));
-                dbg!(v.len());
-                dbg!(&v);
                 v
             }
         })
