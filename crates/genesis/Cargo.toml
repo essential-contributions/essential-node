@@ -1,0 +1,20 @@
+[package]
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+name = "essential-genesis"
+repository.workspace = true
+version = "0.1.0"
+
+[dependencies]
+essential-constraint-asm = { git = "https://github.com/essential-contributions/essential-base", branch = "freesig/hash-bytes" }
+essential-hash = { git = "https://github.com/essential-contributions/essential-base", branch = "freesig/hash-bytes" }
+essential-state-asm = { git = "https://github.com/essential-contributions/essential-base", branch = "freesig/hash-bytes" }
+essential-types = { git = "https://github.com/essential-contributions/essential-base", branch = "freesig/hash-bytes" }
+
+[dev-dependencies]
+essential-check = { git = "https://github.com/essential-contributions/essential-base", features = [
+    "tracing",
+], branch = "freesig/hash-bytes" }
+tokio.workspace = true
+tracing-subscriber.workspace = true
