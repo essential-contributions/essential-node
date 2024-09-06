@@ -64,7 +64,7 @@ async fn predicate_not_found() {
     create_tables(&tx).unwrap();
     tx.commit().unwrap();
 
-    let (block, _) = test_block(0, Duration::from_secs(0));
+    let (block, _) = test_invalid_block(0, Duration::from_secs(0));
     let res = validate::validate(&conn_pool, &block).await;
 
     match res {
