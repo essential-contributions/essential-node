@@ -659,14 +659,23 @@ pub fn list_contracts(
     Ok(blocks)
 }
 
-/// List failed blocks as (block number, solution hash).
-pub fn list_failed_blocks(conn: &Connection) -> Result<Vec<(u64, ContentAddress)>, QueryError> {
+/// List failed blocks as (block number, solution hash) within a given range.
+pub fn list_failed_blocks(
+    conn: &Connection,
+    block_range: Range<u64>,
+) -> Result<Vec<(u64, ContentAddress)>, QueryError> {
     let mut stmt = conn.prepare(sql::query::LIST_FAILED_BLOCKS)?;
-    let rows = stmt.query_map([], |row| {
-        let block_number: u64 = row.get("number")?;
-        let solution_hash: Hash = row.get("content_hash")?;
-        Ok((block_number, ContentAddress(solution_hash)))
-    })?;
+    let rows = stmt.query_map(
+        named_params! {
+            ":start_block": block_range.start,
+            ":end_block": block_range.end,
+        },
+        |row| {
+            let block_number: u64 = row.get("number")?;
+            let solution_hash: Hash = row.get("content_hash")?;
+            Ok((block_number, ContentAddress(solution_hash)))
+        },
+    )?;
 
     let mut failed_blocks = vec![];
     for res in rows {

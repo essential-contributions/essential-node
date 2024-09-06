@@ -146,8 +146,10 @@ fn test_finalize_block() {
 
 #[test]
 fn test_failed_block() {
+    const NUM_BLOCKS: u64 = 2;
+
     // Test blocks that we'll insert.
-    let blocks = util::test_blocks(2);
+    let blocks = util::test_blocks(NUM_BLOCKS);
 
     // Create an in-memory SQLite database
     let mut conn = Connection::open_in_memory().unwrap();
@@ -160,7 +162,7 @@ fn test_failed_block() {
     }
     tx.commit().unwrap();
 
-    let r = node_db::list_blocks(&conn, 0..10).unwrap();
+    let r = node_db::list_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
     assert_eq!(r.len(), 2);
     assert_eq!(&blocks[0], &r[0]);
     assert_eq!(&blocks[1], &r[1]);
@@ -171,14 +173,14 @@ fn test_failed_block() {
     node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
 
     // Check failed blocks.
-    let failed_blocks = node_db::list_failed_blocks(&conn).unwrap();
+    let failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
     assert_eq!(failed_blocks.len(), 1);
     assert_eq!(failed_blocks[0].0, blocks[0].number);
     assert_eq!(failed_blocks[0].1, solution_hash);
 
     // Same failed block should not be inserted again.
     node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
-    let failed_blocks = node_db::list_failed_blocks(&conn).unwrap();
+    let failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
     assert_eq!(failed_blocks.len(), 1);
     assert_eq!(failed_blocks[0].0, blocks[0].number);
     assert_eq!(failed_blocks[0].1, solution_hash);
@@ -188,12 +190,12 @@ fn test_failed_block() {
     let solution_hash = content_addr(blocks[1].solutions.first().unwrap());
     node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
 
-    let r = node_db::list_blocks(&conn, 0..10).unwrap();
+    let r = node_db::list_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
     assert_eq!(r.len(), 2);
     assert_eq!(&blocks[1], &r[1]);
 
     // Check failed blocks.
-    let failed_blocks = node_db::list_failed_blocks(&conn).unwrap();
+    let failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
     assert_eq!(failed_blocks.len(), 2);
     assert_eq!(failed_blocks[1].0, blocks[1].number);
     assert_eq!(failed_blocks[1].1, solution_hash);
