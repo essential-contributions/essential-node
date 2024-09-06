@@ -51,7 +51,7 @@ pub async fn validate(
 
     let predicates = tokio::task::spawn_blocking(move || {
         let tx = conn.transaction()?;
-        let mut predicates: HashMap<PredicateAddress, Predicate> =
+        let mut predicates: HashMap<PredicateAddress, Arc<Predicate>> =
             HashMap::with_capacity(predicate_addresses.len());
 
         for predicate_address in predicate_addresses {
@@ -60,7 +60,7 @@ pub async fn validate(
             match r {
                 Ok(predicate) => match predicate {
                     Some(p) => {
-                        predicates.insert(predicate_address, p);
+                        predicates.insert(predicate_address, Arc::new(p));
                     }
                     None => {
                         return Err(ValidationError::PredicateNotFound(predicate_address));
@@ -90,10 +90,9 @@ pub async fn validate(
             conn_pool: conn_pool.clone(),
         };
         let get_predicate = |addr: &PredicateAddress| {
-            Arc::new(
+            Arc::clone(
                 predicates
                     .get(addr)
-                    .cloned()
                     .expect("predicate must have been read in the previous step"),
             )
         };
