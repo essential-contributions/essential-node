@@ -16,6 +16,15 @@ use tokio_stream::wrappers::WatchStream;
 #[cfg(test)]
 mod tests;
 
+/// Run the stream that validates blocks.
+///
+/// The stream is spawned and run in the background.
+/// The watch channel listens to notifications when a new block is added to the database.
+///
+/// Returns a handle that can be used to clone or join the stream.
+///
+/// Recoverable errors will be logged and the stream will be restarted.
+/// Critical errors will cause the stream to end.
 pub fn validation_stream(
     conn_pool: ConnectionPool,
     block_rx: watch::Receiver<()>,
@@ -172,7 +181,7 @@ async fn get_next_block(
         Some(hash) => {
             let mut iter = blocks.into_iter();
             let previous_block = iter.next().ok_or(CriticalError::Fork)?;
-            // Make sure the block is inserted into the database before deriving state
+            // Make sure the block is inserted into the database before validating
             let current_block = iter
                 .next()
                 .ok_or(RecoverableError::BlockNotFound(hash.clone()))?;
@@ -206,14 +215,14 @@ fn handle_error(e: InternalError) -> Result<(), CriticalError> {
         InternalError::Critical(e) => {
             #[cfg(feature = "tracing")]
             tracing::error!(
-                "The state derivation stream has encountered a critical error: {} and cannot recover.",
+                "The validation stream has encountered a critical error: {} and cannot recover.",
                 e
             );
             Err(e)
         }
         #[cfg(feature = "tracing")]
         InternalError::Recoverable(e) => {
-            tracing::error!("The state derivation stream has encountered a recoverable error: {} and will now restart the stream.", e);
+            tracing::error!("The validation stream has encountered a recoverable error: {} and will now restart the stream.", e);
 
             Ok(())
         }
