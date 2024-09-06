@@ -1,5 +1,4 @@
 use crate::db::AcquireThenQueryError;
-use essential_check::solution::PredicatesError;
 use essential_node_db::QueryError;
 use essential_types::{ContentAddress, PredicateAddress};
 use thiserror::Error;
@@ -30,8 +29,6 @@ pub enum RecoverableError {
     Rusqlite(rusqlite::Error),
     #[error("predicate not in database: {0:?}")]
     PredicateNotFound(PredicateAddress),
-    #[error(transparent)]
-    Validation(#[from] PredicatesError<StateReadError>),
 }
 
 #[derive(Debug, Error)]
@@ -44,8 +41,6 @@ pub enum ValidationError {
     DbPoolClosed(#[from] tokio::sync::AcquireError),
     #[error("recoverable database error {0}")]
     Rusqlite(#[from] rusqlite::Error),
-    #[error(transparent)]
-    Validation(#[from] PredicatesError<StateReadError>),
     #[error("failed to join handle")]
     Join(#[from] tokio::task::JoinError),
 }
@@ -90,9 +85,6 @@ impl From<ValidationError> for InternalError {
             }
             ValidationError::Rusqlite(err) => {
                 InternalError::Recoverable(RecoverableError::Rusqlite(err))
-            }
-            ValidationError::Validation(err) => {
-                InternalError::Recoverable(RecoverableError::Validation(err))
             }
             ValidationError::Join(err) => InternalError::Recoverable(RecoverableError::Join(err)),
         }

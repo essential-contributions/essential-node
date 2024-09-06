@@ -26,8 +26,15 @@ struct State {
     conn_pool: db::ConnectionPool,
 }
 
+/// Validates a block.
+///
+/// Returns a tuple with a boolean indicating whether the block is valid and
+/// an optional hash of the solution that failed validation.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-pub async fn validate(conn_pool: &ConnectionPool, block: &Block) -> Result<(), ValidationError> {
+pub async fn validate(
+    conn_pool: &ConnectionPool,
+    block: &Block,
+) -> Result<(bool, Option<ContentAddress>), ValidationError> {
     // Read predicates from database.
     let predicate_addresses: HashSet<PredicateAddress> = block
         .solutions
@@ -90,17 +97,28 @@ pub async fn validate(conn_pool: &ConnectionPool, block: &Block) -> Result<(), V
                     .expect("predicate must have been read in the previous step"),
             )
         };
-        check_predicates(
+        if let Err(err) = check_predicates(
             &pre_state,
             &post_state,
             Arc::new(solution.clone()),
             get_predicate,
             Arc::new(CheckPredicateConfig::default()),
         )
-        .await?;
+        .await
+        {
+            #[cfg(feature = "tracing")]
+            tracing::debug!(
+                "Validation failed for block with number {} and address {} at solution index {} with error {}", 
+                block.number,
+                essential_hash::content_addr(block),
+                solution_index,
+                err
+            );
+            return Ok((false, Some(essential_hash::content_addr(solution))));
+        }
     }
 
-    Ok(())
+    Ok((true, None))
 }
 
 impl StateRead for State {
