@@ -79,32 +79,53 @@ async fn validate_next_block(
     let res = validate::validate(&conn_pool, &block).await;
 
     match res {
-        Ok(_) => {
-            let mut conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
-            let r: Result<(), InternalError> = tokio::task::spawn_blocking(move || {
-                update_validation_progress(&conn, &block_address).map_err(ValidationError::from)?;
-                let tx = conn.transaction();
-                let latest_finalized_block_number = tx.and_then(|tx| {
-                    get_latest_finalized_block_address(&tx).and_then(|hash| {
-                        hash.and_then(|hash| get_block_number(&tx, &hash).transpose())
-                            .transpose()
-                    })
-                });
-                if let Ok(Some(latest_block_number)) = latest_finalized_block_number {
-                    if latest_block_number > block.number {
-                        let _ = self_notify.send(());
+        Ok((validation_res, failed_solution)) => {
+            // Validation was successful.
+            if validation_res {
+                let mut conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
+                let r: Result<(), InternalError> = tokio::task::spawn_blocking(move || {
+                    // Update validation progress.
+                    update_validation_progress(&conn, &block_address)
+                        .map_err(ValidationError::from)?;
+                    let tx = conn.transaction();
+                    // Keep validating if there are more blocks awaiting.
+                    let latest_finalized_block_number = tx.and_then(|tx| {
+                        get_latest_finalized_block_address(&tx).and_then(|hash| {
+                            hash.and_then(|hash| get_block_number(&tx, &hash).transpose())
+                                .transpose()
+                        })
+                    });
+                    if let Ok(Some(latest_block_number)) = latest_finalized_block_number {
+                        if latest_block_number > block.number {
+                            let _ = self_notify.send(());
+                        }
                     }
-                }
-                Ok(())
-            })
-            .await
-            .map_err(RecoverableError::Join)?;
+                    Ok(())
+                })
+                .await
+                .map_err(RecoverableError::Join)?;
 
-            r
+                r
+            } else {
+                // Validation failed. Insert the failed solution into the database.
+                let conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
+                let r: Result<(), InternalError> = tokio::task::spawn_blocking(move || {
+                    essential_node_db::insert_failed_block(
+                        &conn,
+                        &block_address,
+                        &failed_solution.expect("Failed solution must exist if validation failed."),
+                    )
+                    .map_err(ValidationError::from)?;
+
+                    Ok(())
+                })
+                .await
+                .map_err(RecoverableError::Join)?;
+
+                r
+            }
         }
-        Err(_err) => {
-            todo!("write to db as failed block");
-        }
+        Err(err) => Err(err)?,
     }?;
 
     Ok(())
