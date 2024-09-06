@@ -53,6 +53,9 @@ pub mod constraint {
         (STATE_LEN) => {
             $crate::asm::Op::from($crate::asm::Access::StateLen)
         };
+        (MUT_KEYS) => {
+            $crate::asm::Op::from($crate::asm::Access::MutKeys)
+        };
         (ADD) => {
             $crate::asm::Op::from($crate::asm::Alu::Add)
         };
@@ -83,6 +86,9 @@ pub mod constraint {
         (AND) => {
             $crate::asm::Op::from($crate::asm::Pred::And)
         };
+        (EQ_SET) => {
+            $crate::asm::Op::from($crate::asm::Pred::EqSet)
+        };
         (JUMP_FORWARD_IF) => {
             $crate::asm::Op::from($crate::asm::TotalControlFlow::JumpForwardIf)
         };
@@ -91,6 +97,15 @@ pub mod constraint {
         };
         (SHA_256) => {
             $crate::asm::Op::from($crate::asm::Crypto::Sha256)
+        };
+        (TEMP_ALLOC) => {
+            $crate::asm::Op::from($crate::asm::Temporary::Alloc)
+        };
+        (TEMP_LOAD) => {
+            $crate::asm::Op::from($crate::asm::Temporary::Load)
+        };
+        (TEMP_STORE) => {
+            $crate::asm::Op::from($crate::asm::Temporary::Store)
         };
     }
 
@@ -157,6 +172,9 @@ pub mod state {
         (REPEAT_COUNTER) => {
             $crate::sasm::Op::from($crate::sasm::Access::RepeatCounter)
         };
+        (STATE) => {
+            $crate::sasm::Op::from($crate::sasm::Access::State)
+        };
         (ADD) => {
             $crate::sasm::Op::from($crate::sasm::Alu::Add)
         };
@@ -198,6 +216,12 @@ pub mod state {
         };
         (STORE) => {
             $crate::sasm::Op::from($crate::sasm::StateSlots::Store)
+        };
+        (LOAD) => {
+            $crate::sasm::Op::from($crate::sasm::StateSlots::Load)
+        };
+        (LENGTH) => {
+            $crate::sasm::Op::from($crate::sasm::StateSlots::Length)
         };
         (VALUE_LEN) => {
             $crate::sasm::Op::from($crate::sasm::StateSlots::ValueLen)

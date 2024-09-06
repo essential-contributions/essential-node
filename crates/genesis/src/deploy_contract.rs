@@ -11,6 +11,7 @@ use essential_types::{
 mod tests;
 
 mod check_exists;
+mod constrain_keys;
 mod read_contract_addr;
 mod read_predicate_addr;
 
@@ -31,6 +32,11 @@ const TAG_VALUE_IX: Word = 0;
 const PADDING_LEN_VALUE_IX: Word = TAG_VALUE_IX + 1;
 const WORDS_VALUE_IX: Word = PADDING_LEN_VALUE_IX + 1;
 
+const CONTRACT_EXISTS_SLOT_IX: Word = 0;
+const PREDICATE_ADDRS_SLOT_IX: Word = CONTRACT_ADDR_STORAGE_INDEX + 1;
+const CONTRACT_ADDR_SLOT_IX: Word = PREDICATE_ADDRS_SLOT_IX + 1;
+const PREDICATE_EXISTS_SLOT_IX: Word = CONTRACT_ADDR_SLOT_IX + 1;
+
 pub fn create() -> Contract {
     let salt = essential_hash::hash(&"deploy_contract");
 
@@ -43,7 +49,11 @@ fn deploy() -> Predicate {
         read_contract_addr::read_contract_addr(),
         read_predicate_addr::read_predicate_addr(),
     ];
-    let constraints = vec![delta_contract(), check_exists::check_exists()];
+    let constraints = vec![
+        delta_contract(),
+        check_exists::check_exists(),
+        constrain_keys::constrain_keys(),
+    ];
     Predicate {
         state_read,
         constraints,
@@ -206,10 +216,104 @@ fn clear_slot(slot_ix: Word) -> Vec<sasm::Op> {
     ]
 }
 
+fn clear_last_slot() -> Vec<sasm::Op> {
+    state::ops![
+        LENGTH,
+        PUSH: 1,
+        SUB,
+        CLEAR,
+    ]
+}
+
+fn store_state_slot(len: Word, slot_ix: Word) -> Vec<sasm::Op> {
+    state::ops![
+        PUSH: len,
+        PUSH: slot_ix,
+        STORE,
+    ]
+}
+
+fn store_last_state_slot(len: Word) -> Vec<sasm::Op> {
+    state::ops![
+        PUSH: len,
+        LENGTH,
+        PUSH: 1,
+        SUB,
+        STORE,
+    ]
+}
+
+fn value_len_state_slot(slot_ix: Word) -> Vec<sasm::Op> {
+    state::ops![
+        PUSH: slot_ix,
+        VALUE_LEN,
+    ]
+}
+
+fn load_state_slot(slot_ix: Word, value_ix: Word, len: Word) -> Vec<sasm::Op> {
+    state::ops![
+        PUSH: slot_ix,
+        PUSH: value_ix,
+        PUSH: len,
+        LOAD,
+    ]
+}
+
+fn load_all_state_slot(slot_ix: Word) -> Vec<sasm::Op> {
+    state::ops![
+        PUSH: slot_ix,
+        PUSH: 0,
+        PUSH: slot_ix,
+        VALUE_LEN,
+        LOAD,
+    ]
+}
+
+fn load_last_state_slot(value_ix: Word, len: Word) -> Vec<sasm::Op> {
+    state::ops![
+        LENGTH,
+        PUSH: 1,
+        SUB,
+        PUSH: value_ix,
+        PUSH: len,
+        LOAD,
+    ]
+}
+
+fn s_match_asm_tag(tag_asm: Vec<sasm::Op>, tag: Word, body: Vec<sasm::Op>) -> Vec<sasm::Op> {
+    state::opsv![
+        tag_asm,
+        state::ops![
+            PUSH: tag,
+            EQ,
+            NOT,
+            PUSH: (body.len() + 1) as Word,
+            SWAP,
+            JUMP_FORWARD_IF,
+        ],
+        body,
+    ]
+}
+
 fn s_match_tag(tag: Word, body: Vec<sasm::Op>) -> Vec<sasm::Op> {
     state::opsv![
         s_read_predicate_tag(),
         state::ops![
+            PUSH: tag,
+            EQ,
+            NOT,
+            PUSH: (body.len() + 1) as Word,
+            SWAP,
+            JUMP_FORWARD_IF,
+        ],
+        body,
+    ]
+}
+
+fn match_asm_tag(tag_asm: Vec<asm::Op>, tag: Word, body: Vec<asm::Op>) -> Vec<asm::Op> {
+    constraint::opsv![
+        tag_asm,
+        constraint::ops![
             PUSH: tag,
             EQ,
             NOT,
@@ -236,9 +340,42 @@ fn match_tag(tag: Word, body: Vec<asm::Op>) -> Vec<asm::Op> {
     ]
 }
 
+fn s_panic_on_no_match_asm_tag(tag: Vec<sasm::Op>) -> Vec<sasm::Op> {
+    state::opsv![
+        tag,
+        state::ops![
+            DUP,
+            PUSH: NUM_TAGS,
+            GTE,
+            SWAP,
+            PUSH: 0,
+            LT,
+            OR,
+            PANIC_IF,
+        ],
+    ]
+}
+
 fn s_panic_on_no_match() -> Vec<sasm::Op> {
     to_state(panic_on_no_match())
 }
+
+fn panic_on_no_match_asm_tag(tag: Vec<asm::Op>) -> Vec<asm::Op> {
+    constraint::opsv![
+        tag,
+        constraint::ops![
+            DUP,
+            PUSH: NUM_TAGS,
+            GTE,
+            SWAP,
+            PUSH: 0,
+            LT,
+            OR,
+            PANIC_IF,
+        ],
+    ]
+}
+
 fn panic_on_no_match() -> Vec<asm::Op> {
     constraint::opsv![
         read_predicate_tag(),
@@ -294,20 +431,64 @@ fn jump_if(body: Vec<asm::Op>) -> Vec<asm::Op> {
     ]
 }
 
+fn s_jump_if_cond(cond: Vec<sasm::Op>, body: Vec<sasm::Op>) -> Vec<sasm::Op> {
+    state::opsv![
+        cond,
+        state::ops![
+            PUSH: (body.len() + 1) as Word,
+            SWAP,
+            JUMP_FORWARD_IF,
+        ],
+        body,
+    ]
+}
+
+fn jump_if_cond(cond: Vec<asm::Op>, body: Vec<asm::Op>) -> Vec<asm::Op> {
+    constraint::opsv![
+        cond,
+        constraint::ops![
+            PUSH: (body.len() + 1) as Word,
+            SWAP,
+            JUMP_FORWARD_IF,
+        ],
+        body,
+    ]
+}
+
+fn s_debug() -> Vec<sasm::Op> {
+    to_state(debug())
+}
+
+fn debug() -> Vec<asm::Op> {
+    constraint::ops![
+        PUSH: 1,
+        PANIC_IF,
+    ]
+}
+
+fn debug_i(i: Word) -> Vec<asm::Op> {
+    constraint::ops![
+        REPEAT_COUNTER,
+        PUSH: i,
+        EQ,
+        PANIC_IF,
+    ]
+}
+
 fn delta_contract() -> Vec<u8> {
     use constraint::ops;
     constraint::opsi![
-        state_slot_is_nil(CONTRACT_ADDR_STORAGE_INDEX, false),
-        state_slot_is_nil(CONTRACT_ADDR_STORAGE_INDEX, true),
+        state_slot_is_nil(CONTRACT_EXISTS_SLOT_IX, false),
+        state_slot_is_nil(CONTRACT_EXISTS_SLOT_IX, true),
         jump_if(constraint::opsv![
-            read_state_slot(CONTRACT_ADDR_STORAGE_INDEX, 0, 1, true),
+            read_state_slot(CONTRACT_EXISTS_SLOT_IX, 0, 1, true),
             ops![
                 PUSH: 1,
                 EQ,
                 AND,
             ]
         ]),
-        state_slot_len(CONTRACT_ADDR_STORAGE_INDEX, true),
+        state_slot_len(CONTRACT_EXISTS_SLOT_IX, true),
         ops![
             PUSH: 1,
             EQ,

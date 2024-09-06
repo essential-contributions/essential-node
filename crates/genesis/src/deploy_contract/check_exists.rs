@@ -1,50 +1,53 @@
 use super::*;
 
-fn new_tag_body() -> Vec<asm::Op> {
+fn predicate_exists_i_tag() -> Vec<asm::Op> {
     constraint::ops![
+        // slot_ix
+        PUSH: PREDICATE_EXISTS_SLOT_IX,
         REPEAT_COUNTER,
-        PUSH: 1,
         ADD,
+        // value_ix
         PUSH: 0,
+        // len
         PUSH: 1,
+        // delta
         PUSH: 0,
         STATE,
-        PUSH: 0,
-        EQ,
+    ]
+}
+
+fn predicate_exists_i_bool(delta: bool) -> Vec<asm::Op> {
+    constraint::ops![
+        // slot_ix
+        PUSH: PREDICATE_EXISTS_SLOT_IX,
         REPEAT_COUNTER,
-        PUSH: 1,
         ADD,
-        PUSH: 0,
+        // value_ix
         PUSH: 1,
+        // len
         PUSH: 1,
+        // delta
+        PUSH: delta as Word,
         STATE,
-        PUSH: 1,
-        EQ,
-        AND,
+    ]
+}
+
+fn new_tag_body() -> Vec<asm::Op> {
+    use constraint::ops;
+    constraint::opsv![
+        predicate_exists_i_bool(false),
+        ops![NOT],
+        predicate_exists_i_bool(true),
+        ops![AND],
     ]
 }
 
 fn existing_tag_body() -> Vec<asm::Op> {
-    constraint::ops![
-        REPEAT_COUNTER,
-        PUSH: 1,
-        ADD,
-        PUSH: 0,
-        PUSH: 1,
-        PUSH: 0,
-        STATE,
-        PUSH: 1,
-        EQ,
-        REPEAT_COUNTER,
-        PUSH: 1,
-        ADD,
-        PUSH: 0,
-        PUSH: 1,
-        PUSH: 1,
-        STATE,
-        PUSH: 1,
-        EQ,
-        AND,
+    use constraint::ops;
+    constraint::opsv![
+        predicate_exists_i_bool(false),
+        predicate_exists_i_bool(true),
+        ops![AND],
     ]
 }
 
@@ -62,13 +65,13 @@ pub fn check_exists() -> Vec<u8> {
         ],
         // match tag
         // NEW_TAG
-        match_tag(NEW_TAG, new_tag_body()),
+        match_asm_tag(predicate_exists_i_tag(), NEW_TAG, new_tag_body()),
         //
         // EXISTING_TAG
-        match_tag(EXISTING_TAG, existing_tag_body()),
+        match_asm_tag(predicate_exists_i_tag(), EXISTING_TAG, existing_tag_body()),
         //
         // No match
-        panic_on_no_match(),
+        panic_on_no_match_asm_tag(predicate_exists_i_tag()),
         ops![AND,],
         // Loop end
         ops![REPEAT_END],

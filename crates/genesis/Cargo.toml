@@ -11,6 +11,7 @@ essential-constraint-asm = { git = "https://github.com/essential-contributions/e
 essential-hash = { git = "https://github.com/essential-contributions/essential-base", branch = "freesig/hash-bytes" }
 essential-state-asm = { git = "https://github.com/essential-contributions/essential-base", branch = "freesig/hash-bytes" }
 essential-types = { git = "https://github.com/essential-contributions/essential-base", branch = "freesig/hash-bytes" }
+tracing.workspace = true
 
 [dev-dependencies]
 essential-check = { git = "https://github.com/essential-contributions/essential-base", features = [
