@@ -18,6 +18,9 @@ use std::{
     sync::Arc,
 };
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Clone)]
 struct State {
     block_number: u64,
