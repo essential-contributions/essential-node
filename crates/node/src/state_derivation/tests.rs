@@ -30,7 +30,6 @@ fn insert_contracts_to_db(conn: &mut Connection, contracts: Vec<Contract>) {
 
 #[tokio::test]
 async fn can_derive_state() {
-    std::env::set_var("RUST_LOG", "trace");
     #[cfg(feature = "tracing")]
     let _ = tracing_subscriber::fmt::try_init();
 

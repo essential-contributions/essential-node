@@ -47,7 +47,8 @@ impl Handle {
 
     /// Join the relayer, state derivation and validation streams.
     ///
-    /// Waits for all three streams to finish.
+    /// Does not close but waits for all three streams to finish.
+    /// If any of the streams finish or error then all streams will be closed.
     ///
     /// If this future is dropped then both streams will be closed.
     pub async fn join(self) -> Result<(), CriticalError> {

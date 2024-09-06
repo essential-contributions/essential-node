@@ -79,7 +79,8 @@ pub fn state_derivation_stream(
 fn check_missing_block(e: &InternalError) -> bool {
     matches!(
         e,
-        InternalError::Recoverable(RecoverableError::BlockNotFound(_))
+        InternalError::Recoverable(RecoverableError::FirstBlockNotFound)
+            | InternalError::Recoverable(RecoverableError::BlockNotFound(_)),
     )
 }
 
