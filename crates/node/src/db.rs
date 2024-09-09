@@ -76,6 +76,12 @@ impl ConnectionPool {
         Ok(Self(new_conn_pool(conf)?))
     }
 
+    #[cfg(any(feature = "test-utils", test))]
+    /// Create a new connection pool from the inner pool for testing purposes.
+    pub fn new_from_inner(inner: AsyncConnectionPool) -> Self {
+        Self(inner)
+    }
+
     /// Acquire a temporary database [`ConnectionHandle`] from the inner pool.
     ///
     /// In the case that all connections are busy, waits for the first available

@@ -1,7 +1,7 @@
 use super::*;
 use crate::test_utils::{
     self, assert_multiple_block_mutations, assert_state_progress_is_none,
-    assert_state_progress_is_some, test_conn_pool,
+    assert_state_progress_is_some, test_mem_conn_pool_modify,
 };
 use essential_node_db::{insert_block, insert_contract};
 use essential_types::{contract::Contract, Block};
@@ -33,7 +33,16 @@ async fn can_derive_state() {
     #[cfg(feature = "tracing")]
     let _ = tracing_subscriber::fmt::try_init();
 
-    let conn_pool = test_conn_pool();
+    let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+    let conn_pool = test_mem_conn_pool_modify(4, |conn| {
+        let tx = tx.clone();
+        conn.commit_hook(Some(move || {
+            tx.try_send(()).unwrap();
+            false
+        }));
+        conn
+    });
+
     let mut conn = conn_pool.acquire().await.unwrap();
 
     let test_blocks_count = 4;
@@ -45,6 +54,8 @@ async fn can_derive_state() {
 
     let (state_tx, state_rx) = tokio::sync::watch::channel(());
 
+    while rx.try_recv().is_ok() {}
+
     let handle = state_derivation_stream(conn_pool.clone(), state_rx).unwrap();
 
     // Initially, the state progress is none
@@ -52,7 +63,10 @@ async fn can_derive_state() {
 
     // Process block 0
     insert_block_and_send_notification(&mut conn, &blocks[0], &state_tx);
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    for _ in 0..2 {
+        rx.recv().await.unwrap();
+    }
+
     // Assert state progress is block 0
     assert_state_progress_is_some(&conn, &hashes[0]);
     // Assert mutations in block 0 are in database

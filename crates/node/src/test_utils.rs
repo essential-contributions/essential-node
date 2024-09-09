@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::db::{Config, ConnectionPool, Source};
+use crate::db::{with_tx, Config, ConnectionPool, Source};
 use essential_node_db::{get_state_progress, get_validation_progress, query_state};
 use essential_types::{
     contract::Contract,
@@ -9,6 +9,7 @@ use essential_types::{
     Block, ConstraintBytecode, ContentAddress, PredicateAddress, StateReadBytecode, Word,
 };
 use rusqlite::Connection;
+use rusqlite_pool::tokio::AsyncConnectionPool;
 use std::time::Duration;
 
 pub fn test_conn_pool() -> ConnectionPool {
@@ -21,6 +22,31 @@ pub fn test_db_conf() -> Config {
         source: Source::Memory(uuid::Uuid::new_v4().into()),
         ..Default::default()
     }
+}
+
+pub fn test_mem_conn_pool_modify(
+    conn_limit: usize,
+    modify: impl Fn(Connection) -> Connection,
+) -> ConnectionPool {
+    let uuid = uuid::Uuid::new_v4();
+    let conn_str = format!("file:/{uuid}");
+    let conn = AsyncConnectionPool::new(conn_limit, || {
+        let conn = rusqlite::Connection::open_with_flags_and_vfs(
+            conn_str.clone(),
+            Default::default(),
+            "memdb",
+        )?;
+        let conn = modify(conn);
+        Ok(conn)
+    })
+    .unwrap();
+    let db = ConnectionPool::new_from_inner(conn);
+
+    let mut conn = db.try_acquire().unwrap();
+    conn.pragma_update(None, "foreign_keys", true).unwrap();
+    with_tx(&mut conn, |tx| essential_node_db::create_tables(tx)).unwrap();
+
+    db
 }
 
 pub fn test_blocks(n: Word) -> (Vec<Block>, Vec<Contract>) {
