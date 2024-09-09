@@ -27,7 +27,6 @@ async fn valid_block() {
 
     let (block, contracts) = test_block(0, Duration::from_secs(0));
     insert_contracts_to_db(&mut conn, contracts);
-    tokio::time::sleep(Duration::from_millis(100)).await;
 
     let (validation_result, _) = validate::validate(&conn_pool, &block).await.unwrap();
     assert!(validation_result);
@@ -44,7 +43,6 @@ async fn invalid_block() {
 
     let (block, contract) = test_invalid_block(0, Duration::from_secs(0));
     insert_contracts_to_db(&mut conn, vec![contract]);
-    tokio::time::sleep(Duration::from_millis(100)).await;
 
     let (validation_result, failed_solution_hash) =
         validate::validate(&conn_pool, &block).await.unwrap();

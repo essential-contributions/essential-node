@@ -43,7 +43,6 @@ async fn can_validate() {
     const NUM_TEST_BLOCKS: u64 = 4;
     let (test_blocks, contracts) = test_blocks(NUM_TEST_BLOCKS);
     insert_contracts_to_db(&mut conn, contracts);
-    tokio::time::sleep(Duration::from_millis(100)).await;
 
     let blocks = test_blocks;
     let hashes = blocks.iter().map(content_addr).collect::<Vec<_>>();
@@ -90,7 +89,6 @@ async fn test_invalid_block_validation() {
 
     let (block, contract) = test_invalid_block(0, Duration::from_secs(0));
     insert_contracts_to_db(&mut conn, vec![contract]);
-    tokio::time::sleep(Duration::from_millis(100)).await;
 
     let (block_tx, block_rx) = tokio::sync::watch::channel(());
 
