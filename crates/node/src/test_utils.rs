@@ -15,17 +15,14 @@ use tokio::{
     process::{Child, Command},
 };
 
-pub fn test_conn_pool(id: &str) -> ConnectionPool {
-    let config = crate::db::Config {
-        source: crate::db::Source::Memory(id.into()),
-        ..Default::default()
-    };
-    ConnectionPool::new(&config).unwrap()
+pub fn test_conn_pool() -> ConnectionPool {
+    let config = test_db_conf();
+    ConnectionPool::new(&config.db).unwrap()
 }
 
-pub fn test_db_conf(id: &str) -> crate::Config {
+pub fn test_db_conf() -> crate::Config {
     let mut conf = crate::Config::default();
-    conf.db.source = crate::db::Source::Memory(id.to_string());
+    conf.db.source = crate::db::Source::Memory(uuid::Uuid::new_v4().into());
     conf
 }
 

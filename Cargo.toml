@@ -42,6 +42,7 @@ tower = "0.4.13" # Update to 0.5 pending axum tower update
 tower-http = { version = "0.5.2", features = ["cors"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.10.0", features = ["v4"] }
 
 essential-node = { path = "crates/node", version = "0.1.0" }
 essential-node-api = { path = "crates/node-api", version = "0.1.0" }
