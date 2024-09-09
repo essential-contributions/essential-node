@@ -43,7 +43,6 @@ async fn can_derive_state() {
     let test_blocks_count = 4;
     let (test_blocks, contracts) = test_utils::test_blocks(test_blocks_count);
     insert_contracts_to_db(&mut conn, contracts);
-    tokio::time::sleep(Duration::from_millis(100)).await;
 
     let blocks = test_blocks;
     let hashes = blocks.iter().map(content_addr).collect::<Vec<_>>();
