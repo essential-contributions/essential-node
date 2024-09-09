@@ -3,8 +3,8 @@ use crate::{
     error::{StateReadError, ValidationError},
 };
 use essential_check::{
-    solution::{check_predicates, CheckPredicateConfig},
-    state_read_vm::StateRead,
+    solution::{check_predicates, CheckPredicateConfig, PredicatesError, Utility},
+    state_read_vm::{Gas, StateRead},
 };
 use essential_node_db::{
     finalized::{query_state_exclusive_solution, query_state_inclusive_solution},
@@ -29,15 +29,19 @@ struct State {
     conn_pool: db::ConnectionPool,
 }
 
+/// Result of validating a block.
+/// In the `Ok` case, returns the utility and gas of the block.
+/// In the `Err` case, returns the error and the index of the solution that failed validation.
+type ValidationResult = Result<(Utility, Gas), (PredicatesError<StateReadError>, usize)>;
+
 /// Validates a block.
 ///
-/// Returns a tuple with a boolean indicating whether the block is valid and
-/// an optional hash of the solution that failed validation.
+/// Returns a `ValidationResult` if no `ValidationError` occurred that prevented the block from being validated.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 pub async fn validate(
     conn_pool: &ConnectionPool,
     block: &Block,
-) -> Result<(bool, Option<ContentAddress>), ValidationError> {
+) -> Result<ValidationResult, ValidationError> {
     // Read predicates from database.
     let predicate_addresses: HashSet<PredicateAddress> = block
         .solutions
@@ -78,6 +82,9 @@ pub async fn validate(
     })
     .await??;
 
+    let mut total_gas: u64 = 0;
+    let mut utility: f64 = 0.0;
+
     // Check predicates.
     for (solution_index, solution) in block.solutions.iter().enumerate() {
         let pre_state = State {
@@ -96,10 +103,10 @@ pub async fn validate(
             Arc::clone(
                 predicates
                     .get(addr)
-                    .expect("predicate must have been read in the previous step"),
+                    .expect("predicate must have been fetched in the previous step"),
             )
         };
-        if let Err(err) = check_predicates(
+        match check_predicates(
             &pre_state,
             &post_state,
             Arc::new(solution.clone()),
@@ -108,19 +115,38 @@ pub async fn validate(
         )
         .await
         {
-            #[cfg(feature = "tracing")]
-            tracing::debug!(
-                "Validation failed for block with number {} and address {} at solution index {} with error {}", 
-                block.number,
-                essential_hash::content_addr(block),
-                solution_index,
-                err
-            );
-            return Ok((false, Some(essential_hash::content_addr(solution))));
+            Ok((u, g)) => {
+                utility += u;
+                if utility == f64::INFINITY {
+                    return Err(ValidationError::UtilityOverflow);
+                }
+                total_gas = total_gas
+                    .checked_add(g)
+                    .ok_or(ValidationError::GasOverflow)?;
+            }
+            Err(err) => {
+                #[cfg(feature = "tracing")]
+                tracing::debug!(
+                    "Validation failed for block with number {} and address {} at solution index {} with error {}", 
+                    block.number,
+                    essential_hash::content_addr(block),
+                    solution_index,
+                    err
+                );
+                return Ok(Err((err, solution_index)));
+            }
         }
     }
 
-    Ok((true, None))
+    #[cfg(feature = "tracing")]
+    tracing::debug!(
+        "Validation successful for block with number {} and address {}. Utility: {}, Gas: {}",
+        block.number,
+        essential_hash::content_addr(block),
+        utility,
+        total_gas
+    );
+    Ok(Ok((utility, total_gas)))
 }
 
 impl StateRead for State {

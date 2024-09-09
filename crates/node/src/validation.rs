@@ -85,56 +85,53 @@ async fn validate_next_block(
         block.number
     );
 
-    let res = validate::validate(&conn_pool, &block).await;
+    let res = validate::validate(&conn_pool, &block).await?;
 
     match res {
-        Ok((validation_res, failed_solution)) => {
-            // Validation was successful.
-            if validation_res {
-                let mut conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
-                let r: Result<(), InternalError> = tokio::task::spawn_blocking(move || {
-                    // Update validation progress.
-                    update_validation_progress(&conn, &block_address)
-                        .map_err(ValidationError::from)?;
-                    let tx = conn.transaction();
-                    // Keep validating if there are more blocks awaiting.
-                    let latest_finalized_block_number = tx.and_then(|tx| {
-                        get_latest_finalized_block_address(&tx).and_then(|hash| {
-                            hash.and_then(|hash| get_block_number(&tx, &hash).transpose())
-                                .transpose()
-                        })
-                    });
-                    if let Ok(Some(latest_block_number)) = latest_finalized_block_number {
-                        if latest_block_number > block.number {
-                            let _ = self_notify.send(());
-                        }
+        // Validation was successful.
+        Ok((_utility, _gas)) => {
+            let mut conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
+            let r: Result<(), InternalError> = tokio::task::spawn_blocking(move || {
+                // Update validation progress.
+                update_validation_progress(&conn, &block_address).map_err(ValidationError::from)?;
+                let tx = conn.transaction();
+                // Keep validating if there are more blocks awaiting.
+                let latest_finalized_block_number = tx.and_then(|tx| {
+                    get_latest_finalized_block_address(&tx).and_then(|hash| {
+                        hash.and_then(|hash| get_block_number(&tx, &hash).transpose())
+                            .transpose()
+                    })
+                });
+                if let Ok(Some(latest_block_number)) = latest_finalized_block_number {
+                    if latest_block_number > block.number {
+                        let _ = self_notify.send(());
                     }
-                    Ok(())
-                })
-                .await
-                .map_err(RecoverableError::Join)?;
-
-                r
-            } else {
-                // Validation failed. Insert the failed solution into the database.
-                let conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
-                let r: Result<(), InternalError> = tokio::task::spawn_blocking(move || {
-                    essential_node_db::insert_failed_block(
-                        &conn,
-                        &block_address,
-                        &failed_solution.expect("Failed solution must exist if validation failed."),
-                    )
+                }
+                Ok(())
+            })
+            .await
+            .map_err(RecoverableError::Join)?;
+            r
+        }
+        // Validation failed.
+        Err((_err, solution_index)) => {
+            // Insert the failed solution into the database.
+            let failed_solution = content_addr(
+                block
+                    .solutions
+                    .get(solution_index)
+                    .expect("Failed solution must exist."),
+            );
+            let conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
+            tokio::task::spawn_blocking(move || {
+                essential_node_db::insert_failed_block(&conn, &block_address, &failed_solution)
                     .map_err(ValidationError::from)?;
 
-                    Ok(())
-                })
-                .await
-                .map_err(RecoverableError::Join)?;
-
-                r
-            }
+                Ok(())
+            })
+            .await
+            .map_err(RecoverableError::Join)?
         }
-        Err(err) => Err(err)?,
     }?;
 
     Ok(())

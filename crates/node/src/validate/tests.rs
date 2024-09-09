@@ -2,7 +2,10 @@ use crate::{
     test_utils::{test_block, test_conn_pool, test_invalid_block},
     validate::{self, ValidationError},
 };
-use essential_hash::content_addr;
+use essential_check::{
+    constraint_vm::error::CheckError,
+    solution::{PredicateConstraintsError, PredicateError, PredicatesError},
+};
 use essential_node_db::{create_tables, insert_contract};
 use essential_types::contract::Contract;
 use rusqlite::Connection;
@@ -28,8 +31,10 @@ async fn valid_block() {
     let (block, contracts) = test_block(0, Duration::from_secs(0));
     insert_contracts_to_db(&mut conn, contracts);
 
-    let (validation_result, _) = validate::validate(&conn_pool, &block).await.unwrap();
-    assert!(validation_result);
+    let (_utility, _gas) = validate::validate(&conn_pool, &block)
+        .await
+        .unwrap()
+        .unwrap();
 }
 
 #[tokio::test]
@@ -44,13 +49,43 @@ async fn invalid_block() {
     let (block, contract) = test_invalid_block(0, Duration::from_secs(0));
     insert_contracts_to_db(&mut conn, vec![contract]);
 
-    let (validation_result, failed_solution_hash) =
-        validate::validate(&conn_pool, &block).await.unwrap();
-    assert!(!validation_result);
-    assert_eq!(
-        failed_solution_hash,
-        Some(content_addr(&block.solutions[0]))
-    )
+    let (err, index) = validate::validate(&conn_pool, &block)
+        .await
+        .unwrap()
+        .err()
+        .unwrap();
+
+    assert_eq!(index, 0);
+    match err {
+        PredicatesError::Failed(errs) => {
+            assert_eq!(errs.0.len(), 1);
+            let (solution_data_index, predicate_err) = &errs.0[0];
+            assert_eq!(*solution_data_index, 0);
+            match predicate_err {
+                PredicateError::Constraints(err) => match err {
+                    PredicateConstraintsError::Check(err) => match err {
+                        CheckError::ConstraintsUnsatisfied(indices) => {
+                            assert_eq!(indices.0.len(), 1);
+                            assert_eq!(indices.0[0], 0);
+                        }
+                        _ => panic!(
+                            "expected CheckError::ConstraintsUnsatisfied, found {:?}",
+                            predicate_err
+                        ),
+                    },
+                    _ => panic!(
+                        "expected PredicateConstraintsError::Check, found {:?}",
+                        predicate_err
+                    ),
+                },
+                _ => panic!(
+                    "expected PredicateError::Constraints, found {:?}",
+                    predicate_err
+                ),
+            }
+        }
+        _ => panic!("expected PredicatesError::Failed, found {:?}", err),
+    }
 }
 
 #[tokio::test]
@@ -69,6 +104,9 @@ async fn predicate_not_found() {
         Err(ValidationError::PredicateNotFound(addr)) => {
             assert_eq!(addr, block.solutions[0].data[0].predicate_to_solve)
         }
-        _ => panic!("expected predicate not found, found {:?}", res),
+        _ => panic!(
+            "expected ValidationError::PredicateNotFound, found {:?}",
+            res
+        ),
     }
 }
