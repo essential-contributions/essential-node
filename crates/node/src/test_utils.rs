@@ -9,6 +9,7 @@ use essential_types::{
     Block, ConstraintBytecode, ContentAddress, PredicateAddress, StateReadBytecode, Word,
 };
 use rusqlite::Connection;
+use rusqlite_pool::tokio::AsyncConnectionPool;
 use std::{process::Stdio, time::Duration};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
@@ -27,6 +28,25 @@ pub fn test_db_conf(id: &str) -> crate::Config {
     let mut conf = crate::Config::default();
     conf.db.source = crate::db::Source::Memory(id.to_string());
     conf
+}
+
+pub fn test_mem_conn_pool_modify(
+    conn_limit: usize,
+    modify: impl Fn(Connection) -> Connection,
+) -> ConnectionPool {
+    let uuid = uuid::Uuid::new_v4();
+    let conn_str = format!("file:/{uuid}");
+    let conn = AsyncConnectionPool::new(conn_limit, || {
+        let conn = rusqlite::Connection::open_with_flags_and_vfs(
+            conn_str.clone(),
+            Default::default(),
+            "memdb",
+        )?;
+        let conn = modify(conn);
+        Ok(conn)
+    })
+    .unwrap();
+    ConnectionPool::new_from_inner(conn)
 }
 
 pub fn test_blocks(n: u64) -> (Vec<Block>, Vec<Contract>) {
