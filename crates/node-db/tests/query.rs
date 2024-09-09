@@ -1,8 +1,9 @@
+use essential_hash::content_addr;
 use essential_node_db::{self as node_db};
 use essential_types::{contract::Contract, solution::Mutation, ContentAddress, Word};
 use rusqlite::Connection;
 use std::time::Duration;
-use util::get_block_address;
+use util::test_block;
 
 mod util;
 
@@ -143,20 +144,46 @@ fn test_get_solution() {
 
 #[test]
 fn test_get_state_progress() {
+    // Create test block.
+    let block = test_block(42, Default::default());
+    let block_address = content_addr(&block);
+
     // Create an in-memory SQLite database.
     let mut conn = Connection::open_in_memory().unwrap();
 
     // Create the necessary tables and insert the contract progress.
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
-    node_db::update_state_progress(&tx, 42, &get_block_address(42)).unwrap();
+    node_db::insert_block(&tx, &block).unwrap();
+    node_db::update_state_progress(&tx, &block_address).unwrap();
     tx.commit().unwrap();
 
     // Fetch the state progress.
-    let (block_number, block_address) = node_db::get_state_progress(&conn).unwrap().unwrap();
+    let fetched_block_address = node_db::get_state_progress(&conn).unwrap().unwrap();
 
-    assert_eq!(block_number, 42);
-    assert_eq!(block_address, get_block_address(42));
+    assert_eq!(fetched_block_address, block_address);
+}
+
+#[test]
+fn test_get_validation_progress() {
+    // Create test block.
+    let block = test_block(42, Default::default());
+    let block_address = content_addr(&block);
+
+    // Create an in-memory SQLite database.
+    let mut conn = Connection::open_in_memory().unwrap();
+
+    // Create the necessary tables and insert the contract progress.
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    node_db::insert_block(&tx, &block).unwrap();
+    node_db::update_validation_progress(&tx, &block_address).unwrap();
+    tx.commit().unwrap();
+
+    // Fetch the state progress.
+    let fetched_block_address = node_db::get_validation_progress(&conn).unwrap().unwrap();
+
+    assert_eq!(fetched_block_address, block_address);
 }
 
 #[test]

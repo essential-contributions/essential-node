@@ -16,6 +16,7 @@ axum = "0.7.5"
 clap = { version = "4.5", features = ["derive"] }
 crossbeam = "0.8"
 dirs = "5"
+essential-check = "0.5.0"
 essential-constraint-asm = "0.3.1"
 essential-hash = "0.3.0"
 essential-sign = "0.3.0"

@@ -5,7 +5,7 @@ use essential_node_db::{self as node_db};
 use essential_types::{predicate::Predicate, ContentAddress, Hash};
 use rusqlite::Connection;
 use std::time::Duration;
-use util::get_block_address;
+use util::test_blocks;
 
 mod util;
 
@@ -39,11 +39,11 @@ fn test_insert_block() {
 
     // Verify that the solutions were inserted correctly
     for solution in &block.solutions {
-        let ca_blob = node_db::encode(&content_addr(solution));
+        let solution_address = &content_addr(solution);
         let solution_blob = node_db::encode(solution);
         let query = "SELECT solution FROM solution WHERE content_hash = ?";
         let mut stmt = conn.prepare(query).unwrap();
-        let mut rows = stmt.query([&ca_blob]).unwrap();
+        let mut rows = stmt.query([&solution_address.0]).unwrap();
         let row = rows.next().unwrap().unwrap();
         let solution_data: Vec<u8> = row.get(0).unwrap();
         assert_eq!(solution_data, solution_blob);
@@ -77,7 +77,7 @@ fn test_finalize_block() {
     tx.commit().unwrap();
 
     let r = node_db::list_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
-    assert_eq!(blocks.len(), NUM_BLOCKS as usize);
+    assert_eq!(r.len(), NUM_BLOCKS as usize);
 
     for (block, expected_block) in blocks.iter().zip(&r) {
         assert_eq!(block, expected_block);
@@ -142,6 +142,63 @@ fn test_finalize_block() {
             _
         )
     ));
+}
+
+#[test]
+fn test_failed_block() {
+    const NUM_BLOCKS: u64 = 2;
+
+    // Test blocks that we'll insert.
+    let blocks = util::test_blocks(NUM_BLOCKS);
+
+    // Create an in-memory SQLite database
+    let mut conn = Connection::open_in_memory().unwrap();
+
+    // Create the necessary tables and insert the block.
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    for block in &blocks {
+        node_db::insert_block(&tx, block).unwrap();
+    }
+    tx.commit().unwrap();
+
+    let r = node_db::list_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
+    assert_eq!(r.len(), 2);
+    assert_eq!(&blocks[0], &r[0]);
+    assert_eq!(&blocks[1], &r[1]);
+
+    // Insert failed block.
+    let block_address = content_addr(&blocks[0]);
+    let solution_hash = content_addr(blocks[0].solutions.first().unwrap());
+    node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
+
+    // Check failed blocks.
+    let failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
+    assert_eq!(failed_blocks.len(), 1);
+    assert_eq!(failed_blocks[0].0, blocks[0].number);
+    assert_eq!(failed_blocks[0].1, solution_hash);
+
+    // Same failed block should not be inserted again.
+    node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
+    let failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
+    assert_eq!(failed_blocks.len(), 1);
+    assert_eq!(failed_blocks[0].0, blocks[0].number);
+    assert_eq!(failed_blocks[0].1, solution_hash);
+
+    // Insert another failed block.
+    let block_address = content_addr(&blocks[1]);
+    let solution_hash = content_addr(blocks[1].solutions.first().unwrap());
+    node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
+
+    let r = node_db::list_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
+    assert_eq!(r.len(), 2);
+    assert_eq!(&blocks[1], &r[1]);
+
+    // Check failed blocks.
+    let failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
+    assert_eq!(failed_blocks.len(), 2);
+    assert_eq!(failed_blocks[1].0, blocks[1].number);
+    assert_eq!(failed_blocks[1].1, solution_hash);
 }
 
 #[test]
@@ -282,42 +339,45 @@ fn test_insert_contract_progress() {
 
 #[test]
 fn test_update_state_progress() {
+    let blocks = test_blocks(2);
+    let block_addresses = blocks.iter().map(content_addr).collect::<Vec<_>>();
+
     let mut conn = Connection::open_in_memory().unwrap();
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
-    node_db::update_state_progress(&tx, 0, &get_block_address(0))
+    for block in &blocks {
+        node_db::insert_block(&tx, block).unwrap();
+    }
+    node_db::update_state_progress(&tx, &block_addresses[0])
         .expect("Failed to insert state progress");
     tx.commit().unwrap();
 
     let mut stmt = conn
-        .prepare("SELECT id, number, block_address FROM state_progress WHERE id = 1")
+        .prepare("SELECT state_progress.id, block.block_address FROM state_progress JOIN block ON block.id = state_progress.block_id")
         .unwrap();
     let mut result = stmt
         .query_map((), |row| {
             Ok((
                 row.get::<_, u64>("id")?,
-                row.get::<_, u64>("number")?,
                 row.get::<_, Vec<u8>>("block_address")?,
             ))
         })
         .unwrap();
-    let (id, block_number, block_address) = result.next().unwrap().unwrap();
+    let (id, block_address) = result.next().unwrap().unwrap();
     assert_eq!(id, 1);
-    assert_eq!(block_number, 0);
     assert_eq!(
         node_db::decode::<Hash>(&block_address).unwrap(),
-        get_block_address(0).0
+        block_addresses[0].0
     );
     assert!(result.next().is_none());
 
-    node_db::update_state_progress(&conn, u64::MAX, &get_block_address(1))
+    node_db::update_state_progress(&conn, &block_addresses[1])
         .expect("Failed to insert state progress");
 
     drop(result);
 
     let result = node_db::get_state_progress(&conn).unwrap().unwrap();
-    assert_eq!(result.0, u64::MAX);
-    assert_eq!(result.1, get_block_address(1));
+    assert_eq!(result, block_addresses[1]);
 
     // Id should always be 1 because we only inserted one row.
     let mut result = stmt.query_map((), |row| row.get::<_, u64>("id")).unwrap();
@@ -328,6 +388,63 @@ fn test_update_state_progress() {
     // Check the db only has one row.
     let num_rows = conn
         .query_row("SELECT COUNT(id) FROM state_progress", (), |row| {
+            row.get::<_, i64>("COUNT(id)")
+        })
+        .unwrap();
+    assert_eq!(num_rows, 1);
+}
+
+#[test]
+fn test_update_validation_progress() {
+    let blocks = test_blocks(2);
+    let block_addresses = blocks.iter().map(content_addr).collect::<Vec<_>>();
+
+    let mut conn = Connection::open_in_memory().unwrap();
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    for block in &blocks {
+        node_db::insert_block(&tx, block).unwrap();
+    }
+    node_db::update_validation_progress(&tx, &block_addresses[0])
+        .expect("Failed to insert validation progress");
+    tx.commit().unwrap();
+
+    let mut stmt = conn
+        .prepare("SELECT validation_progress.id, block.block_address FROM validation_progress JOIN block ON block.id = validation_progress.block_id")
+        .unwrap();
+    let mut result = stmt
+        .query_map((), |row| {
+            Ok((
+                row.get::<_, u64>("id")?,
+                row.get::<_, Vec<u8>>("block_address")?,
+            ))
+        })
+        .unwrap();
+    let (id, block_address) = result.next().unwrap().unwrap();
+    assert_eq!(id, 1);
+    assert_eq!(
+        node_db::decode::<Hash>(&block_address).unwrap(),
+        block_addresses[0].0
+    );
+    assert!(result.next().is_none());
+
+    node_db::update_validation_progress(&conn, &block_addresses[1])
+        .expect("Failed to insert validation progress");
+
+    drop(result);
+
+    let result = node_db::get_validation_progress(&conn).unwrap().unwrap();
+    assert_eq!(result, block_addresses[1]);
+
+    // Id should always be 1 because we only inserted one row.
+    let mut result = stmt.query_map((), |row| row.get::<_, u64>("id")).unwrap();
+    let id = result.next().unwrap().unwrap();
+    assert_eq!(id, 1);
+    drop(result);
+
+    // Check the db only has one row.
+    let num_rows = conn
+        .query_row("SELECT COUNT(id) FROM validation_progress", (), |row| {
             row.get::<_, i64>("COUNT(id)")
         })
         .unwrap();

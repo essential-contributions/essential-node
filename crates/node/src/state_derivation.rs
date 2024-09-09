@@ -1,7 +1,7 @@
 use crate::{
     db::{ConnectionHandle, ConnectionPool},
     error::{CriticalError, InternalError, RecoverableError},
-    state_handle::Handle,
+    handles::state::Handle,
 };
 use essential_hash::content_addr;
 use essential_node_db::{
@@ -33,21 +33,22 @@ where
 ///
 /// Recoverable errors will be logged and the stream will be restarted.
 /// Critical errors will cause the stream to end.
-pub fn derive_state_stream(
-    conn: ConnectionPool,
+pub fn state_derivation_stream(
+    conn_pool: ConnectionPool,
     block_rx: watch::Receiver<()>,
-    self_notify: watch::Sender<()>,
 ) -> Result<Handle<CriticalError>, CriticalError> {
     let (shutdown, stream_close) = watch::channel(());
 
     let jh = tokio::spawn(async move {
         let mut missing_block = false;
         loop {
+            let (self_notify, self_notify_rx) = watch::channel(());
             let rx = if missing_block {
                 WatchStream::from_changes(block_rx.clone())
             } else {
                 WatchStream::new(block_rx.clone())
             };
+            let rx = futures::stream::select(rx, WatchStream::from_changes(self_notify_rx));
             let mut stream_close = stream_close.clone();
             let close = async move {
                 let _ = stream_close.changed().await;
@@ -56,7 +57,7 @@ pub fn derive_state_stream(
             let r = rx
                 .take_until(close)
                 .map(Ok)
-                .try_for_each(|_| derive_next_block_state(conn.clone(), self_notify.clone()))
+                .try_for_each(|_| derive_next_block_state(conn_pool.clone(), self_notify.clone()))
                 .await;
 
             match r {
@@ -78,7 +79,8 @@ pub fn derive_state_stream(
 fn check_missing_block(e: &InternalError) -> bool {
     matches!(
         e,
-        InternalError::Recoverable(RecoverableError::BlockNotFound(_))
+        InternalError::Recoverable(RecoverableError::FirstBlockNotFound)
+            | InternalError::Recoverable(RecoverableError::BlockNotFound(_)),
     )
 }
 
@@ -88,12 +90,12 @@ fn check_missing_block(e: &InternalError) -> bool {
 /// Read the last progress on state updates.
 /// Get the next block to process and apply its state mutations.
 async fn derive_next_block_state(
-    conn: ConnectionPool,
+    conn_pool: ConnectionPool,
     self_notify: watch::Sender<()>,
 ) -> Result<(), InternalError> {
-    let progress = get_last_progress(&conn).await?;
+    let progress = get_last_progress(&conn_pool).await?;
 
-    let block = get_next_block(&conn, progress).await?;
+    let block = get_next_block(&conn_pool, progress).await?;
 
     #[cfg(feature = "tracing")]
     tracing::debug!("Deriving state for block number {}", block.number);
@@ -107,7 +109,7 @@ async fn derive_next_block_state(
         })
     });
 
-    if update_state_in_db(conn, mutations, block.number, block_address).await? {
+    if update_state_in_db(conn_pool, mutations, block.number, block_address).await? {
         let _ = self_notify.send(());
     }
     Ok(())
@@ -115,34 +117,52 @@ async fn derive_next_block_state(
 
 /// Fetch the last processed block from the database in a blocking task.
 async fn get_last_progress(
-    conn: &ConnectionPool,
-) -> Result<Option<(u64, ContentAddress)>, RecoverableError> {
-    conn.get_state_progress()
+    conn_pool: &ConnectionPool,
+) -> Result<Option<ContentAddress>, RecoverableError> {
+    conn_pool
+        .get_state_progress()
         .await
         .map_err(|_err| RecoverableError::LastProgress)
 }
 
 /// Fetch the next block to process from the database in a blocking task.
 async fn get_next_block(
-    conn: &ConnectionPool,
-    progress: Option<(u64, ContentAddress)>,
+    conn_pool: &ConnectionPool,
+    progress: Option<ContentAddress>,
 ) -> Result<Block, InternalError> {
-    let range = progress.as_ref().map_or(0..1, |(block_num, _)| {
-        *block_num..block_num.saturating_add(2) // List previous and current block
-    });
+    let mut conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
+    let blocks = tokio::task::spawn_blocking::<_, Result<_, InternalError>>({
+        let progress = progress.clone();
+        move || {
+            let tx = conn.transaction().map_err(RecoverableError::Rusqlite)?;
+            let range = match &progress {
+                Some(block_address) => {
+                    let block_number = essential_node_db::get_block_number(&tx, block_address)
+                        .map_err(RecoverableError::Rusqlite)?
+                        .ok_or(RecoverableError::BlockNotFound(block_address.clone()))?;
+                    block_number..block_number.saturating_add(2)
+                }
+                None => 0..1,
+            };
 
-    let blocks = conn
-        .list_blocks(range)
-        .await
-        .map_err(RecoverableError::ReadState)?;
+            let blocks =
+                essential_node_db::list_blocks(&tx, range).map_err(RecoverableError::from)?;
+
+            Ok(blocks)
+        }
+    })
+    .await
+    .map_err(RecoverableError::Join)??;
 
     let block = match progress {
         // Get the next block
-        Some((number, hash)) => {
+        Some(hash) => {
             let mut iter = blocks.into_iter();
             let previous_block = iter.next().ok_or(CriticalError::Fork)?;
             // Make sure the block is inserted into the database before deriving state
-            let current_block = iter.next().ok_or(RecoverableError::BlockNotFound(number))?;
+            let current_block = iter
+                .next()
+                .ok_or(RecoverableError::BlockNotFound(hash.clone()))?;
             if content_addr(&previous_block) != hash {
                 return Err(CriticalError::Fork.into());
             }
@@ -152,7 +172,7 @@ async fn get_next_block(
         None => blocks
             .into_iter()
             .next()
-            .ok_or(RecoverableError::BlockNotFound(0))?,
+            .ok_or(RecoverableError::FirstBlockNotFound)?,
     };
 
     Ok(block)
@@ -161,7 +181,7 @@ async fn get_next_block(
 /// Apply state mutations to the database in a blocking task.
 #[cfg_attr(feature = "tracing", tracing::instrument("state_progress", skip_all))]
 async fn update_state_in_db<S, I>(
-    conn: ConnectionPool,
+    conn_pool: ConnectionPool,
     mutations: I,
     block_number: u64,
     block_address: ContentAddress,
@@ -173,7 +193,7 @@ where
     #[cfg(feature = "tracing")]
     let span = tracing::Span::current();
 
-    let mut conn = conn.acquire().await.map_err(CriticalError::from)?;
+    let mut conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
     let r: Result<bool, InternalError> = tokio::task::spawn_blocking(move || {
         #[cfg(feature = "tracing")]
         let _guard = span.enter();
@@ -220,7 +240,7 @@ where
         }
     }
 
-    update_state_progress(&tx, block_number, &block_address)?;
+    update_state_progress(&tx, &block_address)?;
 
     tx.commit()?;
 

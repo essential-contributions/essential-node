@@ -106,19 +106,17 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
     let mut stmt_mutation = tx.prepare(sql::insert::MUTATION)?;
 
     for (ix, (solution, ca)) in block.solutions.iter().zip(solution_hashes).enumerate() {
-        let ca_blob = encode(&ca);
-
         // Insert the solution.
         let solution_blob = encode(solution);
         stmt_solution.execute(named_params! {
-            ":content_hash": ca_blob,
+            ":content_hash": ca.0,
             ":solution": solution_blob,
         })?;
 
         // Create a mapping between the block and the solution.
         stmt_block_solution.execute(named_params! {
             ":block_address": block_address.0,
-            ":solution_hash": &ca_blob,
+            ":solution_hash": &ca.0,
             ":solution_index": ix,
         })?;
 
@@ -128,7 +126,7 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
                 let key_blob = encode(&mutation.key);
                 let value_blob = encode(&mutation.value);
                 stmt_mutation.execute(named_params! {
-                    ":solution_hash": ca_blob,
+                    ":solution_hash": ca.0,
                     ":data_index": data_ix,
                     ":mutation_index": mutation_ix,
                     ":contract_ca": contract_ca_blob,
@@ -152,6 +150,22 @@ pub fn finalize_block(conn: &Connection, block_address: &ContentAddress) -> rusq
         sql::insert::FINALIZE_BLOCK,
         named_params! {
             ":block_address": block_address.0,
+        },
+    )?;
+    Ok(())
+}
+
+/// Inserts a failed block.
+pub fn insert_failed_block(
+    conn: &Connection,
+    block_address: &ContentAddress,
+    solution_hash: &ContentAddress,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        sql::insert::FAILED_BLOCK,
+        named_params! {
+            ":block_address": block_address.0,
+            ":solution_hash": solution_hash.0,
         },
     )?;
     Ok(())
@@ -260,14 +274,25 @@ pub fn update_state(
 /// Updates the progress on state derivation.
 pub fn update_state_progress(
     conn: &Connection,
-    block_number: u64,
     block_address: &ContentAddress,
 ) -> rusqlite::Result<()> {
-    let block_number = block_number as i64;
     conn.execute(
         sql::insert::STATE_PROGRESS,
         named_params! {
-            ":number": block_number,
+            ":block_address": block_address.0,
+        },
+    )?;
+    Ok(())
+}
+
+/// Updates the progress on validation.
+pub fn update_validation_progress(
+    conn: &Connection,
+    block_address: &ContentAddress,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        sql::insert::VALIDATION_PROGRESS,
+        named_params! {
             ":block_address": block_address.0,
         },
     )?;
@@ -390,10 +415,9 @@ pub fn get_solution(
     conn: &Connection,
     ca: &ContentAddress,
 ) -> Result<Option<Solution>, QueryError> {
-    let ca_blob = encode(ca);
     let mut stmt = conn.prepare(sql::query::GET_SOLUTION)?;
     let solution_blob: Option<Vec<u8>> = stmt
-        .query_row([ca_blob], |row| row.get("solution"))
+        .query_row([ca.0], |row| row.get("solution"))
         .optional()?;
     Ok(solution_blob.as_deref().map(decode).transpose()?)
 }
@@ -439,13 +463,24 @@ pub fn get_latest_finalized_block_address(
 }
 
 /// Fetches the last progress on state derivation.
-pub fn get_state_progress(conn: &Connection) -> Result<Option<(u64, ContentAddress)>, QueryError> {
+pub fn get_state_progress(conn: &Connection) -> Result<Option<ContentAddress>, QueryError> {
     let mut stmt = conn.prepare(sql::query::GET_STATE_PROGRESS)?;
-    let value: Option<(u64, ContentAddress)> = stmt
+    let value: Option<ContentAddress> = stmt
         .query_row([], |row| {
-            let number: i64 = row.get("number")?;
             let block_address: Hash = row.get("block_address")?;
-            Ok((number as u64, ContentAddress(block_address)))
+            Ok(ContentAddress(block_address))
+        })
+        .optional()?;
+    Ok(value)
+}
+
+/// Fetches the last progress on validation.
+pub fn get_validation_progress(conn: &Connection) -> Result<Option<ContentAddress>, QueryError> {
+    let mut stmt = conn.prepare(sql::query::GET_VALIDATION_PROGRESS)?;
+    let value: Option<ContentAddress> = stmt
+        .query_row([], |row| {
+            let block_address: Hash = row.get("block_address")?;
+            Ok(ContentAddress(block_address))
         })
         .optional()?;
     Ok(value)
@@ -491,7 +526,7 @@ pub fn list_blocks(conn: &Connection, block_range: Range<u64>) -> Result<Vec<Blo
                     timestamp,
                     solutions: vec![],
                 });
-                blocks.last_mut().unwrap()
+                blocks.last_mut().expect("last block must exist")
             }
         };
 
@@ -551,7 +586,7 @@ pub fn list_blocks_by_time(
                     timestamp,
                     solutions: vec![],
                 });
-                blocks.last_mut().unwrap()
+                blocks.last_mut().expect("last block must exist")
             }
         };
 
@@ -622,6 +657,32 @@ pub fn list_contracts(
     }
 
     Ok(blocks)
+}
+
+/// List failed blocks as (block number, solution hash) within a given range.
+pub fn list_failed_blocks(
+    conn: &Connection,
+    block_range: Range<u64>,
+) -> Result<Vec<(u64, ContentAddress)>, QueryError> {
+    let mut stmt = conn.prepare(sql::query::LIST_FAILED_BLOCKS)?;
+    let rows = stmt.query_map(
+        named_params! {
+            ":start_block": block_range.start,
+            ":end_block": block_range.end,
+        },
+        |row| {
+            let block_number: u64 = row.get("number")?;
+            let solution_hash: Hash = row.get("content_hash")?;
+            Ok((block_number, ContentAddress(solution_hash)))
+        },
+    )?;
+
+    let mut failed_blocks = vec![];
+    for res in rows {
+        let (block_number, solution_hash) = res?;
+        failed_blocks.push((block_number, solution_hash));
+    }
+    Ok(failed_blocks)
 }
 
 /// Subscribe to all blocks from the given starting block number.

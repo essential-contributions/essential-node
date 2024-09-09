@@ -8,6 +8,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
+essential-check = { workspace = true }
 essential-constraint-asm = { workspace = true, optional = true }
 essential-hash = { workspace = true }
 essential-node-db = { workspace = true }

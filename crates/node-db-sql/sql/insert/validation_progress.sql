@@ -1,5 +1,5 @@
 INSERT
-    OR REPLACE INTO state_progress (id, block_id)
+    OR REPLACE INTO validation_progress (id, block_id)
 VALUES
     (
         1,

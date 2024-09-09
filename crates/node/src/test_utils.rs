@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::db::ConnectionPool;
-use essential_node_db::{get_state_progress, query_state};
+use essential_node_db::{get_state_progress, get_validation_progress, query_state};
 use essential_types::{
     contract::Contract,
     predicate::Predicate,
@@ -52,6 +52,52 @@ pub fn test_block(number: u64, timestamp: Duration) -> (Block, Vec<Contract>) {
     )
 }
 
+pub fn test_invalid_block(number: u64, timestamp: Duration) -> (Block, Contract) {
+    let seed = number as i64;
+
+    let predicate = Predicate {
+        state_read: test_state_reads(seed),
+        constraints: vec![essential_constraint_asm::to_bytes(vec![
+            essential_constraint_asm::Stack::Push(seed).into(),
+            essential_constraint_asm::Stack::Pop.into(),
+            // This constraint will fail
+            essential_constraint_asm::Stack::Push(0).into(),
+        ])
+        .collect()],
+        directive: essential_types::predicate::Directive::Satisfy,
+    };
+    let contract = Contract {
+        predicates: vec![predicate],
+        salt: essential_types::convert::u8_32_from_word_4([seed; 4]),
+    };
+    let predicate = essential_hash::content_addr(&contract.predicates[0]);
+    let contract_address = essential_hash::content_addr(&contract);
+    let solution_data = SolutionData {
+        predicate_to_solve: PredicateAddress {
+            contract: contract_address,
+            predicate,
+        },
+        decision_variables: vec![],
+        transient_data: vec![],
+        state_mutations: vec![Mutation {
+            key: vec![seed],
+            value: vec![0, 0, 0, 0],
+        }],
+    };
+    let solution = Solution {
+        data: vec![solution_data],
+    };
+
+    (
+        Block {
+            number,
+            timestamp,
+            solutions: vec![solution],
+        },
+        contract,
+    )
+}
+
 pub fn test_solution(seed: Word) -> (Solution, Contract) {
     let (solution_data, contract) = test_solution_data(seed);
     (
@@ -81,13 +127,6 @@ pub fn test_solution_data(seed: Word) -> (SolutionData, Contract) {
         },
         contract,
     )
-}
-
-pub fn test_pred_addr() -> PredicateAddress {
-    PredicateAddress {
-        contract: [0xAA; 32].into(),
-        predicate: [0xAA; 32].into(),
-    }
 }
 
 pub fn test_contract(seed: Word) -> Contract {
@@ -181,17 +220,29 @@ pub async fn setup_server() -> (String, Child) {
 }
 
 // Check that the state progress in the database is block number and hash
-pub fn assert_state_progress_is_some(conn: &Connection, block: &Block, hash: &ContentAddress) {
-    let (progress_number, progress_hash) = get_state_progress(conn)
+pub fn assert_state_progress_is_some(conn: &Connection, hash: &ContentAddress) {
+    let progress_hash = get_state_progress(conn)
         .unwrap()
-        .expect("progress should be some");
-    assert_eq!(progress_number, block.number);
+        .expect("state progress should be some");
     assert_eq!(progress_hash, *hash);
 }
 
 // Check that the state progress in the database is none
 pub fn assert_state_progress_is_none(conn: &Connection) {
     assert!(get_state_progress(conn).unwrap().is_none());
+}
+
+// Check that the validation progress in the database is block number and hash
+pub fn assert_validation_progress_is_some(conn: &Connection, hash: &ContentAddress) {
+    let progress_hash = get_validation_progress(conn)
+        .unwrap()
+        .expect("validation progress should be some");
+    assert_eq!(progress_hash, *hash);
+}
+
+// Check that the validation in the database is none
+pub fn assert_validation_progress_is_none(conn: &Connection) {
+    assert!(get_validation_progress(conn).unwrap().is_none());
 }
 
 // Check state

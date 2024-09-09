@@ -4,18 +4,20 @@
 
 use error::CriticalError;
 use essential_relayer::Relayer;
-pub use node_handle::Handle;
+pub use handles::node::Handle;
 use rusqlite_pool::tokio::AsyncConnectionPool;
-use state::derive_state_stream;
+use state_derivation::state_derivation_stream;
 use thiserror::Error;
+use validation::validation_stream;
 
 pub mod db;
 mod error;
-mod node_handle;
-mod state;
-mod state_handle;
+mod handles;
+mod state_derivation;
 #[cfg(any(feature = "test-utils", test))]
 pub mod test_utils;
+mod validate;
+mod validation;
 
 /// The Essential `Node`.
 ///
@@ -136,17 +138,23 @@ impl Node {
         let relayer_handle = relayer.run(
             self.conn_pools.private.0.clone(),
             contract_notify,
-            block_notify.clone(),
-        )?;
-
-        // Run state derivation stream.
-        let state_handle = derive_state_stream(
-            self.conn_pools.private.clone(),
-            new_block.clone(),
             block_notify,
         )?;
 
-        Ok(Handle::new(relayer_handle, state_handle, new_block))
+        // Run state derivation stream.
+        let state_handle =
+            state_derivation_stream(self.conn_pools.private.clone(), new_block.clone())?;
+
+        // Run validation stream.
+        let validation_handle =
+            validation_stream(self.conn_pools.private.clone(), new_block.clone())?;
+
+        Ok(Handle::new(
+            relayer_handle,
+            state_handle,
+            validation_handle,
+            new_block,
+        ))
     }
 }
 

@@ -1,7 +1,7 @@
 SELECT
-    number, block_address
+    block.block_address
 FROM
-    state_progress
-WHERE
-    id = 1
-LIMIT 1
+    block
+    JOIN state_progress ON block.id = state_progress.block_id
+LIMIT
+    1

@@ -1,11 +1,10 @@
 #![allow(dead_code)]
 
-use essential_hash::content_addr;
 use essential_types::{
     contract::Contract,
     predicate::Predicate,
     solution::{Solution, SolutionData},
-    Block, ConstraintBytecode, ContentAddress, PredicateAddress, StateReadBytecode, Word,
+    Block, ConstraintBytecode, PredicateAddress, StateReadBytecode, Word,
 };
 use std::time::Duration;
 
@@ -84,12 +83,4 @@ pub fn test_constraints(seed: Word) -> Vec<ConstraintBytecode> {
     let n = (1 + seed % 3) as usize;
     let b = (seed % u8::MAX as Word) as u8;
     vec![vec![b; 10]; n]
-}
-
-pub fn get_block_address(i: u64) -> ContentAddress {
-    content_addr(&Block {
-        number: i,
-        timestamp: Default::default(),
-        solutions: Default::default(),
-    })
 }

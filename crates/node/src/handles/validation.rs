@@ -1,6 +1,6 @@
 use tokio::sync::watch;
 
-/// Handle for joining or closing the stream.
+/// Handle for joining or closing the validation stream.
 pub struct Handle<E> {
     join: tokio::task::JoinHandle<Result<(), E>>,
     close: Close,
@@ -28,7 +28,7 @@ impl<E> Handle<E> {
     }
 }
 
-/// Flatten the result of a join handle into the relayer result.
+/// Flatten the result of a join handle into the validation result.
 fn flatten_result<E>(
     result: std::result::Result<Result<(), E>, tokio::task::JoinError>,
 ) -> Result<(), E> {
