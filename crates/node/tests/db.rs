@@ -8,14 +8,14 @@ use std::sync::Arc;
 
 #[tokio::test]
 async fn test_acquire() {
-    let conf = test_db_conf("test_acquire");
+    let conf = test_db_conf();
     let node = Node::new(&conf).unwrap();
     node.db().acquire().await.unwrap();
 }
 
 #[test]
 fn test_try_acquire() {
-    let conf = test_db_conf("test_try_acquire");
+    let conf = test_db_conf();
     let node = Node::new(&conf).unwrap();
     node.db().try_acquire().unwrap();
 }
@@ -23,7 +23,7 @@ fn test_try_acquire() {
 #[tokio::test]
 async fn test_create_tables() {
     // Tables created during node initialisation.
-    let conf = test_db_conf("test_create_tables");
+    let conf = test_db_conf();
     let node = Node::new(&conf).unwrap();
 
     // Verify that each table exists by querying the SQLite master table
@@ -50,7 +50,7 @@ async fn test_create_tables() {
 
 #[tokio::test]
 async fn test_block() {
-    let conf = test_db_conf("test_block");
+    let conf = test_db_conf();
     let node = Node::new(&conf).unwrap();
 
     // The test blocks.
@@ -72,7 +72,7 @@ async fn test_block() {
 
 #[tokio::test]
 async fn test_contract() {
-    let conf = test_db_conf("test_contract");
+    let conf = test_db_conf();
     let node = Node::new(&conf).unwrap();
 
     // The test contract.
@@ -94,7 +94,7 @@ async fn test_contract() {
 
 #[tokio::test]
 async fn test_state() {
-    let conf = test_db_conf("test_state_congestion");
+    let conf = test_db_conf();
     let node = Node::new(&conf).unwrap();
 
     // The test state.
