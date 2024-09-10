@@ -21,7 +21,7 @@ async fn test_health_check() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
-    let node = test_node("test_health_check");
+    let node = test_node();
     with_test_server(state_db_only(node.db()), |port| async move {
         let response = reqwest_get(port, node_api::endpoint::health_check::PATH).await;
         assert!(response.status().is_success());
@@ -34,7 +34,7 @@ async fn test_get_contract() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
-    let node = test_node("test_get_contract");
+    let node = test_node();
 
     // The test contract.
     let seed = 42;
@@ -62,7 +62,7 @@ async fn test_get_contract_invalid_ca() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
-    let node = test_node("test_get_contract_invalid_ca");
+    let node = test_node();
 
     // The test contract.
     let seed = 78;
@@ -86,7 +86,7 @@ async fn test_get_predicate() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
-    let node = test_node("test_get_predicate");
+    let node = test_node();
 
     // The test contract.
     let seed = 97;
@@ -115,7 +115,7 @@ async fn test_query_state() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
-    let node = test_node("test_query_state");
+    let node = test_node();
 
     // The test state.
     let seed = 11;
@@ -166,7 +166,7 @@ async fn test_list_blocks() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
-    let node = test_node("test_list_blocks");
+    let node = test_node();
 
     // Create some test blocks.
     let n_blocks = 100;
@@ -203,7 +203,7 @@ async fn test_list_contracts() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
-    let node = test_node("test_list_contracts");
+    let node = test_node();
 
     // The contract seeds for each block.
     let block_contract_seeds: &[&[Word]] = &[&[1], &[42, 69], &[1337, 7357, 9000], &[4]];
@@ -262,7 +262,7 @@ async fn test_subscribe_blocks() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
-    let node = test_node("test_subscribe_contracts");
+    let node = test_node();
 
     // The test blocks.
     let (blocks, _) = node::test_utils::test_blocks(1000);

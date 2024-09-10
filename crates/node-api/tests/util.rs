@@ -15,9 +15,9 @@ pub fn init_tracing_subscriber() {
         .try_init();
 }
 
-pub fn test_node(test_id: &str) -> Node {
+pub fn test_node() -> Node {
     let mut conf = node::Config::default();
-    conf.db.source = node::db::Source::Memory(test_id.to_string());
+    conf.db.source = node::db::Source::Memory(uuid::Uuid::new_v4().into());
     Node::new(&conf).unwrap()
 }
 
