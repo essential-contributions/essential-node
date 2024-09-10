@@ -42,6 +42,12 @@ struct Args {
     /// The maximum number of TCP streams to be served simultaneously.
     #[arg(long, default_value_t = node_api::DEFAULT_CONNECTION_LIMIT)]
     tcp_conn_limit: usize,
+    /// Disable the API.
+    #[arg(long, default_value_t = false)]
+    disable_api: bool,
+    /// Disable the relayer.
+    #[arg(long, default_value_t = false)]
+    disable_relayer: bool,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
@@ -101,6 +107,11 @@ async fn main() {
 
 /// Run the essential node.
 async fn run(args: Args) -> anyhow::Result<()> {
+    // If both API and relayer are disabled, exit.
+    if args.disable_api && args.disable_relayer {
+        anyhow::bail!("both API and relayer are disabled");
+    }
+
     // Initialise tracing.
     if !args.disable_tracing {
         #[cfg(feature = "tracing")]
@@ -117,31 +128,39 @@ async fn run(args: Args) -> anyhow::Result<()> {
     let node = Node::new(&conf)?;
 
     // Run the relayer and state derivation.
-    #[cfg(feature = "tracing")]
-    tracing::info!(
-        "Starting relayer and state derivation (relaying from {:?})",
-        args.server_address
-    );
-    let relayer_and_state = node.run(args.server_address)?;
+    let node_handle = if !args.disable_relayer {
+        #[cfg(feature = "tracing")]
+        tracing::info!(
+            "Starting relayer and state derivation (relaying from {:?})",
+            args.server_address
+        );
+        Some(node.run(args.server_address)?)
+    } else {
+        None
+    };
 
     // Run the API.
-    let api_state = node_api::State {
-        new_block: Some(relayer_and_state.new_block()),
-        conn_pool: node.db(),
+    let mut api = if !args.disable_api {
+        let api_state = node_api::State {
+            new_block: node_handle.map_or_else(|| None, |h| Some(h.new_block())),
+            conn_pool: node.db(),
+        };
+        let router = node_api::router(api_state);
+        let listener = tokio::net::TcpListener::bind(args.bind_address).await?;
+        #[cfg(feature = "tracing")]
+        tracing::info!("Starting API server at {}", listener.local_addr()?);
+        Some(node_api::serve(&router, &listener, args.tcp_conn_limit))
+    } else {
+        None
     };
-    let router = node_api::router(api_state);
-    let listener = tokio::net::TcpListener::bind(args.bind_address).await?;
-    #[cfg(feature = "tracing")]
-    tracing::info!("Starting API server at {}", listener.local_addr()?);
-    let api = node_api::serve(&router, &listener, args.tcp_conn_limit);
 
     // Select the first future to complete to close.
     // TODO: We should select over relayer/state-derivation critical error here.
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::select! {
-        _ = api => {},
+        _ = api.unwrap_or_else(|| futures::future::pending::<()>()) => {},
         _ = ctrl_c => {},
-        r = relayer_and_state.join() => {
+        r = node_handle.map_or_else(|| futures::future::pending::<()>(), |f| f.join()) => {
             if let Err(e) = r {
                 #[cfg(feature = "tracing")]
                 tracing::error!("Critical error on relayer or state derivation streams: {e}")

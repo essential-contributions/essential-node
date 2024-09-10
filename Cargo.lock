@@ -700,6 +700,7 @@ dependencies = [
  "dirs",
  "essential-node",
  "essential-node-api",
+ "futures",
  "tokio",
  "tracing",
  "tracing-subscriber",
