@@ -33,7 +33,7 @@ async fn can_validate() {
     #[cfg(feature = "tracing")]
     let _ = tracing_subscriber::fmt::try_init();
 
-    let conn_pool = test_conn_pool("can_validate");
+    let conn_pool = test_conn_pool();
     let mut conn = conn_pool.acquire().await.unwrap();
 
     let tx = conn.transaction().unwrap();
@@ -80,7 +80,7 @@ async fn can_validate() {
 
 #[tokio::test]
 async fn test_invalid_block_validation() {
-    let conn_pool = test_conn_pool("invalid_block_validation");
+    let conn_pool = test_conn_pool();
     let mut conn = conn_pool.acquire().await.unwrap();
 
     let tx = conn.transaction().unwrap();
@@ -119,7 +119,7 @@ async fn can_process_valid_and_invalid_blocks() {
     #[cfg(feature = "tracing")]
     let _ = tracing_subscriber::fmt::try_init();
 
-    let conn_pool = test_conn_pool("valid_and_invalid_block_validation");
+    let conn_pool = test_conn_pool();
     let mut conn = conn_pool.acquire().await.unwrap();
 
     let tx = conn.transaction().unwrap();

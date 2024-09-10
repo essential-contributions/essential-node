@@ -21,7 +21,7 @@ fn insert_contracts_to_db(conn: &mut Connection, contracts: Vec<Contract>) {
 
 #[tokio::test]
 async fn valid_block() {
-    let conn_pool = test_conn_pool("valid_block");
+    let conn_pool = test_conn_pool();
     let mut conn = conn_pool.acquire().await.unwrap();
 
     let tx = conn.transaction().unwrap();
@@ -39,7 +39,7 @@ async fn valid_block() {
 
 #[tokio::test]
 async fn invalid_block() {
-    let conn_pool = test_conn_pool("invalid_block");
+    let conn_pool = test_conn_pool();
     let mut conn = conn_pool.acquire().await.unwrap();
 
     let tx = conn.transaction().unwrap();
@@ -90,7 +90,7 @@ async fn invalid_block() {
 
 #[tokio::test]
 async fn predicate_not_found() {
-    let conn_pool = test_conn_pool("predicate_not_found");
+    let conn_pool = test_conn_pool();
     let mut conn = conn_pool.acquire().await.unwrap();
 
     let tx = conn.transaction().unwrap();

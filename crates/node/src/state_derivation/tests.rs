@@ -33,7 +33,7 @@ async fn can_derive_state() {
     #[cfg(feature = "tracing")]
     let _ = tracing_subscriber::fmt::try_init();
 
-    let conn_pool = test_conn_pool("can_derive_state");
+    let conn_pool = test_conn_pool();
     let mut conn = conn_pool.acquire().await.unwrap();
 
     let tx = conn.transaction().unwrap();
