@@ -30,9 +30,37 @@ struct State {
 }
 
 /// Result of validating a block.
-/// In the `Ok` case, returns the utility and gas of the block.
-/// In the `Err` case, returns the error and the index of the solution that failed validation.
-type ValidationResult = Result<(Utility, Gas), (PredicatesError<StateReadError>, usize)>;
+#[derive(Debug)]
+pub enum ValidateOutcome {
+    Valid(ValidOutcome),
+    Invalid(InvalidOutcome),
+}
+
+/// Outcome of a valid block.
+/// Cumulative gas and utilities of all solutions in the block.
+#[derive(Debug)]
+pub struct ValidOutcome {
+    pub total_gas: Gas,
+    pub utility: Utility,
+}
+
+/// Outcome of an invalid block.
+/// Contains the failure reason and the index of the solution that caused the failure.
+#[derive(Debug)]
+pub struct InvalidOutcome {
+    pub failure: ValidateFailure,
+    pub solution_index: usize,
+}
+
+/// Reasons for a block to be invalid.
+/// Contains the error that caused the block to be invalid.
+#[derive(Debug)]
+pub enum ValidateFailure {
+    #[allow(dead_code)]
+    PredicatesError(PredicatesError<StateReadError>),
+    UtilityOverflow,
+    GasOverflow,
+}
 
 /// Validates a block.
 ///
@@ -41,7 +69,7 @@ type ValidationResult = Result<(Utility, Gas), (PredicatesError<StateReadError>,
 pub async fn validate(
     conn_pool: &ConnectionPool,
     block: &Block,
-) -> Result<ValidationResult, ValidationError> {
+) -> Result<ValidateOutcome, ValidationError> {
     // Read predicates from database.
     let predicate_addresses: HashSet<PredicateAddress> = block
         .solutions
@@ -118,11 +146,19 @@ pub async fn validate(
             Ok((u, g)) => {
                 utility += u;
                 if utility == f64::INFINITY {
-                    return Err(ValidationError::UtilityOverflow);
+                    return Ok(ValidateOutcome::Invalid(InvalidOutcome {
+                        failure: ValidateFailure::UtilityOverflow,
+                        solution_index,
+                    }));
                 }
-                total_gas = total_gas
-                    .checked_add(g)
-                    .ok_or(ValidationError::GasOverflow)?;
+                if let Some(g) = total_gas.checked_add(g) {
+                    total_gas = g;
+                } else {
+                    return Ok(ValidateOutcome::Invalid(InvalidOutcome {
+                        failure: ValidateFailure::GasOverflow,
+                        solution_index,
+                    }));
+                }
             }
             Err(err) => {
                 #[cfg(feature = "tracing")]
@@ -133,7 +169,10 @@ pub async fn validate(
                     solution_index,
                     err
                 );
-                return Ok(Err((err, solution_index)));
+                return Ok(ValidateOutcome::Invalid(InvalidOutcome {
+                    failure: ValidateFailure::PredicatesError(err),
+                    solution_index,
+                }));
             }
         }
     }
@@ -146,7 +185,7 @@ pub async fn validate(
         utility,
         total_gas
     );
-    Ok(Ok((utility, total_gas)))
+    Ok(ValidateOutcome::Valid(ValidOutcome { total_gas, utility }))
 }
 
 impl StateRead for State {

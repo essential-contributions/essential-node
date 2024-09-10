@@ -29,10 +29,6 @@ pub enum RecoverableError {
     Rusqlite(rusqlite::Error),
     #[error("predicate not in database: {0:?}")]
     PredicateNotFound(PredicateAddress),
-    #[error("total gas for block overflowed")]
-    GasOverflow,
-    #[error("utility for block overflowed")]
-    UtilityOverflow,
 }
 
 #[derive(Debug, Error)]
@@ -47,10 +43,6 @@ pub enum ValidationError {
     Rusqlite(#[from] rusqlite::Error),
     #[error("failed to join handle")]
     Join(#[from] tokio::task::JoinError),
-    #[error("total gas for block overflowed")]
-    GasOverflow,
-    #[error("utility for block overflowed")]
-    UtilityOverflow,
 }
 
 #[derive(Debug, Error)]
@@ -95,12 +87,6 @@ impl From<ValidationError> for InternalError {
                 InternalError::Recoverable(RecoverableError::Rusqlite(err))
             }
             ValidationError::Join(err) => InternalError::Recoverable(RecoverableError::Join(err)),
-            ValidationError::GasOverflow => {
-                InternalError::Recoverable(RecoverableError::GasOverflow)
-            }
-            ValidationError::UtilityOverflow => {
-                InternalError::Recoverable(RecoverableError::UtilityOverflow)
-            }
         }
     }
 }

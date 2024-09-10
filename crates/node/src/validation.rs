@@ -2,7 +2,7 @@ use crate::{
     db::ConnectionPool,
     error::{CriticalError, InternalError, RecoverableError, ValidationError},
     handles::validation::Handle,
-    validate,
+    validate::{self, InvalidOutcome, ValidOutcome, ValidateOutcome},
 };
 use essential_hash::content_addr;
 use essential_node_db::{
@@ -89,7 +89,10 @@ async fn validate_next_block(
 
     match res {
         // Validation was successful.
-        Ok((_utility, _gas)) => {
+        ValidateOutcome::Valid(ValidOutcome {
+            total_gas: _total_gas,
+            utility: _utility,
+        }) => {
             let mut conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
             let r: Result<(), InternalError> = tokio::task::spawn_blocking(move || {
                 // Update validation progress.
@@ -114,7 +117,10 @@ async fn validate_next_block(
             r
         }
         // Validation failed.
-        Err((_err, solution_index)) => {
+        ValidateOutcome::Invalid(InvalidOutcome {
+            failure: _failure,
+            solution_index,
+        }) => {
             // Insert the failed solution into the database.
             let failed_solution = content_addr(
                 block
