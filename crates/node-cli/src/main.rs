@@ -139,28 +139,39 @@ async fn run(args: Args) -> anyhow::Result<()> {
         None
     };
 
-    // Run the API.
-    let mut api = if !args.disable_api {
-        let api_state = node_api::State {
-            new_block: node_handle.map_or_else(|| None, |h| Some(h.new_block())),
-            conn_pool: node.db(),
-        };
-        let router = node_api::router(api_state);
-        let listener = tokio::net::TcpListener::bind(args.bind_address).await?;
-        #[cfg(feature = "tracing")]
-        tracing::info!("Starting API server at {}", listener.local_addr()?);
-        Some(node_api::serve(&router, &listener, args.tcp_conn_limit))
-    } else {
-        None
+    let new_block = node_handle.as_ref().map_or(None, |h| Some(h.new_block()));
+    let conn_pool = node.db();
+    let api = async move {
+        if !args.disable_api {
+            let api_state = node_api::State {
+                new_block,
+                conn_pool,
+            };
+            let router = node_api::router(api_state);
+            let listener = tokio::net::TcpListener::bind(args.bind_address).await?;
+            #[cfg(feature = "tracing")]
+            tracing::info!("Starting API server at {}", listener.local_addr()?);
+            anyhow::Result::<()>::Ok(node_api::serve(&router, &listener, args.tcp_conn_limit).await)
+        } else {
+            anyhow::Result::<()>::Ok(futures::future::pending::<()>().await)
+        }
+    };
+
+    let node_handle = async move {
+        if let Some(node_handle) = node_handle {
+            node_handle.join().await
+        } else {
+            Ok(futures::future::pending::<()>().await)
+        }
     };
 
     // Select the first future to complete to close.
     // TODO: We should select over relayer/state-derivation critical error here.
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::select! {
-        _ = api.unwrap_or_else(|| futures::future::pending::<()>()) => {},
+        _ = api => {},
         _ = ctrl_c => {},
-        r = node_handle.map_or_else(|| futures::future::pending::<()>(), |f| f.join()) => {
+        r = node_handle => {
             if let Err(e) = r {
                 #[cfg(feature = "tracing")]
                 tracing::error!("Critical error on relayer or state derivation streams: {e}")
