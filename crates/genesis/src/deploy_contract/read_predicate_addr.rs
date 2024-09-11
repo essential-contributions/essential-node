@@ -1,17 +1,21 @@
-use super::*;
+use super::state::*;
+use super::state_slot_offset;
+use super::tags;
+use crate::{deploy_contract::storage_index, utils::state::*};
+use essential_state_asm as asm;
+use essential_types::Word;
 
-fn predicate_addrs_i() -> Vec<sasm::Op> {
-    state::ops![
-        PUSH: PREDICATE_ADDRS_SLOT_IX,
+fn predicate_addrs_i() -> Vec<asm::Op> {
+    ops![
+        PUSH: state_slot_offset::PREDICATE_ADDRS,
         REPEAT_COUNTER,
         PUSH: 5,
         MUL,
     ]
 }
 
-fn predicate_addrs_i_address() -> Vec<sasm::Op> {
-    use state::ops;
-    state::opsv![
+fn predicate_addrs_i_address() -> Vec<asm::Op> {
+    [
         predicate_addrs_i(),
         ops![
             PUSH: 1,
@@ -19,24 +23,25 @@ fn predicate_addrs_i_address() -> Vec<sasm::Op> {
             PUSH: 4,
             PUSH: 0,
             STATE,
-        ]
+        ],
     ]
+    .concat()
 }
 
-fn predicate_addrs_i_tag() -> Vec<sasm::Op> {
-    use state::ops;
-    state::opsv![
+fn predicate_addrs_i_tag() -> Vec<asm::Op> {
+    [
         predicate_addrs_i(),
         ops![
             PUSH: 1,
             PUSH: 0,
             STATE,
-        ]
+        ],
     ]
+    .concat()
 }
 
-fn state_mem_i_not_nil() -> Vec<sasm::Op> {
-    state::ops![
+fn state_mem_i_not_nil() -> Vec<asm::Op> {
+    ops![
         REPEAT_COUNTER,
         VALUE_LEN,
         PUSH: 0,
@@ -45,23 +50,22 @@ fn state_mem_i_not_nil() -> Vec<sasm::Op> {
     ]
 }
 
-fn state_mem_i_store_words(num: Word) -> Vec<sasm::Op> {
-    state::ops![
+fn state_mem_i_store_words(num: Word) -> Vec<asm::Op> {
+    ops![
         PUSH: num,
         REPEAT_COUNTER,
         STORE,
     ]
 }
 
-fn state_mem_i_clear() -> Vec<sasm::Op> {
-    state::ops![REPEAT_COUNTER, CLEAR,]
+fn state_mem_i_clear() -> Vec<asm::Op> {
+    ops![REPEAT_COUNTER, CLEAR,]
 }
 
-fn body() -> Vec<sasm::Op> {
-    use state::ops;
-    state::opsv![
+fn body() -> Vec<asm::Op> {
+    [
         ops![
-            PUSH: PREDICATE_ADDR_STORAGE_INDEX,
+            PUSH: storage_index::PREDICATES,
         ],
         predicate_addrs_i_address(),
         alloc(1),
@@ -70,35 +74,30 @@ fn body() -> Vec<sasm::Op> {
         state_mem_i_not_nil(),
         state_mem_i_clear(),
         state_mem_i_store_words(2),
-        // ops![
-        //     REPEAT_COUNTER,
-        //     PUSH: 1,
-        //     EQ,
-        //     PANIC_IF,
-        // ],
-        // s_debug(),
     ]
+    .concat()
 }
 
 pub fn read_predicate_addr() -> Vec<u8> {
-    use state::ops;
-    state::opsi![
+    let r = [
         // for i in 0..predicates_size
-        s_read_predicate_size(),
+        read_predicate_size(),
         ops![
             PUSH: 1,
             REPEAT
         ],
         // match tag
         // NEW_TAG
-        s_match_asm_tag(predicate_addrs_i_tag(), NEW_TAG, body()),
+        match_asm_tag(predicate_addrs_i_tag(), tags::NEW, body()),
         //
         // EXISTING_TAG
-        s_match_asm_tag(predicate_addrs_i_tag(), EXISTING_TAG, body()),
+        match_asm_tag(predicate_addrs_i_tag(), tags::EXISTING, body()),
         //
         // No match
-        s_panic_on_no_match_asm_tag(predicate_addrs_i_tag()),
+        panic_on_no_match_asm_tag(predicate_addrs_i_tag()),
         // Loop end
         ops![REPEAT_END],
     ]
+    .concat();
+    asm::to_bytes(r).collect()
 }

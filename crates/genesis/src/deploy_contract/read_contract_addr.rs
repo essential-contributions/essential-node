@@ -1,28 +1,28 @@
-use super::*;
+use super::state::*;
+use super::state_slot_offset;
+use super::tags;
+use crate::{deploy_contract::storage_index, utils::state::*};
+use essential_state_asm as asm;
 
-const CONTRACT_EXISTS_STATE_SLOT: Word = 0;
-const PREDICATE_ADDRS_STATE_SLOT: Word = CONTRACT_EXISTS_STATE_SLOT + 1;
-const CONTRACT_ADDR_STATE_SLOT: Word = PREDICATE_ADDRS_STATE_SLOT + 1;
-
-fn new_tag_body() -> Vec<sasm::Op> {
-    state::opsv![
-        s_read_predicate_words(),
-        s_read_predicate_words_len(),
-        s_read_predicate_padding_len(),
-        state::ops![SHA_256]
+fn new_tag_body() -> Vec<asm::Op> {
+    [
+        read_predicate_words(),
+        read_predicate_words_len(),
+        read_predicate_padding_len(),
+        ops![SHA_256],
     ]
+    .concat()
 }
 
-fn write_tag_and_address() -> Vec<sasm::Op> {
-    use state::ops;
-    state::opsv![
-        s_jump_if_cond(
+fn write_tag_and_address() -> Vec<asm::Op> {
+    [
+        jump_if_cond(
             ops![
                 REPEAT_COUNTER,
                 PUSH: 0,
                 EQ,
             ],
-            load_all_state_slot(PREDICATE_ADDRS_STATE_SLOT),
+            load_all_state_slot(state_slot_offset::PREDICATE_ADDRS),
         ),
         ops![
             REPEAT_COUNTER,
@@ -30,46 +30,46 @@ fn write_tag_and_address() -> Vec<sasm::Op> {
             MUL,
             PUSH: 4,
             ADD,
-            PUSH: PREDICATE_ADDRS_STATE_SLOT,
+            PUSH: state_slot_offset::PREDICATE_ADDRS,
             STORE,
         ],
-        s_read_predicate_tag(),
-        load_all_state_slot(PREDICATE_ADDRS_STATE_SLOT),
+        read_predicate_tag(),
+        load_all_state_slot(state_slot_offset::PREDICATE_ADDRS),
         ops![
             REPEAT_COUNTER,
             PUSH: 5,
             MUL,
             PUSH: 5,
             ADD,
-            PUSH: PREDICATE_ADDRS_STATE_SLOT,
+            PUSH: state_slot_offset::PREDICATE_ADDRS,
             STORE,
         ],
-        load_state_slot(PREDICATE_ADDRS_STATE_SLOT, 1, 4),
+        load_state_slot(state_slot_offset::PREDICATE_ADDRS, 1, 4),
     ]
+    .concat()
 }
 
 pub fn read_contract_addr() -> Vec<u8> {
-    use state::ops;
-    state::opsi![
+    let r = [
         ops![
-            PUSH: CONTRACT_ADDR_STORAGE_INDEX,
+            PUSH: storage_index::CONTRACTS,
         ],
         alloc(3),
         // for i in 0..predicates_size
-        s_read_predicate_size(),
+        read_predicate_size(),
         ops![
             PUSH: 1,
             REPEAT,
         ],
         // match tag
         // NEW_TAG
-        s_match_tag(NEW_TAG, new_tag_body()),
+        match_tag(tags::NEW, new_tag_body()),
         //
         // EXISTING_TAG
-        s_match_tag(EXISTING_TAG, s_read_predicate_words()),
+        match_tag(tags::EXISTING, read_predicate_words()),
         //
         // No match
-        s_panic_on_no_match(),
+        panic_on_no_match(),
         // Write tag and predicate address to storage
         write_tag_and_address(),
         //
@@ -77,10 +77,10 @@ pub fn read_contract_addr() -> Vec<u8> {
         ops![REPEAT_END,],
         // salt
         //
-        s_read_salt(),
+        read_salt(),
         //
         // sha256([predicate_hashes..., salt])
-        s_read_predicate_size(),
+        read_predicate_size(),
         ops![
             PUSH: 4,
             MUL,
@@ -90,10 +90,12 @@ pub fn read_contract_addr() -> Vec<u8> {
             SHA_256,
         ],
         // Write contract_addr as set to storage
-        store_state_slot(4, CONTRACT_ADDR_STATE_SLOT),
-        load_state_slot(CONTRACT_ADDR_STATE_SLOT, 0, 4),
+        store_state_slot(4, state_slot_offset::CONTRACT_ADDR),
+        load_state_slot(state_slot_offset::CONTRACT_ADDR, 0, 4),
         //
         // state deployed_contract = storage::contracts[hash];
-        single_key(5, CONTRACT_EXISTS_STATE_SLOT),
+        single_key(5, state_slot_offset::CONTRACT_EXISTS),
     ]
+    .concat();
+    asm::to_bytes(r).collect()
 }

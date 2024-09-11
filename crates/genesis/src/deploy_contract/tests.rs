@@ -118,7 +118,7 @@ async fn test_delta_contract() {
 
     let predicate = Predicate {
         state_read: vec![read_contract_addr(), read_predicate_addr()],
-        constraints: vec![delta_contract()],
+        constraints: vec![delta_contract::delta_contract()],
         directive: Directive::Satisfy,
     };
 
@@ -174,6 +174,29 @@ async fn test_check_exists() {
 
     let predicate = Arc::new(predicate);
 
+    let (pre, post, solution) = make_state_and_solution();
+
+    essential_check::solution::check_predicates(
+        &pre,
+        &post,
+        solution,
+        |_| predicate.clone(),
+        Default::default(),
+    )
+    .await
+    .unwrap();
+}
+
+async fn test_deploy_inner(
+    pre: impl Fn(Key) -> Vec<Value>,
+    post: impl Fn(Key) -> Vec<Value>,
+    predicate_size: usize,
+    num_predicates: usize,
+) {
+    let _ = tracing_subscriber::fmt::try_init();
+    let contract = create();
+
+    let predicate = Arc::new(contract.predicates[0].clone());
     let (pre, post, solution) = make_state_and_solution();
 
     essential_check::solution::check_predicates(

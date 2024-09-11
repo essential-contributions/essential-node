@@ -1,24 +1,4 @@
 pub mod constraint {
-    macro_rules! opsi {
-        ($($op:expr),* $(,)?) => {{
-            let mut v = vec![];
-            $(v.extend($op);)*
-            $crate::asm::to_bytes(v).collect::<Vec<u8>>()
-        }};
-    }
-
-    pub(crate) use opsi;
-
-    macro_rules! opsv {
-        ($($op:expr),* $(,)?) => {{
-            let mut v = vec![];
-            $(v.extend($op);)*
-            v
-        }};
-    }
-
-    pub(crate) use opsv;
-
     macro_rules! op {
         (PUSH: $arg:expr) => {
             $crate::asm::Op::from($crate::asm::Stack::Push($arg))
@@ -110,12 +90,12 @@ pub mod constraint {
     }
 
     pub(crate) use op;
-    //
+
     macro_rules! ops {
         ($($op:ident $(: $arg:expr)?),* $(,)?) => {
             vec![
                 $(
-                    constraint::op!($op $( : $arg)?)
+                    op!($op $( : $arg)?)
                 ),*
             ]
         };
@@ -124,26 +104,6 @@ pub mod constraint {
 }
 
 pub mod state {
-    macro_rules! opsi {
-        ($($op:expr),* $(,)?) => {{
-            let mut v = vec![];
-            $(v.extend($op);)*
-            $crate::sasm::to_bytes(v).collect::<Vec<u8>>()
-        }};
-    }
-
-    pub(crate) use opsi;
-
-    macro_rules! opsv {
-        ($($op:expr),* $(,)?) => {{
-            let mut v = vec![];
-            $(v.extend($op);)*
-            v
-        }};
-    }
-
-    pub(crate) use opsv;
-
     macro_rules! op {
         (PUSH: $arg:expr) => {
             $crate::sasm::Op::from($crate::sasm::Stack::Push($arg))
@@ -240,7 +200,7 @@ pub mod state {
         ($($op:ident $(: $arg:expr)?),* $(,)?) => {
             vec![
                 $(
-                    state::op!($op $( : $arg)?)
+                    op!($op $( : $arg)?)
                 ),*
             ]
         };

@@ -1,9 +1,14 @@
-use super::*;
+use super::constraint::*;
+use super::state_slot_offset;
+use super::tags;
+use crate::utils::constraint::*;
+use essential_constraint_asm as asm;
+use essential_types::Word;
 
 fn predicate_exists_i_tag() -> Vec<asm::Op> {
-    constraint::ops![
+    ops![
         // slot_ix
-        PUSH: PREDICATE_EXISTS_SLOT_IX,
+        PUSH: state_slot_offset::PREDICATE_EXISTS,
         REPEAT_COUNTER,
         ADD,
         // value_ix
@@ -17,9 +22,9 @@ fn predicate_exists_i_tag() -> Vec<asm::Op> {
 }
 
 fn predicate_exists_i_bool(delta: bool) -> Vec<asm::Op> {
-    constraint::ops![
+    ops![
         // slot_ix
-        PUSH: PREDICATE_EXISTS_SLOT_IX,
+        PUSH: state_slot_offset::PREDICATE_EXISTS,
         REPEAT_COUNTER,
         ADD,
         // value_ix
@@ -33,27 +38,26 @@ fn predicate_exists_i_bool(delta: bool) -> Vec<asm::Op> {
 }
 
 fn new_tag_body() -> Vec<asm::Op> {
-    use constraint::ops;
-    constraint::opsv![
+    [
         predicate_exists_i_bool(false),
         ops![NOT],
         predicate_exists_i_bool(true),
         ops![AND],
     ]
+    .concat()
 }
 
 fn existing_tag_body() -> Vec<asm::Op> {
-    use constraint::ops;
-    constraint::opsv![
+    [
         predicate_exists_i_bool(false),
         predicate_exists_i_bool(true),
         ops![AND],
     ]
+    .concat()
 }
 
 pub fn check_exists() -> Vec<u8> {
-    use constraint::ops;
-    constraint::opsi![
+    let r = [
         ops![
             PUSH: 1,
         ],
@@ -65,10 +69,14 @@ pub fn check_exists() -> Vec<u8> {
         ],
         // match tag
         // NEW_TAG
-        match_asm_tag(predicate_exists_i_tag(), NEW_TAG, new_tag_body()),
+        match_asm_tag(predicate_exists_i_tag(), tags::NEW, new_tag_body()),
         //
         // EXISTING_TAG
-        match_asm_tag(predicate_exists_i_tag(), EXISTING_TAG, existing_tag_body()),
+        match_asm_tag(
+            predicate_exists_i_tag(),
+            tags::EXISTING,
+            existing_tag_body(),
+        ),
         //
         // No match
         panic_on_no_match_asm_tag(predicate_exists_i_tag()),
@@ -76,4 +84,6 @@ pub fn check_exists() -> Vec<u8> {
         // Loop end
         ops![REPEAT_END],
     ]
+    .concat();
+    asm::to_bytes(r).collect()
 }
