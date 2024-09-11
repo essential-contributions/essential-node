@@ -97,7 +97,10 @@ async fn invalid_block() {
                     }
                     _ => panic!("expected PredicatesError::Failed, found {:?}", err),
                 },
-                _ => panic!("expected PredicatesError::Failed, found {:?}", failure),
+                _ => panic!(
+                    "expected ValidateFailure::PredicatesError, found {:?}",
+                    failure
+                ),
             }
         }
         _ => {
