@@ -132,7 +132,6 @@ async fn can_process_valid_and_invalid_blocks() {
     let (invalid_block, contract) = test_invalid_block(1, Duration::from_secs(1));
     contracts.push(contract);
     insert_contracts_to_db(&mut conn, contracts);
-    tokio::time::sleep(Duration::from_millis(100)).await;
 
     let blocks = test_blocks;
     let hashes = blocks.iter().map(content_addr).collect::<Vec<_>>();

@@ -119,14 +119,14 @@ async fn run(args: Args) -> anyhow::Result<()> {
     // Run the relayer and state derivation.
     #[cfg(feature = "tracing")]
     tracing::info!(
-        "Starting relayer and state derivation (relaying from {:?})",
+        "Starting relayer, state derivation and validation (relaying from {:?})",
         args.server_address
     );
-    let relayer_and_state = node.run(args.server_address)?;
+    let node_handle = node.run(args.server_address)?;
 
     // Run the API.
     let api_state = node_api::State {
-        new_block: Some(relayer_and_state.new_block()),
+        new_block: Some(node_handle.new_block()),
         conn_pool: node.db(),
     };
     let router = node_api::router(api_state);
@@ -141,10 +141,10 @@ async fn run(args: Args) -> anyhow::Result<()> {
     tokio::select! {
         _ = api => {},
         _ = ctrl_c => {},
-        r = relayer_and_state.join() => {
+        r = node_handle.join() => {
             if let Err(e) = r {
                 #[cfg(feature = "tracing")]
-                tracing::error!("Critical error on relayer or state derivation streams: {e}")
+                tracing::error!("Critical error on relayer, state derivation or validation streams: {e}")
             }
         },
     }
