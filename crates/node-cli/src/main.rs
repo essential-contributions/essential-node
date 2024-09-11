@@ -127,11 +127,11 @@ async fn run(args: Args) -> anyhow::Result<()> {
     }
     let node = Node::new(&conf)?;
 
-    // Run the relayer and state derivation.
+    // Run the relayer, state derivation and validation.
     let node_handle = if !args.disable_relayer {
         #[cfg(feature = "tracing")]
         tracing::info!(
-            "Starting relayer and state derivation (relaying from {:?})",
+            "Starting relayer, state derivation and validation (relaying from {:?})",
             args.server_address
         );
         Some(node.run(args.server_address)?)
@@ -139,7 +139,8 @@ async fn run(args: Args) -> anyhow::Result<()> {
         None
     };
 
-    let new_block = node_handle.as_ref().map_or(None, |h| Some(h.new_block()));
+    // Run the API.
+    let new_block = node_handle.as_ref().map(|h| h.new_block());
     let conn_pool = node.db();
     let api = async move {
         if !args.disable_api {
@@ -151,9 +152,11 @@ async fn run(args: Args) -> anyhow::Result<()> {
             let listener = tokio::net::TcpListener::bind(args.bind_address).await?;
             #[cfg(feature = "tracing")]
             tracing::info!("Starting API server at {}", listener.local_addr()?);
-            anyhow::Result::<()>::Ok(node_api::serve(&router, &listener, args.tcp_conn_limit).await)
+            node_api::serve(&router, &listener, args.tcp_conn_limit).await;
+            anyhow::Result::<()>::Ok(())
         } else {
-            anyhow::Result::<()>::Ok(futures::future::pending::<()>().await)
+            futures::future::pending::<()>().await;
+            Ok(())
         }
     };
 
@@ -161,7 +164,8 @@ async fn run(args: Args) -> anyhow::Result<()> {
         if let Some(node_handle) = node_handle {
             node_handle.join().await
         } else {
-            Ok(futures::future::pending::<()>().await)
+            futures::future::pending::<()>().await;
+            Ok(())
         }
     };
 
@@ -174,7 +178,7 @@ async fn run(args: Args) -> anyhow::Result<()> {
         r = node_handle => {
             if let Err(e) = r {
                 #[cfg(feature = "tracing")]
-                tracing::error!("Critical error on relayer or state derivation streams: {e}")
+                tracing::error!("Critical error on relayer, state derivation or validation streams: {e}")
             }
         },
     }
