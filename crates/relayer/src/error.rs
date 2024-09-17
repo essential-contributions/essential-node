@@ -84,7 +84,7 @@ pub enum DataSyncError {
     ContractMismatch(u64, ContentAddress, Option<ContentAddress>),
     /// A fork was detected while syncing blocks.
     #[error(
-        "While syncing a blocks a fork was detected at block number {0}. Got: {1}, expected: {}", display_address(.2)
+        "While syncing blocks a fork was detected at block number {0}. Got: {1}, expected: {}", display_address(.2)
     )]
     Fork(u64, ContentAddress, Option<ContentAddress>),
 }

@@ -15,9 +15,7 @@ use reqwest::{ClientBuilder, Url};
 use rusqlite_pool::tokio::AsyncConnectionPool;
 use std::future::Future;
 use sync::stream_blocks;
-use sync::stream_contracts;
 use sync::sync_blocks;
-use sync::sync_contracts;
 use tokio::sync::watch;
 
 mod error;
@@ -51,28 +49,7 @@ impl Relayer {
     /// A handle is returned that can be used to close or join the streams.
     ///
     /// The two watch channels are used to notify the caller when new data has been synced.
-    pub fn run(
-        self,
-        conn: AsyncConnectionPool,
-        new_contract: watch::Sender<()>,
-        new_block: watch::Sender<()>,
-    ) -> Result<Handle> {
-        let relayer = self.clone();
-
-        let c = conn.clone();
-
-        // The contracts callback. This is a closure that will be called
-        // every time the contracts stream is restarted.
-        let contracts = move |shutdown: watch::Receiver<()>| {
-            let conn = c.clone();
-            let relayer = relayer.clone();
-            let notify = new_contract.clone();
-            async move {
-                // Run the contracts stream
-                relayer.run_contracts(conn, shutdown, notify).await
-            }
-        };
-
+    pub fn run(self, conn: AsyncConnectionPool, new_block: watch::Sender<()>) -> Result<Handle> {
         // The blocks callback. This is a closure that will be called
         // every time the blocks stream is restarted.
         let blocks = move |shutdown: watch::Receiver<()>| {
@@ -85,35 +62,7 @@ impl Relayer {
             }
         };
 
-        run(contracts, blocks)
-    }
-
-    /// Run the contracts stream.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    async fn run_contracts(
-        &self,
-        conn: AsyncConnectionPool,
-        mut shutdown: watch::Receiver<()>,
-        notify: watch::Sender<()>,
-    ) -> InternalResult<()> {
-        #[cfg(feature = "tracing")]
-        tracing::info!("Stream starting");
-
-        // Get the last progress that was made from the database.
-        let progress = sync::get_contract_progress(&conn).await?;
-
-        // Create the stream of contracts.
-        let stream = stream_contracts(&self.endpoint, &self.client, &progress).await?;
-
-        // Setup a future that will close the stream when the shutdown signal is received.
-        let close = async move {
-            let _ = shutdown.changed().await;
-            #[cfg(feature = "tracing")]
-            tracing::info!("Shutting down contract stream");
-        };
-
-        // Run the stream of contracts.
-        sync_contracts(conn, &progress, notify, stream.take_until(close)).await
+        run(blocks)
     }
 
     /// Run the blocks stream.
@@ -151,40 +100,13 @@ impl Relayer {
 ///
 /// Recoverable errors will be logged and the stream will be restarted.
 /// Critical errors will cause the stream to end.
-fn run<C, B, CFut, BFut>(mut contracts: C, mut blocks: B) -> Result<Handle>
+fn run<B, BFut>(mut blocks: B) -> Result<Handle>
 where
-    C: FnMut(watch::Receiver<()>) -> CFut + Send + 'static,
-    CFut: Future<Output = InternalResult<()>> + Send,
     B: FnMut(watch::Receiver<()>) -> BFut + Send + 'static,
     BFut: Future<Output = InternalResult<()>> + Send,
 {
     // Create a channels to signal the streams to shutdown.
-    let (close_contracts, contracts_shutdown) = watch::channel(());
     let (close_blocks, blocks_shutdown) = watch::channel(());
-
-    let f = async move {
-        loop {
-            // Run the contracts stream callback
-            let r = contracts(contracts_shutdown.clone()).await;
-            match r {
-                // Stream has ended, return from the task
-                Ok(()) => return Ok(()),
-                Err(e) => {
-                    // Return error if it's critical or
-                    // continue if it's recoverable
-                    handle_error(e)?;
-                }
-            }
-        }
-    };
-
-    #[cfg(feature = "tracing")]
-    use tracing::Instrument;
-
-    #[cfg(feature = "tracing")]
-    let f = f.instrument(tracing::info_span!("contracts_stream"));
-
-    let join_contracts = tokio::spawn(f);
 
     let f = async move {
         loop {
@@ -203,16 +125,14 @@ where
     };
 
     #[cfg(feature = "tracing")]
+    use tracing::Instrument;
+
+    #[cfg(feature = "tracing")]
     let f = f.instrument(tracing::info_span!("blocks_stream"));
 
     let join_blocks = tokio::spawn(f);
 
-    Ok(Handle::new(
-        join_contracts,
-        join_blocks,
-        close_contracts,
-        close_blocks,
-    ))
+    Ok(Handle::new(join_blocks, close_blocks))
 }
 
 /// Exit on critical errors, log recoverable errors

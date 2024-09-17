@@ -647,6 +647,7 @@ dependencies = [
  "essential-check",
  "essential-constraint-asm",
  "essential-hash",
+ "essential-node-api",
  "essential-node-db",
  "essential-relayer",
  "essential-sign",
@@ -732,6 +733,8 @@ name = "essential-relayer"
 version = "0.1.0"
 dependencies = [
  "essential-hash",
+ "essential-node",
+ "essential-node-api",
  "essential-node-db",
  "essential-sign",
  "essential-types",
@@ -747,6 +750,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

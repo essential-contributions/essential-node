@@ -6,32 +6,24 @@ mod tests;
 
 /// Handle for closing or joining the relayer.
 pub struct Handle {
-    join_contracts: tokio::task::JoinHandle<Result<()>>,
     join_blocks: tokio::task::JoinHandle<Result<()>>,
     close: Close,
 }
 
 /// Struct which when dropped will close the relayer.
 struct Close {
-    close_contracts: watch::Sender<()>,
     close_blocks: watch::Sender<()>,
 }
 
 impl Handle {
     /// Create a new handle.
     pub fn new(
-        join_contracts: tokio::task::JoinHandle<Result<()>>,
         join_blocks: tokio::task::JoinHandle<Result<()>>,
-        close_contracts: watch::Sender<()>,
         close_blocks: watch::Sender<()>,
     ) -> Self {
         Self {
-            join_contracts,
             join_blocks,
-            close: Close {
-                close_contracts,
-                close_blocks,
-            },
+            close: Close { close_blocks },
         }
     }
 
@@ -40,19 +32,15 @@ impl Handle {
     /// If this future isn't polled the streams will continue to run.
     /// However, if the future is dropped the streams will be closed.
     pub async fn close(self) -> Result<()> {
-        let Self {
-            join_contracts,
-            join_blocks,
-            close,
-        } = self;
+        let Self { join_blocks, close } = self;
         // Close the streams.
         close.close();
 
         // Join both the streams.
-        let (br, cr) = futures::future::join(join_blocks, join_contracts).await;
+        let br = join_blocks.await;
 
         // Flatten the results together.
-        flatten_result(br).and(flatten_result(cr))
+        flatten_result(br)
     }
 
     /// Join the Relayer streams.
@@ -65,23 +53,15 @@ impl Handle {
     ///
     /// If this future is dropped then both streams will close.
     pub async fn join(self) -> Result<()> {
-        let Self {
-            join_contracts,
-            join_blocks,
-            close,
-        } = self;
-        let (r, f) = futures::future::select(join_blocks, join_contracts)
-            .await
-            .into_inner();
+        let Self { join_blocks, close } = self;
+        let r = join_blocks.await;
         close.close();
-        let r2 = f.await;
-        flatten_result(r).and(flatten_result(r2))
+        flatten_result(r)
     }
 }
 
 impl Close {
     fn close(&self) {
-        let _ = self.close_contracts.send(());
         let _ = self.close_blocks.send(());
     }
 }

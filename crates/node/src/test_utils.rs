@@ -9,11 +9,7 @@ use essential_types::{
     Block, ConstraintBytecode, ContentAddress, PredicateAddress, StateReadBytecode, Word,
 };
 use rusqlite::Connection;
-use std::{process::Stdio, time::Duration};
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::{Child, Command},
-};
+use std::time::Duration;
 
 pub fn test_conn_pool() -> ConnectionPool {
     let config = test_db_conf();
@@ -164,56 +160,6 @@ pub fn test_constraints(seed: Word) -> Vec<ConstraintBytecode> {
         essential_constraint_asm::Stack::Push(1).into(),
     ])
     .collect()]
-}
-
-pub async fn setup_server() -> (String, Child) {
-    let mut child = Command::new("essential-rest-server")
-        .arg("--db")
-        .arg("memory")
-        .arg("0.0.0.0:0")
-        .arg("--loop-freq")
-        .arg("1")
-        .arg("--disable-tracing")
-        .arg("--disable-time")
-        // .env("RUST_LOG", "info,[deploy]=debug")
-        .kill_on_drop(true)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
-
-    let stdout = child.stdout.take().unwrap();
-
-    let buf = BufReader::new(stdout);
-    let mut lines = buf.lines();
-
-    let port;
-    loop {
-        if let Some(line) = lines.next_line().await.unwrap() {
-            if line.contains("Listening") {
-                port = line
-                    .split(':')
-                    .next_back()
-                    .unwrap()
-                    .trim()
-                    .parse::<u16>()
-                    .unwrap();
-                break;
-            }
-        }
-    }
-
-    tokio::spawn(async move {
-        loop {
-            if let Some(line) = lines.next_line().await.unwrap() {
-                println!("{}", line);
-            }
-        }
-    });
-    assert_ne!(port, 0);
-
-    let server_address = format!("http://localhost:{}", port);
-    (server_address, child)
 }
 
 // Check that the state progress in the database is block number and hash
