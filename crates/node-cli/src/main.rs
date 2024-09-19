@@ -75,9 +75,7 @@ fn conf_from_args(args: &Args) -> anyhow::Result<Config> {
         }
     };
     let conn_limit = args.db_conn_limit;
-    let config = Config::default()
-        .with_source(source)
-        .with_conn_limit(conn_limit);
+    let config = Config::new(source, conn_limit);
     Ok(config)
 }
 
@@ -125,11 +123,12 @@ async fn run(args: Args) -> anyhow::Result<()> {
         args.source_node_endpoint
     );
     let block_tx = node::BlockTx::new();
-    let node_handle = node::run(db.clone(), block_tx.clone(), args.source_node_endpoint)?;
+    let block_rx = block_tx.new_listener();
+    let node_handle = node::run(db.clone(), block_tx, args.source_node_endpoint)?;
 
     // Run the API.
     let api_state = node_api::State {
-        new_block: Some(block_tx.new_listener().to_inner()),
+        new_block: Some(block_rx.to_inner()),
         conn_pool: db.clone(),
     };
     let router = node_api::router(api_state);

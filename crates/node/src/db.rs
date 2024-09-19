@@ -264,6 +264,11 @@ impl ConnectionPool {
 }
 
 impl Config {
+    /// Config with specified source and connection limit.
+    pub fn new(source: Source, conn_limit: usize) -> Self {
+        Self { source, conn_limit }
+    }
+
     /// The default connection limit.
     ///
     /// This default uses the number of available CPUs as a heuristic for a

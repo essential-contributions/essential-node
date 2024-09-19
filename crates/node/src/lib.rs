@@ -1,3 +1,13 @@
+//! The Essential node implementation.
+//!
+//! The primary API for accessing blocks and contracts is provided via the
+//! [`ConnectionPool`] type, accessible via the [`db`] function.
+//!
+//! The node, via the [`run`] function:
+//! - Runs the relayer stream and syncs blocks.
+//! - Derives state from the synced blocks.
+//! - Performs validation.
+
 use db::ConnectionPool;
 use error::CriticalError;
 use essential_relayer::Relayer;
@@ -20,16 +30,30 @@ mod validation;
 #[error("Connection pool creation failed: {0}")]
 pub struct NewError(#[from] pub rusqlite::Error);
 
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct BlockTx(tokio::sync::watch::Sender<()>);
 
-#[derive(Clone)]
 pub struct BlockRx(tokio::sync::watch::Receiver<()>);
 
 /// Create a new `ConnectionPool` from the given configuration.
 ///
 /// Upon construction, the node's database tables are created if they have
 /// not already been created.
+///
+/// ## Example
+///
+/// ```rust
+/// # use essential_node::{BlockTx, db::Config, db, run};
+/// # #[tokio::main]
+/// # async fn main() {
+/// let conf = Config::default();
+/// let db = essential_node::db(&conf).unwrap();
+/// for block in db.list_blocks(0..100).await.unwrap() {
+///     println!("Block: {block:?}");
+/// }
+/// # }
+/// ```
+
 pub fn db(conf: &db::Config) -> Result<ConnectionPool, NewError> {
     // Initialize the connection pool.
     let db = db::ConnectionPool::new(conf)?;
