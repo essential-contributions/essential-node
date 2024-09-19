@@ -1,28 +1,5 @@
 {
   "nodes": {
-    "essential-server": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "systems": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1724386028,
-        "narHash": "sha256-ziImdwfvIVhHyVMA14BgbwwaoFVJww+zKOS93SJoUPo=",
-        "owner": "essential-contributions",
-        "repo": "essential-server",
-        "rev": "0a21818d2722ce7475a1627bf543822652e604ed",
-        "type": "github"
-      },
-      "original": {
-        "owner": "essential-contributions",
-        "repo": "essential-server",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1724224976,
@@ -41,7 +18,6 @@
     },
     "root": {
       "inputs": {
-        "essential-server": "essential-server",
         "nixpkgs": "nixpkgs",
         "systems": "systems"
       }
