@@ -190,7 +190,7 @@ async fn test_drop_handle_close() {
 
 #[tokio::test]
 #[should_panic]
-async fn test_panic_task_close_blocks() {
+async fn test_panic_task_close() {
     let (close_blocks, blocks) = watch::channel(());
 
     let b = tokio::spawn({
@@ -206,46 +206,7 @@ async fn test_panic_task_close_blocks() {
 }
 
 #[tokio::test]
-async fn test_handle_close_both_err() {
-    let (close_blocks, blocks) = watch::channel(());
-
-    let b = tokio::spawn({
-        let mut blocks = blocks.clone();
-        async move {
-            let _ = blocks.changed().await;
-            Err(CriticalError::UrlParse)
-        }
-    });
-
-    let handle = Handle::new(b, close_blocks);
-    let e = handle.close().await.unwrap_err();
-
-    // Blocks error is always returned first
-    assert!(matches!(e, CriticalError::UrlParse));
-}
-
-#[tokio::test]
-async fn test_handle_close_both_immediate_err() {
-    let (close_blocks, blocks) = watch::channel(());
-
-    let b = tokio::spawn({
-        let blocks = blocks.clone();
-        async move {
-            // Avoid drop but don't await
-            let _b = blocks;
-            Err(CriticalError::UrlParse)
-        }
-    });
-
-    let handle = Handle::new(b, close_blocks);
-    let e = handle.close().await.unwrap_err();
-
-    // Blocks error is always returned first
-    assert!(matches!(e, CriticalError::UrlParse));
-}
-
-#[tokio::test]
-async fn test_handle_close_blocks_err() {
+async fn test_handle_close_err() {
     let (close_blocks, blocks) = watch::channel(());
 
     let b = tokio::spawn({
@@ -263,7 +224,7 @@ async fn test_handle_close_blocks_err() {
 }
 
 #[tokio::test]
-async fn test_handle_close_blocks_immediate_err() {
+async fn test_handle_close_immediate_err() {
     let (close_blocks, blocks) = watch::channel(());
 
     let b = tokio::spawn({
@@ -317,27 +278,7 @@ async fn test_handle_join_immediate_ok() {
 }
 
 #[tokio::test]
-async fn test_handle_join_both_immediate_err() {
-    let (close_blocks, blocks) = watch::channel(());
-
-    let b = tokio::spawn({
-        let blocks = blocks.clone();
-        async move {
-            // Avoid drop but don't await
-            let _b = blocks;
-            Err(CriticalError::UrlParse)
-        }
-    });
-
-    let handle = Handle::new(b, close_blocks);
-    let e = handle.join().await.unwrap_err();
-
-    // Because of select either task's result can be returned
-    assert!(matches!(e, CriticalError::UrlParse) || matches!(e, CriticalError::Overflow));
-}
-
-#[tokio::test]
-async fn test_handle_join_blocks_immediate_err() {
+async fn test_handle_join_immediate_err() {
     let (close_blocks, blocks) = watch::channel(());
 
     let b = tokio::spawn({
