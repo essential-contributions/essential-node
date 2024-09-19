@@ -13,6 +13,15 @@ use rusqlite_pool::tokio::AsyncConnectionPool;
 use std::sync::Arc;
 use tokio::{sync::oneshot::Sender, task::JoinHandle};
 
+const LOCALHOST: &str = "127.0.0.1";
+
+struct NodeServer {
+    address: String,
+    jh: JoinHandle<()>,
+    shutdown_tx: Sender<()>,
+    conn_pool: ConnectionPool,
+}
+
 #[tokio::test]
 async fn test_sync() {
     #[cfg(feature = "tracing")]
@@ -115,6 +124,7 @@ async fn test_sync() {
     );
 }
 
+// Create a new AsyncConnectionPool with a unique in-memory database.
 fn new_conn_pool() -> AsyncConnectionPool {
     let id = uuid::Uuid::new_v4().to_string();
     AsyncConnectionPool::new(3, || {
@@ -126,8 +136,6 @@ fn new_conn_pool() -> AsyncConnectionPool {
     })
     .unwrap()
 }
-
-const LOCALHOST: &str = "127.0.0.1";
 
 pub fn client() -> reqwest::Client {
     reqwest::Client::builder()
@@ -142,6 +150,7 @@ async fn test_listener() -> tokio::net::TcpListener {
         .unwrap()
 }
 
+// Wait until the server at the given port is ready to receive requests.
 async fn await_server_online(port: u16, timeout_duration: std::time::Duration) {
     let server_ready = async {
         let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
@@ -160,13 +169,7 @@ async fn await_server_online(port: u16, timeout_duration: std::time::Duration) {
         .unwrap()
 }
 
-struct NodeServer {
-    address: String,
-    jh: JoinHandle<()>,
-    shutdown_tx: Sender<()>,
-    conn_pool: ConnectionPool,
-}
-
+// Spawn a test server with given ConnectionPool and block notify channel.
 async fn setup_node_as_server(state: essential_node_api::State) -> NodeServer {
     let conn_pool = state.conn_pool.clone();
     let router = essential_node_api::router(state);
@@ -190,6 +193,45 @@ async fn setup_node_as_server(state: essential_node_api::State) -> NodeServer {
     }
 }
 
+// Setup node as server with a unique database of default configuration.
+// Returns server and block notify channel.
+async fn test_node() -> (NodeServer, tokio::sync::watch::Sender<()>) {
+    let node_conf = essential_node::Config {
+        db: DbConfig {
+            conn_limit: essential_node::db::Config::default_conn_limit(),
+            source: essential_node::db::Source::Memory(uuid::Uuid::new_v4().to_string()),
+        },
+    };
+    let node = Node::new(&node_conf).unwrap();
+    let source_db = node.db();
+    let (source_block_notify, node_new_block) = tokio::sync::watch::channel(());
+    let state = essential_node_api::State {
+        conn_pool: source_db.clone(),
+        new_block: Some(node_new_block.clone()),
+    };
+    let node_server = setup_node_as_server(state.clone()).await;
+
+    (node_server, source_block_notify)
+}
+
+// Tear down the server by:
+// 1. Sending a shutdown signal to the server.
+// 2. Waiting for the server to shut down by awaiting the join handle.
+// 3. Dropping the connection pool.
+async fn tear_down_server(server: NodeServer) {
+    let NodeServer {
+        jh,
+        shutdown_tx,
+        conn_pool,
+        ..
+    } = server;
+
+    shutdown_tx.send(()).unwrap();
+    jh.await.unwrap();
+    drop(conn_pool);
+}
+
+// Solutions and blocks structs for testing.
 fn test_structs() -> (Vec<Solution>, Vec<Arc<Block>>) {
     let predicate = Predicate {
         state_read: vec![],
@@ -239,36 +281,4 @@ fn test_structs() -> (Vec<Solution>, Vec<Arc<Block>>) {
         .collect();
 
     (solutions, blocks)
-}
-
-async fn test_node() -> (NodeServer, tokio::sync::watch::Sender<()>) {
-    let node_conf = essential_node::Config {
-        db: DbConfig {
-            conn_limit: essential_node::db::Config::default_conn_limit(),
-            source: essential_node::db::Source::Memory(uuid::Uuid::new_v4().to_string()),
-        },
-    };
-    let node = Node::new(&node_conf).unwrap();
-    let source_db = node.db();
-    let (source_block_notify, node_new_block) = tokio::sync::watch::channel(());
-    let state = essential_node_api::State {
-        conn_pool: source_db.clone(),
-        new_block: Some(node_new_block.clone()),
-    };
-    let node_server = setup_node_as_server(state.clone()).await;
-
-    (node_server, source_block_notify)
-}
-
-async fn tear_down_server(server: NodeServer) {
-    let NodeServer {
-        jh,
-        shutdown_tx,
-        conn_pool,
-        ..
-    } = server;
-
-    shutdown_tx.send(()).unwrap();
-    jh.await.unwrap();
-    drop(conn_pool);
 }

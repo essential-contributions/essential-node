@@ -13,41 +13,12 @@ use essential_node::{
 use essential_types::Block;
 use rusqlite::Connection;
 use std::sync::Arc;
-use tokio::{sync::oneshot::Sender, task::JoinHandle};
 
-// Fetch blocks from node database and assert that they contain the same solutions as expected.
-// Assert state mutations in the blocks have been applied to database.
-// Assert state progress is the latest fetched block.
-// Assert validation progress is the latest fetched block.
-fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block>) {
-    let fetched_blocks = &essential_node_db::list_blocks(
-        conn,
-        expected_blocks[0].number..expected_blocks[expected_blocks.len() - 1].number + 1,
-    )
-    .unwrap();
-    for (i, expected_block) in expected_blocks.iter().enumerate() {
-        // Check if the block was added to the database
-        assert_eq!(fetched_blocks[i].number, expected_block.number);
-        assert_eq!(
-            fetched_blocks[i].solutions.len(),
-            expected_block.solutions.len()
-        );
-        for (j, fetched_block_solution) in fetched_blocks[i].solutions.iter().enumerate() {
-            assert_eq!(fetched_block_solution, &expected_block.solutions[j].clone())
-        }
-        // Assert mutations in block are in database
-        assert_multiple_block_mutations(conn, &[&fetched_blocks[i]]);
-    }
-    // Assert state progress is latest block
-    assert_state_progress_is_some(
-        conn,
-        &content_addr(&fetched_blocks[fetched_blocks.len() - 1]),
-    );
-    // Assert validation progress is latest block
-    assert_validation_progress_is_some(
-        conn,
-        &content_addr(&fetched_blocks[fetched_blocks.len() - 1]),
-    );
+const LOCALHOST: &str = "127.0.0.1";
+
+struct NodeServer {
+    address: String,
+    conn_pool: ConnectionPool,
 }
 
 #[tokio::test]
@@ -127,8 +98,6 @@ async fn test_run() {
     assert_submit_solutions_effects(&conn, vec![test_blocks[3].clone()]);
 }
 
-const LOCALHOST: &str = "127.0.0.1";
-
 pub fn client() -> reqwest::Client {
     reqwest::Client::builder()
         .http2_prior_knowledge() // Enforce HTTP/2
@@ -142,6 +111,7 @@ async fn test_listener() -> tokio::net::TcpListener {
         .unwrap()
 }
 
+// Wait until the server at the given port is ready to receive requests.
 async fn await_server_online(port: u16, timeout_duration: std::time::Duration) {
     let server_ready = async {
         let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
@@ -160,36 +130,28 @@ async fn await_server_online(port: u16, timeout_duration: std::time::Duration) {
         .unwrap()
 }
 
-struct NodeServer {
-    address: String,
-    jh: JoinHandle<()>,
-    shutdown_tx: Sender<()>,
-    conn_pool: ConnectionPool,
-}
-
+// Spawn a test server with given ConnectionPool and block notify channel.
 async fn setup_node_as_server(state: essential_node_api::State) -> NodeServer {
     let conn_pool = state.conn_pool.clone();
     let router = essential_node_api::router(state);
     let listener = test_listener().await;
     let port = listener.local_addr().unwrap().port();
-    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
-    let jh = tokio::spawn(async move {
-        tokio::select! {
-            _ = essential_node_api::serve(&router, &listener, essential_node_api::DEFAULT_CONNECTION_LIMIT) => {},
-            _ = shutdown_rx => {},
-        }
+    let _jh = tokio::spawn(async move {
+        essential_node_api::serve(
+            &router,
+            &listener,
+            essential_node_api::DEFAULT_CONNECTION_LIMIT,
+        )
+        .await
     });
     await_server_online(port, std::time::Duration::from_secs(3)).await;
 
-    let address = format!("http://localhost:{}", port);
-    NodeServer {
-        address,
-        jh,
-        shutdown_tx,
-        conn_pool,
-    }
+    let address = format!("http://{LOCALHOST}:{port}/");
+    NodeServer { address, conn_pool }
 }
 
+// Setup node as server with a unique database of default configuration.
+// Returns server and block notify channel.
 async fn test_node() -> (NodeServer, tokio::sync::watch::Sender<()>) {
     let node_conf = essential_node::Config {
         db: DbConfig {
@@ -207,4 +169,39 @@ async fn test_node() -> (NodeServer, tokio::sync::watch::Sender<()>) {
     let node_server = setup_node_as_server(state.clone()).await;
 
     (node_server, source_block_notify)
+}
+
+// Fetch blocks from node database and assert that they contain the same solutions as expected.
+// Assert state mutations in the blocks have been applied to database.
+// Assert state progress is the latest fetched block.
+// Assert validation progress is the latest fetched block.
+fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block>) {
+    let fetched_blocks = &essential_node_db::list_blocks(
+        conn,
+        expected_blocks[0].number..expected_blocks[expected_blocks.len() - 1].number + 1,
+    )
+    .unwrap();
+    for (i, expected_block) in expected_blocks.iter().enumerate() {
+        // Check if the block was added to the database
+        assert_eq!(fetched_blocks[i].number, expected_block.number);
+        assert_eq!(
+            fetched_blocks[i].solutions.len(),
+            expected_block.solutions.len()
+        );
+        for (j, fetched_block_solution) in fetched_blocks[i].solutions.iter().enumerate() {
+            assert_eq!(fetched_block_solution, &expected_block.solutions[j].clone())
+        }
+        // Assert mutations in block are in database
+        assert_multiple_block_mutations(conn, &[&fetched_blocks[i]]);
+    }
+    // Assert state progress is latest block
+    assert_state_progress_is_some(
+        conn,
+        &content_addr(&fetched_blocks[fetched_blocks.len() - 1]),
+    );
+    // Assert validation progress is latest block
+    assert_validation_progress_is_some(
+        conn,
+        &content_addr(&fetched_blocks[fetched_blocks.len() - 1]),
+    );
 }
