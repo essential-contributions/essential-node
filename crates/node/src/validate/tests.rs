@@ -8,7 +8,7 @@ use essential_check::{
     constraint_vm::error::CheckError,
     solution::{PredicateConstraintsError, PredicateError, PredicatesError},
 };
-use essential_node_db::{create_tables, insert_contract};
+use essential_node_db::insert_contract;
 use essential_types::contract::Contract;
 use rusqlite::Connection;
 use std::time::Duration;
@@ -25,10 +25,6 @@ fn insert_contracts_to_db(conn: &mut Connection, contracts: Vec<Contract>) {
 async fn valid_block() {
     let conn_pool = test_conn_pool();
     let mut conn = conn_pool.acquire().await.unwrap();
-
-    let tx = conn.transaction().unwrap();
-    create_tables(&tx).unwrap();
-    tx.commit().unwrap();
 
     let (block, contracts) = test_block(0, Duration::from_secs(0));
     insert_contracts_to_db(&mut conn, contracts);
@@ -50,10 +46,6 @@ async fn valid_block() {
 async fn invalid_block() {
     let conn_pool = test_conn_pool();
     let mut conn = conn_pool.acquire().await.unwrap();
-
-    let tx = conn.transaction().unwrap();
-    create_tables(&tx).unwrap();
-    tx.commit().unwrap();
 
     let (block, contract) = test_invalid_block(0, Duration::from_secs(0));
     insert_contracts_to_db(&mut conn, vec![contract]);
@@ -112,11 +104,6 @@ async fn invalid_block() {
 #[tokio::test]
 async fn predicate_not_found() {
     let conn_pool = test_conn_pool();
-    let mut conn = conn_pool.acquire().await.unwrap();
-
-    let tx = conn.transaction().unwrap();
-    create_tables(&tx).unwrap();
-    tx.commit().unwrap();
 
     let (block, _) = test_invalid_block(0, Duration::from_secs(0));
     let res = validate::validate(&conn_pool, &block).await;

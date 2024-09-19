@@ -1,34 +1,44 @@
 #![cfg(feature = "test-utils")]
 
-use essential_node::{
-    test_utils::{self, test_db_conf},
-    Node,
-};
+use essential_node::{self as node, test_utils};
 use std::sync::Arc;
+
+#[test]
+fn test_conn_pool_new() {
+    let conf = test_utils::test_db_conf();
+    let _db = node::db(&conf).unwrap();
+}
+
+#[test]
+fn test_conn_pool_close() {
+    let conf = test_utils::test_db_conf();
+    let db = node::db(&conf).unwrap();
+    db.close().unwrap();
+}
 
 #[tokio::test]
 async fn test_acquire() {
-    let conf = test_db_conf();
-    let node = Node::new(&conf).unwrap();
-    node.db().acquire().await.unwrap();
+    let conf = test_utils::test_db_conf();
+    let db = node::db(&conf).unwrap();
+    db.acquire().await.unwrap();
 }
 
 #[test]
 fn test_try_acquire() {
-    let conf = test_db_conf();
-    let node = Node::new(&conf).unwrap();
-    node.db().try_acquire().unwrap();
+    let conf = test_utils::test_db_conf();
+    let db = node::db(&conf).unwrap();
+    db.try_acquire().unwrap();
 }
 
 #[tokio::test]
 async fn test_create_tables() {
     // Tables created during node initialisation.
-    let conf = test_db_conf();
-    let node = Node::new(&conf).unwrap();
+    let conf = test_utils::test_db_conf();
+    let db = node::db(&conf).unwrap();
 
     // Verify that each table exists by querying the SQLite master table
     {
-        let conn = node.db().acquire().await.unwrap();
+        let conn = db.acquire().await.unwrap();
         for table in essential_node_db::sql::table::ALL {
             let query = format!(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='{}';",
@@ -45,19 +55,18 @@ async fn test_create_tables() {
         }
     }
 
-    node.close().unwrap();
+    db.close().unwrap();
 }
 
 #[tokio::test]
 async fn test_block() {
-    let conf = test_db_conf();
-    let node = Node::new(&conf).unwrap();
+    let conf = test_utils::test_db_conf();
+    let db = node::db(&conf).unwrap();
 
     // The test blocks.
     let (blocks, _) = test_utils::test_blocks(100);
 
     // Insert the blocks.
-    let db = node.db();
     for block in &blocks {
         let block = Arc::new(block.clone());
         db.insert_block(block).await.unwrap();
@@ -67,13 +76,13 @@ async fn test_block() {
     let fetched = db.list_blocks(0..blocks.len() as _).await.unwrap();
     assert_eq!(blocks, fetched);
 
-    node.close().unwrap();
+    db.close().unwrap();
 }
 
 #[tokio::test]
 async fn test_contract() {
-    let conf = test_db_conf();
-    let node = Node::new(&conf).unwrap();
+    let conf = test_utils::test_db_conf();
+    let db = node::db(&conf).unwrap();
 
     // The test contract.
     let seed = 42;
@@ -82,20 +91,20 @@ async fn test_contract() {
 
     // Insert the contract.
     let clone = contract.clone();
-    node.db().insert_contract(clone, da_block).await.unwrap();
+    db.insert_contract(clone, da_block).await.unwrap();
 
     // Get the contract.
     let ca = essential_hash::content_addr(contract.as_ref());
-    let fetched = node.db().get_contract(ca).await.unwrap().unwrap();
+    let fetched = db.get_contract(ca).await.unwrap().unwrap();
     assert_eq!(&*contract, &fetched);
 
-    node.close().unwrap();
+    db.close().unwrap();
 }
 
 #[tokio::test]
 async fn test_state() {
-    let conf = test_db_conf();
-    let node = Node::new(&conf).unwrap();
+    let conf = test_utils::test_db_conf();
+    let db = node::db(&conf).unwrap();
 
     // The test state.
     let seed = 36;
@@ -113,8 +122,7 @@ async fn test_state() {
     }
 
     // Insert a contract to own the state.
-    node.db()
-        .insert_contract(contract.clone(), da_block)
+    db.insert_contract(contract.clone(), da_block)
         .await
         .unwrap();
     let contract_ca = essential_hash::content_addr(contract.as_ref());
@@ -122,7 +130,7 @@ async fn test_state() {
     // Spawn a task for every insertion.
     let mut handles = vec![];
     for (k, v) in keys.iter().zip(&values) {
-        let db = node.db();
+        let db = db.clone();
         let ca = contract_ca.clone();
         let (key, value) = (k.clone(), v.clone());
         let handle = tokio::spawn(async move { db.update_state(ca, key, value).await });
@@ -137,7 +145,7 @@ async fn test_state() {
     // Fetch the state values concurrently.
     let mut handles = vec![];
     for k in keys.iter() {
-        let db = node.db();
+        let db = db.clone();
         let ca = contract_ca.clone();
         let key = k.clone();
         handles.push(tokio::spawn(async move { db.query_state(ca, key).await }));
@@ -154,21 +162,19 @@ async fn test_state() {
 
     // Delete all state.
     for k in &keys {
-        node.db()
-            .delete_state(contract_ca.clone(), k.clone())
+        db.delete_state(contract_ca.clone(), k.clone())
             .await
             .unwrap();
     }
 
     // Attempt to fetch the values again.
     for k in &keys {
-        let opt = node
-            .db()
+        let opt = db
             .query_state(contract_ca.clone(), k.clone())
             .await
             .unwrap();
         assert!(opt.is_none());
     }
 
-    node.close().unwrap();
+    db.close().unwrap();
 }

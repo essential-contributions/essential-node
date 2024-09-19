@@ -1,4 +1,4 @@
-use essential_node::{self as node, Node};
+use essential_node::{self as node, db::ConnectionPool};
 use essential_node_api as node_api;
 use std::future::Future;
 
@@ -15,10 +15,10 @@ pub fn init_tracing_subscriber() {
         .try_init();
 }
 
-pub fn test_node() -> Node {
-    let mut conf = node::Config::default();
-    conf.db.source = node::db::Source::Memory(uuid::Uuid::new_v4().into());
-    Node::new(&conf).unwrap()
+pub fn test_conn_pool() -> ConnectionPool {
+    let conf = node::db::Config::default()
+        .with_source(node::db::Source::Memory(uuid::Uuid::new_v4().into()));
+    node::db(&conf).unwrap()
 }
 
 pub fn client() -> reqwest::Client {

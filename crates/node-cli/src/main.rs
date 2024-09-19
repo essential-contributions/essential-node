@@ -1,5 +1,5 @@
 use clap::{Parser, ValueEnum};
-use essential_node::{self as node, Node};
+use essential_node::{self as node, db::Config};
 use essential_node_api as node_api;
 use std::{
     net::{SocketAddr, SocketAddrV4},
@@ -34,7 +34,7 @@ struct Args {
     /// The number of simultaneous sqlite DB connections to maintain for serving the API.
     ///
     /// By default, this is the number of available CPUs multiplied by 4.
-    #[arg(long, default_value_t = node::db::Config::default_conn_limit())]
+    #[arg(long, default_value_t = Config::default_conn_limit())]
     db_conn_limit: usize,
     /// Disable the tracing subscriber.
     #[arg(long, default_value_t = false)]
@@ -63,7 +63,7 @@ fn default_db_path() -> Option<PathBuf> {
 }
 
 /// Construct the node's config from the parsed args.
-fn conf_from_args(args: &Args) -> anyhow::Result<node::Config> {
+fn conf_from_args(args: &Args) -> anyhow::Result<Config> {
     let source = match (&args.db, &args.db_path) {
         (Db::Memory, None) => node::db::Source::default_memory(),
         (_, Some(path)) => node::db::Source::Path(path.clone()),
@@ -75,8 +75,10 @@ fn conf_from_args(args: &Args) -> anyhow::Result<node::Config> {
         }
     };
     let conn_limit = args.db_conn_limit;
-    let db = node::db::Config { conn_limit, source };
-    Ok(node::Config { db })
+    let config = Config::default()
+        .with_source(source)
+        .with_conn_limit(conn_limit);
+    Ok(config)
 }
 
 #[cfg(feature = "tracing")]
@@ -114,7 +116,7 @@ async fn run(args: Args) -> anyhow::Result<()> {
         tracing::debug!("Node config:\n{:#?}", conf);
         tracing::info!("Starting node");
     }
-    let node = Node::new(&conf)?;
+    let db = node::db(&conf)?;
 
     // Run the relayer and state derivation.
     #[cfg(feature = "tracing")]
@@ -122,12 +124,13 @@ async fn run(args: Args) -> anyhow::Result<()> {
         "Starting relayer, state derivation and validation (relaying from {:?})",
         args.source_node_endpoint
     );
-    let node_handle = node.run(args.source_node_endpoint)?;
+    let block_tx = node::BlockTx::new();
+    let node_handle = node::run(db.clone(), block_tx.clone(), args.source_node_endpoint)?;
 
     // Run the API.
     let api_state = node_api::State {
-        new_block: Some(node_handle.new_block()),
-        conn_pool: node.db(),
+        new_block: Some(block_tx.new_listener().to_inner()),
+        conn_pool: db.clone(),
     };
     let router = node_api::router(api_state);
     let listener = tokio::net::TcpListener::bind(args.bind_address).await?;
@@ -149,6 +152,6 @@ async fn run(args: Args) -> anyhow::Result<()> {
         },
     }
 
-    node.close().map_err(|e| anyhow::anyhow!("{e}"))?;
+    db.close().map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(())
 }

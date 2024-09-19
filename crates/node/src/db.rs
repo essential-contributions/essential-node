@@ -31,9 +31,9 @@ pub struct ConnectionHandle(AsyncConnectionHandle);
 #[derive(Clone, Debug)]
 pub struct Config {
     /// The number of simultaneous connections to the database to maintain.
-    pub conn_limit: usize,
+    conn_limit: usize,
     /// How to source the node's database.
-    pub source: Source,
+    source: Source,
 }
 
 /// The source of the node's database.
@@ -65,6 +65,10 @@ pub type AcquireThenRusqliteError = AcquireThenError<rusqlite::Error>;
 /// An `acquire_then` error whose function returns a result with a query error.
 pub type AcquireThenQueryError = AcquireThenError<db::QueryError>;
 
+/// One or more connections failed to close.
+#[derive(Debug, Error)]
+pub struct ConnectionCloseErrors(pub Vec<(rusqlite::Connection, rusqlite::Error)>);
+
 impl ConnectionPool {
     /// Create the connection pool from the given configuration.
     pub fn new(conf: &Config) -> rusqlite::Result<Self> {
@@ -86,6 +90,16 @@ impl ConnectionPool {
     /// the node has been closed.
     pub fn try_acquire(&self) -> Result<ConnectionHandle, TryAcquireError> {
         self.0.try_acquire().map(ConnectionHandle)
+    }
+
+    /// Close a connection pool, returning a `ConnectionCloseErrors` in the case of any errors.
+    pub fn close(&self) -> Result<(), ConnectionCloseErrors> {
+        let res = self.0.close();
+        let errs: Vec<_> = res.into_iter().filter_map(Result::err).collect();
+        if !errs.is_empty() {
+            return Err(ConnectionCloseErrors(errs));
+        }
+        Ok(())
     }
 }
 
@@ -259,6 +273,18 @@ impl Config {
         // TODO: Unsure if wasm-compatible? May want a feature for this?
         num_cpus::get().saturating_mul(4)
     }
+
+    /// Config with specified source.
+    pub fn with_source(mut self, source: Source) -> Self {
+        self.source = source;
+        self
+    }
+
+    /// Config with specified connection limit.
+    pub fn with_conn_limit(mut self, new_conn_limit: usize) -> Self {
+        self.conn_limit = new_conn_limit;
+        self
+    }
 }
 
 impl Source {
@@ -306,6 +332,16 @@ impl Default for Config {
             conn_limit: Self::default_conn_limit(),
             source: Source::default(),
         }
+    }
+}
+
+impl core::fmt::Display for ConnectionCloseErrors {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        writeln!(f, "failed to close one or more connections:")?;
+        for (ix, (_conn, err)) in self.0.iter().enumerate() {
+            writeln!(f, "  {ix}: {err}")?;
+        }
+        Ok(())
     }
 }
 

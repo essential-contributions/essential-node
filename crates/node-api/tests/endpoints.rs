@@ -1,4 +1,4 @@
-use essential_node as node;
+use essential_node::{self as node, BlockTx};
 use essential_node_api as node_api;
 use essential_types::{
     contract::Contract, convert::bytes_from_word, predicate::Predicate, Block, Value, Word,
@@ -10,7 +10,7 @@ use tokio_util::{
     io::StreamReader,
 };
 use util::{
-    client, get_url, init_tracing_subscriber, reqwest_get, state_db_only, test_node,
+    client, get_url, init_tracing_subscriber, reqwest_get, state_db_only, test_conn_pool,
     with_test_server,
 };
 
@@ -21,8 +21,8 @@ async fn test_health_check() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
-    let node = test_node();
-    with_test_server(state_db_only(node.db()), |port| async move {
+    let db = test_conn_pool();
+    with_test_server(state_db_only(db), |port| async move {
         let response = reqwest_get(port, node_api::endpoint::health_check::PATH).await;
         assert!(response.status().is_success());
     })
@@ -34,8 +34,7 @@ async fn test_get_contract() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
-    let node = test_node();
-
+    let db = test_conn_pool();
     // The test contract.
     let seed = 42;
     let da_block = 100;
@@ -44,10 +43,10 @@ async fn test_get_contract() {
 
     // Insert the contract.
     let clone = contract.clone();
-    node.db().insert_contract(clone, da_block).await.unwrap();
+    db.insert_contract(clone, da_block).await.unwrap();
 
     // Request the contract from the server.
-    let response_contract = with_test_server(state_db_only(node.db()), |port| async move {
+    let response_contract = with_test_server(state_db_only(db), |port| async move {
         let response = reqwest_get(port, &format!("/get-contract/{contract_ca}")).await;
         assert!(response.status().is_success());
         response.json::<Contract>().await.unwrap()
@@ -62,7 +61,7 @@ async fn test_get_contract_invalid_ca() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
-    let node = test_node();
+    let db = test_conn_pool();
 
     // The test contract.
     let seed = 78;
@@ -71,10 +70,10 @@ async fn test_get_contract_invalid_ca() {
 
     // Insert the contract.
     let clone = contract.clone();
-    node.db().insert_contract(clone, da_block).await.unwrap();
+    db.insert_contract(clone, da_block).await.unwrap();
 
     // Request the contract from the server.
-    with_test_server(state_db_only(node.db()), |port| async move {
+    with_test_server(state_db_only(db), |port| async move {
         let response = reqwest_get(port, "/get-contract/INVALID_CA").await;
         assert!(response.status().is_client_error());
     })
@@ -86,7 +85,7 @@ async fn test_get_predicate() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
-    let node = test_node();
+    let db = test_conn_pool();
 
     // The test contract.
     let seed = 97;
@@ -95,10 +94,10 @@ async fn test_get_predicate() {
 
     // Insert the contract.
     let clone = contract.clone();
-    node.db().insert_contract(clone, da_block).await.unwrap();
+    db.insert_contract(clone, da_block).await.unwrap();
 
     // Check that we can request each predicate individually.
-    with_test_server(state_db_only(node.db()), |port| async move {
+    with_test_server(state_db_only(db), |port| async move {
         for predicate in &contract.predicates {
             let predicate_ca = essential_hash::content_addr(predicate);
             let response = reqwest_get(port, &format!("/get-predicate/{predicate_ca}")).await;
@@ -115,7 +114,7 @@ async fn test_query_state() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
-    let node = test_node();
+    let db = test_conn_pool();
 
     // The test state.
     let seed = 11;
@@ -133,22 +132,20 @@ async fn test_query_state() {
     }
 
     // Insert a contract to own the state.
-    node.db()
-        .insert_contract(contract.clone(), da_block)
+    db.insert_contract(contract.clone(), da_block)
         .await
         .unwrap();
     let contract_ca = essential_hash::content_addr(contract.as_ref());
 
     // Insert the state entries.
     for (k, v) in keys.iter().zip(&values) {
-        let db = node.db();
         let ca = contract_ca.clone();
         let (key, value) = (k.clone(), v.clone());
         db.update_state(ca, key, value).await.unwrap();
     }
 
     // Query each of the keys and check they match what we expect.
-    with_test_server(state_db_only(node.db()), |port| async move {
+    with_test_server(state_db_only(db), |port| async move {
         for (k, v) in keys.iter().zip(&values) {
             let key_bytes: Vec<_> = k.iter().copied().flat_map(bytes_from_word).collect();
             let key = hex::encode(&key_bytes);
@@ -166,7 +163,7 @@ async fn test_list_blocks() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
-    let node = test_node();
+    let db = test_conn_pool();
 
     // Create some test blocks.
     let n_blocks = 100;
@@ -174,14 +171,13 @@ async fn test_list_blocks() {
 
     // Insert them into the node's DB.
     for block in &blocks {
-        node.db()
-            .insert_block(std::sync::Arc::new(block.clone()))
+        db.insert_block(std::sync::Arc::new(block.clone()))
             .await
             .unwrap();
     }
 
     // Fetch all blocks.
-    let fetched_blocks = with_test_server(state_db_only(node.db()), |port| async move {
+    let fetched_blocks = with_test_server(state_db_only(db), |port| async move {
         let response = client()
             .get(get_url(
                 port,
@@ -203,7 +199,7 @@ async fn test_list_contracts() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
-    let node = test_node();
+    let db = test_conn_pool();
 
     // The contract seeds for each block.
     let block_contract_seeds: &[&[Word]] = &[&[1], &[42, 69], &[1337, 7357, 9000], &[4]];
@@ -225,7 +221,7 @@ async fn test_list_contracts() {
         let block_n = ix.try_into().unwrap();
         for contract in contracts {
             let contract = std::sync::Arc::new(contract.clone());
-            node.db().insert_contract(contract, block_n).await.unwrap();
+            db.insert_contract(contract, block_n).await.unwrap();
         }
     }
 
@@ -234,7 +230,7 @@ async fn test_list_contracts() {
     let end = 3;
 
     // Fetch the blocks.
-    let fetched_contracts = with_test_server(state_db_only(node.db()), |port| async move {
+    let fetched_contracts = with_test_server(state_db_only(db), |port| async move {
         let response = client()
             .get(get_url(
                 port,
@@ -262,16 +258,16 @@ async fn test_subscribe_blocks() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
-    let node = test_node();
+    let db = test_conn_pool();
 
     // The test blocks.
     let (blocks, _) = node::test_utils::test_blocks(1000);
 
     // A fn for notifying of new blocks.
-    let (new_block_tx, new_block_rx) = tokio::sync::watch::channel(());
+    let block_tx = BlockTx::new();
+    let block_rx = block_tx.new_listener();
 
     // Write the first 10 blocks to the DB. We'll write the rest later.
-    let db = node.db();
     for block in &blocks[..10] {
         let block = std::sync::Arc::new(block.clone());
         db.insert_block(block).await.unwrap();
@@ -280,8 +276,8 @@ async fn test_subscribe_blocks() {
     // Start a test server and subscribe to blocks.
     let blocks2 = blocks.clone();
     let state = node_api::State {
-        conn_pool: node.db(),
-        new_block: Some(new_block_rx),
+        conn_pool: db.clone(),
+        new_block: Some(block_rx.to_inner()),
     };
     let server = with_test_server(state, |port| async move {
         let response = reqwest_get(port, "/subscribe-blocks?start_block=0").await;
@@ -315,10 +311,10 @@ async fn test_subscribe_blocks() {
     let write_remaining_blocks = tokio::spawn(async move {
         for block in blocks_remaining {
             db.insert_block(block.into()).await.unwrap();
-            new_block_tx.clone().send(()).unwrap();
+            block_tx.notify();
         }
         // After writing, drop the new block tx, closing the stream.
-        std::mem::drop(new_block_tx);
+        std::mem::drop(block_tx);
     });
 
     let ((), res) = tokio::join!(server, write_remaining_blocks);

@@ -3,7 +3,7 @@ use crate::test_utils::{
     assert_validation_progress_is_none, assert_validation_progress_is_some, test_blocks,
     test_conn_pool, test_invalid_block,
 };
-use essential_node_db::{create_tables, insert_block, insert_contract};
+use essential_node_db::{insert_block, insert_contract};
 use essential_types::{contract::Contract, Block};
 use rusqlite::Connection;
 use std::time::Duration;
@@ -35,10 +35,6 @@ async fn can_validate() {
 
     let conn_pool = test_conn_pool();
     let mut conn = conn_pool.acquire().await.unwrap();
-
-    let tx = conn.transaction().unwrap();
-    create_tables(&tx).unwrap();
-    tx.commit().unwrap();
 
     const NUM_TEST_BLOCKS: u64 = 4;
     let (test_blocks, contracts) = test_blocks(NUM_TEST_BLOCKS);
@@ -83,10 +79,6 @@ async fn test_invalid_block_validation() {
     let conn_pool = test_conn_pool();
     let mut conn = conn_pool.acquire().await.unwrap();
 
-    let tx = conn.transaction().unwrap();
-    create_tables(&tx).unwrap();
-    tx.commit().unwrap();
-
     let (block, contract) = test_invalid_block(0, Duration::from_secs(0));
     insert_contracts_to_db(&mut conn, vec![contract]);
 
@@ -121,10 +113,6 @@ async fn can_process_valid_and_invalid_blocks() {
 
     let conn_pool = test_conn_pool();
     let mut conn = conn_pool.acquire().await.unwrap();
-
-    let tx = conn.transaction().unwrap();
-    create_tables(&tx).unwrap();
-    tx.commit().unwrap();
 
     // Two valid blocks with number 0 and 1
     let (test_blocks, mut contracts) = test_blocks(2);
