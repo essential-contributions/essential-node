@@ -69,7 +69,7 @@ async fn test_run() {
     let test_blocks_count = 4;
     let (test_blocks, test_contracts) = test_blocks(test_blocks_count);
 
-    // Deploy contracts to server
+    // Insert contracts to database
     for contract in &test_contracts {
         db.insert_contract(Arc::new(contract.clone()), 0)
             .await
@@ -81,7 +81,7 @@ async fn test_run() {
     assert_state_progress_is_none(&conn);
     assert_validation_progress_is_none(&conn);
 
-    // Submit test block 0's solutions to server
+    // Insert block 0 to database and send notification
     node_server
         .conn_pool
         .insert_block(test_blocks[0].clone().into())
@@ -94,7 +94,7 @@ async fn test_run() {
     let conn = db.acquire().await.unwrap();
     assert_submit_solutions_effects(&conn, vec![test_blocks[0].clone()]);
 
-    // Submit test block 1 and 2's solutions to server
+    // Insert block 1 and 2 to database and send notification
     node_server
         .conn_pool
         .insert_block(test_blocks[1].clone().into())
@@ -113,7 +113,7 @@ async fn test_run() {
     let conn = db.acquire().await.unwrap();
     assert_submit_solutions_effects(&conn, vec![test_blocks[1].clone(), test_blocks[2].clone()]);
 
-    // Submit test block 3's solutions to server
+    // Insert block 3 to database and send notification
     node_server
         .conn_pool
         .insert_block(test_blocks[3].clone().into())

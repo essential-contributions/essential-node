@@ -32,7 +32,7 @@ pub struct Relayer {
 }
 
 impl Relayer {
-    /// Create a new relayer client from a essential-server endpoint url.
+    /// Create a new relayer client from a node endpoint.
     pub fn new(endpoint: impl TryInto<Url>) -> Result<Self> {
         let endpoint = endpoint.try_into().map_err(|_| CriticalError::UrlParse)?;
         let client = ClientBuilder::new()

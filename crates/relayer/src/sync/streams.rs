@@ -17,10 +17,7 @@ use tokio_util::{
     io::StreamReader,
 };
 
-/// Create the stream of blocks from the server.
-///
-/// Note this function is very specific to the server
-/// implementation and will change in the future.
+/// Create the stream of blocks from the node endpoint.
 pub(crate) async fn stream_blocks(
     url: &Url,
     client: &Client,
@@ -32,7 +29,7 @@ pub(crate) async fn stream_blocks(
         .map(|p| p.last_block_number)
         .unwrap_or_default();
 
-    // Create the subscription to the server.
+    // Create the subscription to the node's blocks stream.
     let mut url = url
         .join("/subscribe-blocks")
         .map_err(|_| CriticalError::UrlParse)?;
@@ -41,14 +38,14 @@ pub(crate) async fn stream_blocks(
     url.query_pairs_mut()
         .append_pair("start_block", &last_block_number.to_string());
 
-    // Send the request to the server.
+    // Send the request to the node.
     let response = client
         .get(url)
         .send()
         .await
         .map_err(RecoverableError::from)?;
 
-    // Check if the server returned a bad response.
+    // Check if the node returned a bad response.
     if !response.status().is_success() {
         return Err(RecoverableError::BadServerResponse(response.status()).into());
     }
@@ -60,13 +57,13 @@ pub(crate) async fn stream_blocks(
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))),
     );
 
-    // Decode the stream from the server.
+    // Decode the stream from the node.
     let stream = FramedRead::new(stream, SseDecoder::<Block>::new());
 
     Ok(stream)
 }
 
-/// Decoder for the server SSE stream.
+/// Decoder for the node SSE stream.
 struct SseDecoder<T>(PhantomData<T>);
 
 impl<T> SseDecoder<T> {
