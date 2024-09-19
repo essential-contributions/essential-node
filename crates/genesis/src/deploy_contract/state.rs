@@ -44,6 +44,18 @@ pub fn read_salt() -> Vec<asm::Op> {
     to_state(c::read_salt())
 }
 
+pub fn predicate_addrs_i() -> Vec<asm::Op> {
+    to_state(c::predicate_addrs_i())
+}
+
+pub fn predicate_addrs_i_address() -> Vec<asm::Op> {
+    to_state(c::predicate_addrs_i_address())
+}
+
+pub fn predicate_addrs_i_tag() -> Vec<asm::Op> {
+    to_state(c::predicate_addrs_i_tag())
+}
+
 pub fn alloc(amount: Word) -> Vec<asm::Op> {
     ops![
         PUSH: amount,
@@ -107,6 +119,14 @@ pub fn store_last_state_slot(len: Word) -> Vec<asm::Op> {
         PUSH: 1,
         SUB,
         STORE,
+    ]
+}
+
+pub fn extend_storage_mem(len: Word, slot_ix: Word) -> Vec<asm::Op> {
+    ops![
+        PUSH: len,
+        PUSH: slot_ix,
+        EXTEND,
     ]
 }
 

@@ -9,8 +9,14 @@ pub mod constraint {
         (SWAP) => {
             $crate::asm::Op::from($crate::asm::Stack::Swap)
         };
+        (SWAP_INDEX) => {
+            $crate::asm::Op::from($crate::asm::Stack::SwapIndex)
+        };
         (DUP) => {
             $crate::asm::Op::from($crate::asm::Stack::Dup)
+        };
+        (DUP_FROM) => {
+            $crate::asm::Op::from($crate::asm::Stack::DupFrom)
         };
         (REPEAT) => {
             $crate::asm::Op::from($crate::asm::Stack::Repeat)
@@ -36,6 +42,9 @@ pub mod constraint {
         (MUT_KEYS) => {
             $crate::asm::Op::from($crate::asm::Access::MutKeys)
         };
+        (NUM_SLOTS) => {
+            $crate::asm::Op::from($crate::asm::Access::NumSlots)
+        };
         (ADD) => {
             $crate::asm::Op::from($crate::asm::Alu::Add)
         };
@@ -44,6 +53,18 @@ pub mod constraint {
         };
         (MUL) => {
             $crate::asm::Op::from($crate::asm::Alu::Mul)
+        };
+        (DIV) => {
+            $crate::asm::Op::from($crate::asm::Alu::Div)
+        };
+        (MOD) => {
+            $crate::asm::Op::from($crate::asm::Alu::Mod)
+        };
+        (SHL) => {
+            $crate::asm::Op::from($crate::asm::Alu::Shl)
+        };
+        (SHR) => {
+            $crate::asm::Op::from($crate::asm::Alu::Shr)
         };
         (EQ) => {
             $crate::asm::Op::from($crate::asm::Pred::Eq)
@@ -60,11 +81,20 @@ pub mod constraint {
         (LT) => {
             $crate::asm::Op::from($crate::asm::Pred::Lt)
         };
+        (LTE) => {
+            $crate::asm::Op::from($crate::asm::Pred::Lte)
+        };
         (OR) => {
             $crate::asm::Op::from($crate::asm::Pred::Or)
         };
         (AND) => {
             $crate::asm::Op::from($crate::asm::Pred::And)
+        };
+        (BIT_AND) => {
+            $crate::asm::Op::from($crate::asm::Pred::BitAnd)
+        };
+        (BIT_OR) => {
+            $crate::asm::Op::from($crate::asm::Pred::BitOr)
         };
         (EQ_SET) => {
             $crate::asm::Op::from($crate::asm::Pred::EqSet)
@@ -135,6 +165,12 @@ pub mod state {
         (STATE) => {
             $crate::sasm::Op::from($crate::sasm::Access::State)
         };
+        (STATE_LEN) => {
+            $crate::sasm::Op::from($crate::sasm::Access::StateLen)
+        };
+        (NUM_SLOTS) => {
+            $crate::sasm::Op::from($crate::sasm::Access::NumSlots)
+        };
         (ADD) => {
             $crate::sasm::Op::from($crate::sasm::Alu::Add)
         };
@@ -159,6 +195,9 @@ pub mod state {
         (LT) => {
             $crate::sasm::Op::from($crate::sasm::Pred::Lt)
         };
+        (LTE) => {
+            $crate::sasm::Op::from($crate::sasm::Pred::Lte)
+        };
         (OR) => {
             $crate::sasm::Op::from($crate::sasm::Pred::Or)
         };
@@ -176,6 +215,9 @@ pub mod state {
         };
         (STORE) => {
             $crate::sasm::Op::from($crate::sasm::StateSlots::Store)
+        };
+        (EXTEND) => {
+            $crate::sasm::Op::from($crate::sasm::StateSlots::Extend)
         };
         (LOAD) => {
             $crate::sasm::Op::from($crate::sasm::StateSlots::Load)

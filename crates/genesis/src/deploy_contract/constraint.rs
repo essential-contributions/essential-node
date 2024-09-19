@@ -1,6 +1,7 @@
 use super::dec_var_slot_offset;
 use super::predicate_layout_offset;
 use super::tags;
+use crate::deploy_contract::state_slot_offset;
 use crate::utils::constraint::*;
 use essential_constraint_asm as asm;
 use essential_types::Word;
@@ -73,12 +74,77 @@ pub fn read_predicate_words() -> Vec<asm::Op> {
     .concat()
 }
 
+pub fn read_predicate_word_i(i: Word) -> Vec<asm::Op> {
+    [
+        push_predicate_i(),
+        ops![
+            PUSH: predicate_layout_offset::WORDS,
+            PUSH: i,
+            ADD,
+            PUSH: 1,
+        ],
+        ops![DECISION_VAR,],
+    ]
+    .concat()
+}
+
+pub fn read_predicate_word_i_asm(i: Vec<asm::Op>) -> Vec<asm::Op> {
+    [
+        push_predicate_i(),
+        ops![
+            PUSH: predicate_layout_offset::WORDS,
+        ],
+        i,
+        ops![
+            ADD,
+            PUSH: 1,
+        ],
+        ops![DECISION_VAR,],
+    ]
+    .concat()
+}
+
 pub fn read_predicate_size() -> Vec<asm::Op> {
     read_dec_var(dec_var_slot_offset::NUM_PREDICATES, 0, 1)
 }
 
 pub fn read_salt() -> Vec<asm::Op> {
     read_dec_var(dec_var_slot_offset::SALT, 0, 4)
+}
+
+pub fn predicate_addrs_i() -> Vec<asm::Op> {
+    ops![
+        PUSH: state_slot_offset::PREDICATE_ADDRS,
+        REPEAT_COUNTER,
+        PUSH: 5,
+        MUL,
+    ]
+}
+
+pub fn predicate_addrs_i_address() -> Vec<asm::Op> {
+    [
+        predicate_addrs_i(),
+        ops![
+            PUSH: 1,
+            ADD,
+            PUSH: 4,
+            PUSH: 0,
+            STATE,
+        ],
+    ]
+    .concat()
+}
+
+pub fn predicate_addrs_i_tag() -> Vec<asm::Op> {
+    [
+        predicate_addrs_i(),
+        ops![
+            PUSH: 1,
+            PUSH: 0,
+            STATE,
+        ],
+    ]
+    .concat()
 }
 
 pub fn match_asm_tag(tag_asm: Vec<asm::Op>, tag: Word, body: Vec<asm::Op>) -> Vec<asm::Op> {

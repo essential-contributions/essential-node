@@ -1,44 +1,8 @@
 use super::state::*;
-use super::state_slot_offset;
 use super::tags;
 use crate::{deploy_contract::storage_index, utils::state::*};
 use essential_state_asm as asm;
 use essential_types::Word;
-
-fn predicate_addrs_i() -> Vec<asm::Op> {
-    ops![
-        PUSH: state_slot_offset::PREDICATE_ADDRS,
-        REPEAT_COUNTER,
-        PUSH: 5,
-        MUL,
-    ]
-}
-
-fn predicate_addrs_i_address() -> Vec<asm::Op> {
-    [
-        predicate_addrs_i(),
-        ops![
-            PUSH: 1,
-            ADD,
-            PUSH: 4,
-            PUSH: 0,
-            STATE,
-        ],
-    ]
-    .concat()
-}
-
-fn predicate_addrs_i_tag() -> Vec<asm::Op> {
-    [
-        predicate_addrs_i(),
-        ops![
-            PUSH: 1,
-            PUSH: 0,
-            STATE,
-        ],
-    ]
-    .concat()
-}
 
 fn state_mem_i_not_nil() -> Vec<asm::Op> {
     ops![

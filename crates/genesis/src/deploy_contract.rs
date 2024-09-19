@@ -1,7 +1,7 @@
 use essential_types::{
     contract::Contract,
     convert::{word_4_from_u8_32, word_from_bytes},
-    predicate::{Directive, Predicate},
+    predicate::{header::PredicateError, Predicate},
     ContentAddress, Hash, Value, Word,
 };
 
@@ -13,6 +13,7 @@ mod constrain_keys;
 mod delta_contract;
 mod read_contract_addr;
 mod read_predicate_addr;
+mod validate_contract;
 
 mod constraint;
 mod state;
@@ -57,6 +58,14 @@ mod state_slot_offset {
     pub const PREDICATE_EXISTS: Word = CONTRACT_ADDR + 1;
 }
 
+mod state_mem_offset {
+    use essential_types::Word;
+
+    pub const CONTRACT_EXISTS: Word = 0;
+    pub const PREDICATE_ADDRS: Word = CONTRACT_EXISTS + 1;
+    pub const CONTRACT_ADDR: Word = PREDICATE_ADDRS + 1;
+}
+
 pub fn create() -> Contract {
     let salt = essential_hash::hash(&"deploy_contract");
 
@@ -73,11 +82,11 @@ fn deploy() -> Predicate {
         delta_contract::delta_contract(),
         check_exists::check_exists(),
         constrain_keys::constrain_keys(),
+        validate_contract::validate_contract(),
     ];
     Predicate {
         state_read,
         constraints,
-        directive: Directive::Satisfy,
     }
 }
 
@@ -89,7 +98,7 @@ pub enum DeployedPredicate<'p> {
 pub fn predicates_to_dec_vars<'p>(
     salt: &Hash,
     predicates: impl IntoIterator<Item = DeployedPredicate<'p>>,
-) -> Vec<Value> {
+) -> Result<Vec<Value>, PredicateError> {
     let mut predicates = predicates.into_iter().collect::<Vec<_>>();
     predicates.sort_by_key(|p| match p {
         DeployedPredicate::New(p) => essential_hash::content_addr(*p),
@@ -97,15 +106,14 @@ pub fn predicates_to_dec_vars<'p>(
     });
     let predicates: Vec<_> = predicates
         .into_iter()
-        .map(|p| match p {
-            DeployedPredicate::New(p) => {
-                let serialized = essential_hash::serialize(p);
-                let padding_len = core::mem::size_of::<Word>()
-                    - (serialized.len() % core::mem::size_of::<Word>());
-                let mut v = vec![tags::NEW, padding_len as Word];
-                let iter = serialized
-                    .chunks(core::mem::size_of::<Word>())
-                    .map(|chunk| {
+        .map(|p| {
+            let v = match p {
+                DeployedPredicate::New(p) => {
+                    let bytes: Vec<_> = p.encode()?.collect();
+                    let padding_len =
+                        core::mem::size_of::<Word>() - (bytes.len() % core::mem::size_of::<Word>());
+                    let mut v = vec![tags::NEW, padding_len as Word];
+                    let iter = bytes.chunks(core::mem::size_of::<Word>()).map(|chunk| {
                         if chunk.len() == core::mem::size_of::<Word>() {
                             word_from_bytes(chunk.try_into().unwrap())
                         } else {
@@ -114,20 +122,22 @@ pub fn predicates_to_dec_vars<'p>(
                             word_from_bytes(word)
                         }
                     });
-                v.extend(iter);
-                v
-            }
-            DeployedPredicate::Existing(addr) => {
-                let mut v = vec![tags::EXISTING, 0];
-                v.extend(word_4_from_u8_32(addr.0));
-                v
-            }
+                    v.extend(iter);
+                    v
+                }
+                DeployedPredicate::Existing(addr) => {
+                    let mut v = vec![tags::EXISTING, 0];
+                    v.extend(word_4_from_u8_32(addr.0));
+                    v
+                }
+            };
+            Ok(v)
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
     let mut out = vec![
         word_4_from_u8_32(*salt).to_vec(),
         vec![predicates.len() as Word],
     ];
     out.extend(predicates);
-    out
+    Ok(out)
 }
