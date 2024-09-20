@@ -67,7 +67,7 @@ pub type AcquireThenQueryError = AcquireThenError<db::QueryError>;
 
 impl ConnectionPool {
     /// Create the connection pool from the given configuration.
-    pub fn new(conf: &Config) -> rusqlite::Result<Self> {
+    pub(crate) fn new(conf: &Config) -> rusqlite::Result<Self> {
         Ok(Self(new_conn_pool(conf)?))
     }
 

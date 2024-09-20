@@ -23,9 +23,6 @@ struct NodeServer {
 
 #[tokio::test]
 async fn test_run() {
-    #[cfg(feature = "tracing")]
-    let _ = tracing_subscriber::fmt::try_init();
-
     let (node_server, source_block_notify) = test_node().await;
 
     // Setup node
