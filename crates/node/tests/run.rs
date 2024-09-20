@@ -57,7 +57,7 @@ async fn test_run() {
         .await
         .unwrap();
     source_block_tx.notify();
-    tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Check block, state and state progress
     let conn = db.acquire().await.unwrap();
@@ -76,7 +76,7 @@ async fn test_run() {
         .await
         .unwrap();
     source_block_tx.notify();
-    tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Check block, state and state progress
     let conn = db.acquire().await.unwrap();
@@ -89,7 +89,7 @@ async fn test_run() {
         .await
         .unwrap();
     source_block_tx.notify();
-    tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Check block, state and state progress
     let conn = db.acquire().await.unwrap();
@@ -109,25 +109,6 @@ async fn test_listener() -> tokio::net::TcpListener {
         .unwrap()
 }
 
-// Wait until the server at the given port is ready to receive requests.
-async fn await_server_online(port: u16, timeout_duration: std::time::Duration) {
-    let server_ready = async {
-        let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
-        let client = client();
-        let url = format!("http://{LOCALHOST}:{port}/");
-        loop {
-            interval.tick().await;
-            match client.get(&url).send().await {
-                Ok(_) => return,
-                Err(_) => continue, // Retry if the server is not ready yet
-            }
-        }
-    };
-    tokio::time::timeout(timeout_duration, server_ready)
-        .await
-        .unwrap()
-}
-
 // Spawn a test server with given ConnectionPool and block notify channel.
 async fn setup_node_as_server(state: essential_node_api::State) -> NodeServer {
     let conn_pool = state.conn_pool.clone();
@@ -142,8 +123,6 @@ async fn setup_node_as_server(state: essential_node_api::State) -> NodeServer {
         )
         .await
     });
-    await_server_online(port, std::time::Duration::from_secs(3)).await;
-
     let address = format!("http://{LOCALHOST}:{port}/");
     NodeServer { address, conn_pool }
 }
