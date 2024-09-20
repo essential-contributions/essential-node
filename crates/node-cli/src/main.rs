@@ -13,12 +13,12 @@ struct Args {
     /// The address to bind to for the TCP listener that will be used to serve the API.
     #[arg(long, default_value_t = SocketAddrV4::new([0; 4].into(), 0).into())]
     bind_address: SocketAddr,
-    /// The URL address of the Essential server that will act as the layer-1.
+    /// The endpoint of the node that will act as the layer-1.
     ///
     /// Note: This will likely be replaced with an L1 RPC URL flag upon switching to
     /// use of Ethereum (or Ethereum test-net) as an L1.
     #[arg(long)]
-    server_address: String,
+    source_node_endpoint: String,
     /// The type of DB storage to use.
     ///
     /// In the case that "persistent" is specified, assumes the default path.
@@ -120,9 +120,9 @@ async fn run(args: Args) -> anyhow::Result<()> {
     #[cfg(feature = "tracing")]
     tracing::info!(
         "Starting relayer, state derivation and validation (relaying from {:?})",
-        args.server_address
+        args.source_node_endpoint
     );
-    let node_handle = node.run(args.server_address)?;
+    let node_handle = node.run(args.source_node_endpoint)?;
 
     // Run the API.
     let api_state = node_api::State {

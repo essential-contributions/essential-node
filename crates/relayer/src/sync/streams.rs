@@ -5,92 +5,19 @@
 //! Best efforts have been made to make this module as correct as possible
 //! but that needs to be balanced with over engineering temporary code.
 
-use std::marker::PhantomData;
-
-use essential_types::{contract::Contract, Block};
-use futures::{Stream, StreamExt, TryStreamExt};
+use super::BlockProgress;
+use crate::error::{CriticalError, InternalError, InternalResult, RecoverableError};
+use essential_types::Block;
+use futures::{Stream, TryStreamExt};
 use reqwest::{Client, Url};
+use std::marker::PhantomData;
 use tokio_util::{
     bytes::{self, Buf},
     codec::{Decoder, FramedRead},
     io::StreamReader,
 };
 
-use crate::error::{CriticalError, InternalError, InternalResult, RecoverableError};
-
-use super::{BlockProgress, ContractProgress};
-
-/// The size of a page from the server.
-/// Very specific to the server implementation.
-/// This will be removed in the future.
-const SERVER_PAGE_SIZE: u64 = 100;
-
-/// Create the stream of contracts from the server.
-///
-/// Note this function is very specific to the server
-/// implementation and will change in the future.
-pub(crate) async fn stream_contracts(
-    url: &Url,
-    client: &Client,
-    progress: &Option<ContractProgress>,
-) -> InternalResult<impl Stream<Item = InternalResult<Contract>>> {
-    // We are using `l2_block_number` as the number for a given
-    // contract. This is possible because the server is only
-    // returns contracts in a deterministic order.
-    //
-    // This is intentionally the wrong usage of `l2_block_number`.
-    // In the future multiple contracts can have the same `l2_block_number`.
-    // Currently that's not the case.
-    let (page, index) = match progress {
-        Some(p) => {
-            let page = p.l2_block_number / SERVER_PAGE_SIZE;
-            let index = p.l2_block_number % SERVER_PAGE_SIZE;
-            let index: usize = index.try_into().map_err(|_| CriticalError::Overflow)?;
-            (page, index)
-        }
-        None => (0, 0),
-    };
-
-    // Create the subscription to the server.
-    let mut url = url
-        .join("/subscribe-contracts")
-        .map_err(|_| CriticalError::UrlParse)?;
-
-    // Start from the calculated page.
-    url.query_pairs_mut().append_pair("page", &page.to_string());
-
-    // Send the request to the server.
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(RecoverableError::from)?;
-
-    // Check if the server returned a bad response.
-    if !response.status().is_success() {
-        return Err(RecoverableError::BadServerResponse(response.status()).into());
-    }
-
-    // Create the stream from the response.
-    let stream = StreamReader::new(
-        response
-            .bytes_stream()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))),
-    );
-
-    // Decode the stream from the server.
-    let stream = FramedRead::new(stream, SseDecoder::<Contract>::new());
-
-    // Skip forward to the last sync'd contract.
-    let stream = stream.skip(index);
-
-    Ok(stream)
-}
-
-/// Create the stream of blocks from the server.
-///
-/// Note this function is very specific to the server
-/// implementation and will change in the future.
+/// Create the stream of blocks from the node endpoint.
 pub(crate) async fn stream_blocks(
     url: &Url,
     client: &Client,
@@ -102,23 +29,23 @@ pub(crate) async fn stream_blocks(
         .map(|p| p.last_block_number)
         .unwrap_or_default();
 
-    // Create the subscription to the server.
+    // Create the subscription to the node's blocks stream.
     let mut url = url
         .join("/subscribe-blocks")
         .map_err(|_| CriticalError::UrlParse)?;
 
     // Start from the last block number.
     url.query_pairs_mut()
-        .append_pair("block", &last_block_number.to_string());
+        .append_pair("start_block", &last_block_number.to_string());
 
-    // Send the request to the server.
+    // Send the request to the node.
     let response = client
         .get(url)
         .send()
         .await
         .map_err(RecoverableError::from)?;
 
-    // Check if the server returned a bad response.
+    // Check if the node returned a bad response.
     if !response.status().is_success() {
         return Err(RecoverableError::BadServerResponse(response.status()).into());
     }
@@ -130,13 +57,13 @@ pub(crate) async fn stream_blocks(
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))),
     );
 
-    // Decode the stream from the server.
+    // Decode the stream from the node.
     let stream = FramedRead::new(stream, SseDecoder::<Block>::new());
 
     Ok(stream)
 }
 
-/// Decoder for the server SSE stream.
+/// Decoder for the node SSE stream.
 struct SseDecoder<T>(PhantomData<T>);
 
 impl<T> SseDecoder<T> {

@@ -1,108 +1,47 @@
+use essential_node::{
+    db::{Config as DbConfig, ConnectionPool},
+    Node,
+};
 use essential_relayer::{DataSyncError, Relayer};
 use essential_types::{
-    contract::{Contract, SignedContract},
+    contract::Contract,
     predicate::{Directive, Predicate},
     solution::{Mutation, Solution, SolutionData},
     Block, PredicateAddress,
 };
-use reqwest::ClientBuilder;
 use rusqlite_pool::tokio::AsyncConnectionPool;
-use std::process::Stdio;
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::{Child, Command},
-};
+use std::sync::Arc;
+use tokio::{sync::oneshot::Sender, task::JoinHandle};
+
+const LOCALHOST: &str = "127.0.0.1";
+
+struct NodeServer {
+    address: String,
+    jh: JoinHandle<()>,
+    shutdown_tx: Sender<()>,
+    conn_pool: ConnectionPool,
+}
 
 #[tokio::test]
 async fn test_sync() {
-    #[cfg(feature = "tracing")]
-    let _ = tracing_subscriber::fmt::try_init();
+    let relayer_conn = new_conn_pool();
 
-    let (server_address, mut child) = setup_server().await;
+    let (node_server, source_block_notify) = test_node().await;
+    let source_db = node_server.conn_pool.clone();
 
-    let client = ClientBuilder::new()
-        .http2_prior_knowledge()
-        .build()
-        .unwrap();
-    let url = reqwest::Url::parse(server_address.as_str())
-        .unwrap()
-        .join("/deploy-contract")
-        .unwrap();
-    let solve_url = reqwest::Url::parse(server_address.as_str())
-        .unwrap()
-        .join("/submit-solution")
-        .unwrap();
-
-    let conn = new_conn_pool("test_sync");
-    let mut test_conn = conn.acquire().await.unwrap();
+    let mut test_conn = relayer_conn.acquire().await.unwrap();
     let tx = test_conn.transaction().unwrap();
     essential_node_db::create_tables(&tx).unwrap();
     tx.commit().unwrap();
 
-    let predicate = Predicate {
-        state_read: vec![],
-        constraints: vec![],
-        directive: Directive::Satisfy,
-    };
+    let (solutions, blocks) = test_structs();
 
-    let contracts: Vec<_> = (0..200)
-        .map(|i| Contract {
-            predicates: vec![predicate.clone()],
-            salt: [i as u8; 32],
-        })
-        .collect();
-    let solutions: Vec<_> = contracts
-        .iter()
-        .map(|c| {
-            let contract = essential_hash::content_addr(c);
-            let predicate = essential_hash::content_addr(&c.predicates[0]);
-            let addr = PredicateAddress {
-                contract,
-                predicate,
-            };
-            Solution {
-                data: vec![SolutionData {
-                    predicate_to_solve: addr,
-                    decision_variables: vec![],
-                    transient_data: vec![],
-                    state_mutations: vec![Mutation {
-                        key: vec![1],
-                        value: vec![1],
-                    }],
-                }],
-            }
-        })
-        .collect();
+    source_db.insert_block(blocks[0].clone()).await.unwrap();
+    source_block_notify.send(()).unwrap();
 
-    let r = client
-        .post(url.clone())
-        .json(&sign(contracts[0].clone()))
-        .send()
-        .await
-        .unwrap();
-    assert!(r.status().is_success(), "{}", r.text().await.unwrap());
-
-    let r = client
-        .post(solve_url.clone())
-        .json(&solutions[0])
-        .send()
-        .await
-        .unwrap();
-    assert!(r.status().is_success(), "{}", r.text().await.unwrap());
-
-    let relayer = Relayer::new(server_address.as_str()).unwrap();
+    let relayer = Relayer::new(node_server.address.as_str()).unwrap();
     let (block_notify, mut new_block) = tokio::sync::watch::channel(());
-    let (contract_notify, mut new_contract) = tokio::sync::watch::channel(());
-    let handle = relayer
-        .run(conn.clone(), contract_notify, block_notify)
-        .unwrap();
-
-    new_contract.changed().await.unwrap();
-    let result = essential_node_db::list_contracts(&test_conn, 0..3).unwrap();
-    assert_eq!(result.len(), 1);
-    assert_eq!(result[0].0, 0);
-    assert_eq!(result[0].1.len(), 1);
-    assert_eq!(result[0].1[0].salt, [0; 32]);
+    let relayer_handle = relayer.run(relayer_conn.clone(), block_notify).unwrap();
 
     new_block.changed().await.unwrap();
     let result = essential_node_db::list_blocks(&test_conn, 0..100).unwrap();
@@ -111,28 +50,8 @@ async fn test_sync() {
     assert_eq!(result[0].solutions.len(), 1);
     assert_eq!(result[0].solutions[0], solutions[0]);
 
-    let r = client
-        .post(url.clone())
-        .json(&sign(contracts[1].clone()))
-        .send()
-        .await
-        .unwrap();
-    assert!(r.status().is_success(), "{}", r.text().await.unwrap());
-
-    new_contract.changed().await.unwrap();
-    let result = essential_node_db::list_contracts(&test_conn, 0..3).unwrap();
-    assert_eq!(result.len(), 2);
-    assert_eq!(result[1].0, 1);
-    assert_eq!(result[1].1.len(), 1);
-    assert_eq!(result[1].1[0].salt, [1; 32]);
-
-    let r = client
-        .post(solve_url.clone())
-        .json(&solutions[1])
-        .send()
-        .await
-        .unwrap();
-    assert!(r.status().is_success(), "{}", r.text().await.unwrap());
+    source_db.insert_block(blocks[1].clone()).await.unwrap();
+    source_block_notify.send(()).unwrap();
 
     new_block.changed().await.unwrap();
     let result = essential_node_db::list_blocks(&test_conn, 0..100).unwrap();
@@ -141,59 +60,15 @@ async fn test_sync() {
     assert_eq!(result[1].solutions.len(), 1);
     assert_eq!(result[1].solutions[0], solutions[1]);
 
-    handle.close().await.unwrap();
+    relayer_handle.close().await.unwrap();
 
-    for c in &contracts[2..] {
-        let r = client
-            .post(url.clone())
-            .json(&sign(c.clone()))
-            .send()
-            .await
-            .unwrap();
-        assert!(r.status().is_success(), "{}", r.text().await.unwrap());
+    for block in &blocks[2..] {
+        source_db.insert_block(block.clone()).await.unwrap();
+        source_block_notify.clone().send(()).unwrap();
     }
-
-    for s in &solutions[2..] {
-        let r = client.post(solve_url.clone()).json(s).send().await.unwrap();
-        assert!(r.status().is_success(), "{}", r.text().await.unwrap());
-    }
-
-    let relayer = Relayer::new(server_address.as_str()).unwrap();
+    let relayer = Relayer::new(node_server.address.as_str()).unwrap();
     let (block_notify, _new_block) = tokio::sync::watch::channel(());
-    let (contract_notify, _new_contract) = tokio::sync::watch::channel(());
-    let handle = relayer
-        .run(conn.clone(), contract_notify, block_notify)
-        .unwrap();
-
-    let start = tokio::time::Instant::now();
-    let mut result: Vec<(u64, Vec<Contract>)>;
-    loop {
-        if start.elapsed() > tokio::time::Duration::from_secs(10) {
-            panic!("timeout");
-        }
-        let Ok(r) = essential_node_db::list_contracts(&test_conn, 0..205) else {
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-            continue;
-        };
-        result = r;
-        if result.len() >= 200 {
-            break;
-        }
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    }
-    assert_eq!(result.len(), 200);
-
-    assert_eq!(result[1].0, 1);
-    assert_eq!(result[1].1.len(), 1);
-    assert_eq!(result[1].1[0].salt, [1; 32]);
-
-    assert_eq!(result[2].0, 2);
-    assert_eq!(result[2].1.len(), 1);
-    assert_eq!(result[2].1[0].salt, [2; 32]);
-
-    assert_eq!(result[199].0, 199);
-    assert_eq!(result[199].1.len(), 1);
-    assert_eq!(result[199].1[0].salt, [199; 32]);
+    let relayer_handle = relayer.run(relayer_conn.clone(), block_notify).unwrap();
 
     let start = tokio::time::Instant::now();
     let mut num_solutions: usize = 0;
@@ -221,28 +96,24 @@ async fn test_sync() {
 
     let num_blocks = result.len();
 
-    handle.close().await.unwrap();
-    child.kill().await.unwrap();
+    relayer_handle.close().await.unwrap();
+    tear_down_server(node_server).await;
+    drop(source_db);
 
-    let (server_address, _child) = setup_server().await;
+    let (node_server, ..) = test_node().await;
 
-    let relayer = Relayer::new(server_address.as_str()).unwrap();
+    let relayer = Relayer::new(node_server.address.as_str()).unwrap();
     let (block_notify, _new_block) = tokio::sync::watch::channel(());
-    let (contract_notify, _new_contract) = tokio::sync::watch::channel(());
-    let handle = relayer.run(conn, contract_notify, block_notify).unwrap();
+
+    let relayer_handle = relayer.run(relayer_conn, block_notify).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-    let r = handle.close().await;
+    let r = relayer_handle.close().await;
     assert!(
         matches!(
             r,
             Err(essential_relayer::Error::DataSyncFailed(
                 DataSyncError::Fork(i, _, None)
             )) if i == (num_blocks - 1) as u64
-        ) || matches!(
-            r,
-            Err(essential_relayer::Error::DataSyncFailed(
-                DataSyncError::ContractMismatch(199, _, None)
-            ))
         ),
         "{} {:?}",
         num_blocks,
@@ -250,7 +121,9 @@ async fn test_sync() {
     );
 }
 
-fn new_conn_pool(id: &str) -> AsyncConnectionPool {
+// Create a new AsyncConnectionPool with a unique in-memory database.
+fn new_conn_pool() -> AsyncConnectionPool {
+    let id = uuid::Uuid::new_v4().to_string();
     AsyncConnectionPool::new(3, || {
         rusqlite::Connection::open_with_flags_and_vfs(
             format!("file:/{}", id),
@@ -261,57 +134,127 @@ fn new_conn_pool(id: &str) -> AsyncConnectionPool {
     .unwrap()
 }
 
-pub async fn setup_server() -> (String, Child) {
-    let mut child = Command::new("essential-rest-server")
-        .arg("--db")
-        .arg("memory")
-        .arg("0.0.0.0:0")
-        .arg("--loop-freq")
-        .arg("1")
-        .arg("--disable-tracing")
-        .arg("--disable-time")
-        .kill_on_drop(true)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
-
-    let stdout = child.stdout.take().unwrap();
-
-    let buf = BufReader::new(stdout);
-    let mut lines = buf.lines();
-
-    let port;
-    loop {
-        if let Some(line) = lines.next_line().await.unwrap() {
-            if line.contains("Listening") {
-                port = line
-                    .split(':')
-                    .next_back()
-                    .unwrap()
-                    .trim()
-                    .parse::<u16>()
-                    .unwrap();
-                break;
-            }
-        }
-    }
-
-    tokio::spawn(async move {
-        loop {
-            if let Some(line) = lines.next_line().await.unwrap() {
-                println!("{}", line);
-            }
-        }
-    });
-    assert_ne!(port, 0);
-
-    let server_address = format!("http://localhost:{}", port);
-    (server_address, child)
+pub fn client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .http2_prior_knowledge() // Enforce HTTP/2
+        .build()
+        .unwrap()
 }
 
-fn sign(contract: Contract) -> SignedContract {
-    let secp = secp256k1::Secp256k1::new();
-    let key = secp.generate_keypair(&mut secp256k1::rand::rngs::OsRng).0;
-    essential_sign::contract::sign(contract, &key)
+async fn test_listener() -> tokio::net::TcpListener {
+    tokio::net::TcpListener::bind(format!("{LOCALHOST}:0"))
+        .await
+        .unwrap()
+}
+
+// Spawn a test server with given ConnectionPool and block notify channel.
+async fn setup_node_as_server(state: essential_node_api::State) -> NodeServer {
+    let conn_pool = state.conn_pool.clone();
+    let router = essential_node_api::router(state);
+    let listener = test_listener().await;
+    let port = listener.local_addr().unwrap().port();
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let jh = tokio::spawn(async move {
+        tokio::select! {
+            _ = essential_node_api::serve(&router, &listener, essential_node_api::DEFAULT_CONNECTION_LIMIT) => {},
+            _ = shutdown_rx => {},
+        }
+    });
+    let address = format!("http://{LOCALHOST}:{port}/");
+    NodeServer {
+        address,
+        jh,
+        shutdown_tx,
+        conn_pool,
+    }
+}
+
+// Setup node as server with a unique database of default configuration.
+// Returns server and block notify channel.
+async fn test_node() -> (NodeServer, tokio::sync::watch::Sender<()>) {
+    let node_conf = essential_node::Config {
+        db: DbConfig {
+            conn_limit: essential_node::db::Config::default_conn_limit(),
+            source: essential_node::db::Source::Memory(uuid::Uuid::new_v4().to_string()),
+        },
+    };
+    let node = Node::new(&node_conf).unwrap();
+    let source_db = node.db();
+    let (source_block_notify, node_new_block) = tokio::sync::watch::channel(());
+    let state = essential_node_api::State {
+        conn_pool: source_db.clone(),
+        new_block: Some(node_new_block.clone()),
+    };
+    let node_server = setup_node_as_server(state.clone()).await;
+
+    (node_server, source_block_notify)
+}
+
+// Tear down the server by:
+// 1. Sending a shutdown signal to the server.
+// 2. Waiting for the server to shut down by awaiting the join handle.
+// 3. Dropping the connection pool.
+async fn tear_down_server(server: NodeServer) {
+    let NodeServer {
+        jh,
+        shutdown_tx,
+        conn_pool,
+        ..
+    } = server;
+
+    shutdown_tx.send(()).unwrap();
+    jh.await.unwrap();
+    drop(conn_pool);
+}
+
+// Solutions and blocks structs for testing.
+fn test_structs() -> (Vec<Solution>, Vec<Arc<Block>>) {
+    let predicate = Predicate {
+        state_read: vec![],
+        constraints: vec![],
+        directive: Directive::Satisfy,
+    };
+    let contracts: Vec<_> = (0..200)
+        .map(|i| {
+            Arc::new(Contract {
+                predicates: vec![predicate.clone()],
+                salt: [i as u8; 32],
+            })
+        })
+        .collect();
+    let solutions: Vec<_> = contracts
+        .iter()
+        .map(|c| {
+            let contract = essential_hash::content_addr::<Contract>(&c.clone());
+            let predicate = essential_hash::content_addr(&c.predicates[0]);
+            let addr = PredicateAddress {
+                contract,
+                predicate,
+            };
+            Solution {
+                data: vec![SolutionData {
+                    predicate_to_solve: addr,
+                    decision_variables: vec![],
+                    transient_data: vec![],
+                    state_mutations: vec![Mutation {
+                        key: vec![1],
+                        value: vec![1],
+                    }],
+                }],
+            }
+        })
+        .collect();
+    let blocks: Vec<_> = solutions
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            Arc::new(Block {
+                number: i as u64,
+                timestamp: std::time::Duration::from_secs(i as u64),
+                solutions: vec![s.clone()],
+            })
+        })
+        .collect();
+
+    (solutions, blocks)
 }

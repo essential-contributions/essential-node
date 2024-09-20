@@ -2,32 +2,149 @@
 
 use essential_hash::content_addr;
 use essential_node::{
+    db::{Config as DbConfig, ConnectionPool},
     test_utils::{
         assert_multiple_block_mutations, assert_state_progress_is_none,
         assert_state_progress_is_some, assert_validation_progress_is_none,
-        assert_validation_progress_is_some, setup_server, test_blocks, test_db_conf,
+        assert_validation_progress_is_some, test_blocks, test_db_conf,
     },
     Node,
 };
-use essential_types::{
-    contract::{Contract, SignedContract},
-    solution::Solution,
-    Block, ContentAddress,
-};
-use reqwest::{Client, Url};
+use essential_types::Block;
 use rusqlite::Connection;
+use std::sync::Arc;
 
-// Submit provided solutions to server one by one.
-async fn submit_solutions(client: &Client, solve_url: &Url, solutions: &Vec<Solution>) {
-    for solution in solutions {
-        let r = client
-            .post(solve_url.clone())
-            .json(solution)
-            .send()
+const LOCALHOST: &str = "127.0.0.1";
+
+struct NodeServer {
+    address: String,
+    conn_pool: ConnectionPool,
+}
+
+#[tokio::test]
+async fn test_run() {
+    let (node_server, source_block_notify) = test_node().await;
+
+    // Setup node
+    let conf = test_db_conf();
+    let node = Node::new(&conf).unwrap();
+
+    // Run node
+    let db = node.db();
+    let _handle = node.run(node_server.address).unwrap();
+
+    // Create test blocks
+    let test_blocks_count = 4;
+    let (test_blocks, test_contracts) = test_blocks(test_blocks_count);
+
+    // Insert contracts to database
+    for contract in &test_contracts {
+        db.insert_contract(Arc::new(contract.clone()), 0)
             .await
             .unwrap();
-        assert!(r.status().is_success(), "{}", r.text().await.unwrap());
     }
+    let conn = db.acquire().await.unwrap();
+
+    // Initially, the state progress and validation progress are none
+    assert_state_progress_is_none(&conn);
+    assert_validation_progress_is_none(&conn);
+
+    // Insert block 0 to database and send notification
+    node_server
+        .conn_pool
+        .insert_block(test_blocks[0].clone().into())
+        .await
+        .unwrap();
+    source_block_notify.clone().send(()).unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Check block, state and state progress
+    let conn = db.acquire().await.unwrap();
+    assert_submit_solutions_effects(&conn, vec![test_blocks[0].clone()]);
+
+    // Insert block 1 and 2 to database and send notification
+    node_server
+        .conn_pool
+        .insert_block(test_blocks[1].clone().into())
+        .await
+        .unwrap();
+    source_block_notify.clone().send(()).unwrap();
+    node_server
+        .conn_pool
+        .insert_block(test_blocks[2].clone().into())
+        .await
+        .unwrap();
+    source_block_notify.clone().send(()).unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Check block, state and state progress
+    let conn = db.acquire().await.unwrap();
+    assert_submit_solutions_effects(&conn, vec![test_blocks[1].clone(), test_blocks[2].clone()]);
+
+    // Insert block 3 to database and send notification
+    node_server
+        .conn_pool
+        .insert_block(test_blocks[3].clone().into())
+        .await
+        .unwrap();
+    source_block_notify.clone().send(()).unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Check block, state and state progress
+    let conn = db.acquire().await.unwrap();
+    assert_submit_solutions_effects(&conn, vec![test_blocks[3].clone()]);
+}
+
+pub fn client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .http2_prior_knowledge() // Enforce HTTP/2
+        .build()
+        .unwrap()
+}
+
+async fn test_listener() -> tokio::net::TcpListener {
+    tokio::net::TcpListener::bind(format!("{LOCALHOST}:0"))
+        .await
+        .unwrap()
+}
+
+// Spawn a test server with given ConnectionPool and block notify channel.
+async fn setup_node_as_server(state: essential_node_api::State) -> NodeServer {
+    let conn_pool = state.conn_pool.clone();
+    let router = essential_node_api::router(state);
+    let listener = test_listener().await;
+    let port = listener.local_addr().unwrap().port();
+    let _jh = tokio::spawn(async move {
+        essential_node_api::serve(
+            &router,
+            &listener,
+            essential_node_api::DEFAULT_CONNECTION_LIMIT,
+        )
+        .await
+    });
+    let address = format!("http://{LOCALHOST}:{port}/");
+    NodeServer { address, conn_pool }
+}
+
+// Setup node as server with a unique database of default configuration.
+// Returns server and block notify channel.
+async fn test_node() -> (NodeServer, tokio::sync::watch::Sender<()>) {
+    let node_conf = essential_node::Config {
+        db: DbConfig {
+            conn_limit: essential_node::db::Config::default_conn_limit(),
+            source: essential_node::db::Source::Memory(uuid::Uuid::new_v4().to_string()),
+        },
+    };
+    let node = Node::new(&node_conf).unwrap();
+    let source_db = node.db();
+    let (source_block_notify, node_new_block) = tokio::sync::watch::channel(());
+    let state = essential_node_api::State {
+        conn_pool: source_db.clone(),
+        new_block: Some(node_new_block.clone()),
+    };
+    let node_server = setup_node_as_server(state.clone()).await;
+
+    (node_server, source_block_notify)
 }
 
 // Fetch blocks from node database and assert that they contain the same solutions as expected.
@@ -63,97 +180,4 @@ fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block
         conn,
         &content_addr(&fetched_blocks[fetched_blocks.len() - 1]),
     );
-}
-
-#[tokio::test]
-async fn test_run() {
-    // Setup node
-    let conf = test_db_conf();
-    let node = Node::new(&conf).unwrap();
-
-    // Setup server
-    let (server_address, _child) = setup_server().await;
-    let client = reqwest::ClientBuilder::new()
-        .http2_prior_knowledge()
-        .build()
-        .unwrap();
-    let url = reqwest::Url::parse(server_address.as_str())
-        .unwrap()
-        .join("/deploy-contract")
-        .unwrap();
-    let solve_url = reqwest::Url::parse(server_address.as_str())
-        .unwrap()
-        .join("/submit-solution")
-        .unwrap();
-
-    // Run node
-    let db = node.db();
-    let _handle = node.run(server_address).unwrap();
-
-    // Create test blocks
-    let test_blocks_count = 4;
-    let (test_blocks, test_contracts) = test_blocks(test_blocks_count);
-
-    // Deploy contracts to server
-    for contract in &test_contracts {
-        let r = client
-            .post(url.clone())
-            .json(&sign(contract.clone()))
-            .send()
-            .await
-            .unwrap();
-        assert!(r.status().is_success(), "{}", r.text().await.unwrap());
-    }
-    tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
-    let conn = db.acquire().await.unwrap();
-    let fetched_contracts: Vec<ContentAddress> = essential_node_db::list_contracts(&conn, 0..100)
-        .unwrap()
-        .into_iter()
-        .flat_map(|(_, contracts)| {
-            contracts
-                .into_iter()
-                .map(|c| essential_hash::content_addr(&c))
-        })
-        .collect();
-    assert_eq!(fetched_contracts.len(), test_contracts.len());
-    for test_contract in test_contracts.iter() {
-        let hash = essential_hash::content_addr(test_contract);
-        assert!(fetched_contracts.contains(&hash));
-    }
-
-    // Initially, the state progress and validation progress are none
-    assert_state_progress_is_none(&conn);
-    assert_validation_progress_is_none(&conn);
-
-    // Submit test block 0's solutions to server
-    submit_solutions(&client, &solve_url, &test_blocks[0].solutions).await;
-    tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
-
-    // Check block, state and state progress
-    let conn = db.acquire().await.unwrap();
-    assert_submit_solutions_effects(&conn, vec![test_blocks[0].clone()]);
-
-    // Submit test block 1 and 2's solutions to server
-    submit_solutions(&client, &solve_url, &test_blocks[1].solutions).await;
-    tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
-    submit_solutions(&client, &solve_url, &test_blocks[2].solutions).await;
-    tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
-
-    // Check block, state and state progress
-    let conn = db.acquire().await.unwrap();
-    assert_submit_solutions_effects(&conn, vec![test_blocks[1].clone(), test_blocks[2].clone()]);
-
-    // Submit test block 3's solutions to server
-    submit_solutions(&client, &solve_url, &test_blocks[3].solutions).await;
-    tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
-
-    // Check block, state and state progress
-    let conn = db.acquire().await.unwrap();
-    assert_submit_solutions_effects(&conn, vec![test_blocks[3].clone()]);
-}
-
-fn sign(contract: Contract) -> SignedContract {
-    let secp = secp256k1::Secp256k1::new();
-    let key = secp.generate_keypair(&mut secp256k1::rand::rngs::OsRng).0;
-    essential_sign::contract::sign(contract, &key)
 }

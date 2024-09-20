@@ -1,31 +1,17 @@
 use essential_types::Block;
-use essential_types::{contract::Contract, ContentAddress};
+use essential_types::ContentAddress;
 use futures::stream::TryStreamExt;
-use futures::{Stream, TryFutureExt};
+use futures::Stream;
 use rusqlite_pool::tokio::AsyncConnectionPool;
 use tokio::sync::watch;
 use tokio::task::spawn_blocking;
 
 pub(crate) use streams::stream_blocks;
-pub(crate) use streams::stream_contracts;
 
 use crate::error::{CriticalError, InternalResult, RecoverableError};
 use crate::DataSyncError;
 
 mod streams;
-#[cfg(test)]
-mod tests;
-
-/// The progress of the contract sync.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ContractProgress {
-    /// The last L2 block number that was synced
-    /// that contained any contract deployments.
-    pub l2_block_number: u64,
-    /// The address of the last contract that was synced
-    /// from this block.
-    pub last_contract: ContentAddress,
-}
 
 /// The progress of the block sync.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -35,18 +21,6 @@ pub struct BlockProgress {
     /// The address of the last block that was synced.
     /// Used to check for forks.
     pub last_block_address: ContentAddress,
-}
-
-/// Get the last contract progress from the database.
-pub async fn get_contract_progress(
-    conn: &AsyncConnectionPool,
-) -> crate::Result<Option<ContractProgress>> {
-    let conn = conn.acquire().await?;
-    tokio::task::spawn_blocking(move || {
-        let progress = essential_node_db::get_contract_progress(&conn)?;
-        Ok(progress.map(Into::into))
-    })
-    .await?
 }
 
 /// Get the last block progress from the database.
@@ -71,78 +45,6 @@ pub async fn get_block_progress(
         Ok(Some(progress))
     })
     .await?
-}
-
-#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-/// Sync contracts from the provided stream.
-///
-/// The first contract in the stream must be the last
-/// contract that was synced unless progress is None.
-pub async fn sync_contracts<S>(
-    conn: AsyncConnectionPool,
-    progress: &Option<ContractProgress>,
-    notify: watch::Sender<()>,
-    stream: S,
-) -> InternalResult<()>
-where
-    S: Stream<Item = InternalResult<Contract>>,
-{
-    tokio::pin!(stream);
-
-    // The first contract in the stream must be the last
-    // synced contract.
-    //
-    // If there is progress, check that the last contract
-    // matches or return an error.
-    //
-    // This contract is skipped as it is already in the database.
-    if let Some(progress) = progress {
-        // Wait to get the first contract from the stream.
-        let last = stream.try_next().await?;
-
-        // Check that the contract matches the progress.
-        check_contract_fork(&last, progress)?;
-    }
-
-    // Get the `l2_block_number` for the next contract.
-    //
-    // Note this is specific to the server implementation.
-    // In the future this will be changed.
-    let mut l2_block_number = match progress {
-        Some(ContractProgress {
-            l2_block_number, ..
-        }) => l2_block_number.saturating_add(1),
-        None => 0,
-    };
-
-    stream
-        .try_for_each(move |contract| {
-            // The `l2_block_number` for this contract.
-            let this_l2_block_number = l2_block_number;
-
-            // Increment the `l2_block_number` for the next contract.
-            //
-            // Note this is specific to the server implementation.
-            // In the future this will be changed.
-            l2_block_number += 1;
-
-            // Write the contract to the database.
-            let conn = conn.clone();
-            let notify = notify.clone();
-            async move {
-                #[cfg(feature = "tracing")]
-                tracing::debug!(
-                    "Writing contract at l2 block number {} to database",
-                    this_l2_block_number
-                );
-
-                write_contract(&conn, contract, this_l2_block_number, notify.clone())
-                    .map_err(Into::into)
-                    .await
-            }
-        })
-        .await?;
-    Ok(())
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
@@ -217,34 +119,6 @@ where
     Ok(())
 }
 
-/// Write a contract and progress atomically to the database.
-async fn write_contract(
-    conn: &AsyncConnectionPool,
-    contract: Contract,
-    l2_block_number: u64,
-    notify: watch::Sender<()>,
-) -> crate::Result<()> {
-    let mut conn = conn.acquire().await?;
-    spawn_blocking::<_, rusqlite::Result<_>>(move || {
-        // Calculate the contract hash for the progress.
-        let contract_hash = essential_hash::content_addr(&contract);
-
-        let tx = conn.transaction()?;
-        essential_node_db::insert_contract(&tx, &contract, l2_block_number)?;
-        // Technically we don't currently need to store the progress.
-        // We could instead do what we do with blocks and just take the max.
-        // However, in the future it will be possible to have multiple contracts
-        // at the same `l2_block_number` and we will need this to know where we were up to.
-        essential_node_db::insert_contract_progress(&tx, l2_block_number, &contract_hash)?;
-        tx.commit()?;
-        Ok(conn)
-    })
-    .await??;
-    // Best effort to notify of new contract
-    let _ = notify.send(());
-    Ok(())
-}
-
 /// Write a block to the database.
 async fn write_block(conn: &AsyncConnectionPool, block: Block) -> crate::Result<()> {
     let mut conn = conn.acquire().await?;
@@ -261,40 +135,6 @@ async fn write_block(conn: &AsyncConnectionPool, block: Block) -> crate::Result<
         Ok(())
     })
     .await?
-}
-
-/// Check that the contract matches the last progress.
-fn check_contract_fork(
-    contract: &Option<Contract>,
-    progress: &ContractProgress,
-) -> crate::Result<()> {
-    match contract {
-        Some(contract) => {
-            let contract_hash = essential_hash::content_addr(contract);
-            if contract_hash != progress.last_contract {
-                // There was a contract but it didn't match the expected contract.
-                return Err(CriticalError::DataSyncFailed(
-                    DataSyncError::ContractMismatch(
-                        progress.l2_block_number,
-                        progress.last_contract.clone(),
-                        Some(contract_hash),
-                    ),
-                ));
-            }
-        }
-        None => {
-            // There was expected to be a contract but there was none.
-            return Err(CriticalError::DataSyncFailed(
-                DataSyncError::ContractMismatch(
-                    progress.l2_block_number,
-                    progress.last_contract.clone(),
-                    None,
-                ),
-            ));
-        }
-    }
-
-    Ok(())
 }
 
 /// Check that the block matches the last progress.
@@ -322,13 +162,4 @@ fn check_block_fork(block: &Option<Block>, progress: &BlockProgress) -> crate::R
     }
 
     Ok(())
-}
-
-impl From<(u64, ContentAddress)> for ContractProgress {
-    fn from((l2_block_number, last_contract): (u64, ContentAddress)) -> Self {
-        Self {
-            l2_block_number,
-            last_contract,
-        }
-    }
 }

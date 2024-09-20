@@ -6,19 +6,11 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     systems.url = "github:nix-systems/default";
-
-    # The essential server.
-    essential-server = {
-      url = "github:essential-contributions/essential-server";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.systems.follows = "nixpkgs";
-    };
   };
 
   outputs = inputs:
     let
       overlays = [
-        inputs.essential-server.overlays.default
         inputs.self.overlays.default
       ];
       perSystemPkgs = f:
