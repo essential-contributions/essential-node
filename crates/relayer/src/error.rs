@@ -79,9 +79,6 @@ pub(crate) enum RecoverableError {
 #[derive(Debug, Error)]
 /// An error occurred while syncing data.
 pub enum DataSyncError {
-    /// A contract mismatch was found.
-    #[error("While syncing a contract mismatch was found at: {0}. Got: {1}, expected: {}", display_address(.2))]
-    ContractMismatch(u64, ContentAddress, Option<ContentAddress>),
     /// A fork was detected while syncing blocks.
     #[error(
         "While syncing blocks a fork was detected at block number {0}. Got: {1}, expected: {}", display_address(.2)
