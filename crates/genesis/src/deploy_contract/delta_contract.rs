@@ -1,6 +1,5 @@
 use super::constraint::*;
 use super::state_slot_offset;
-use crate::utils::constraint::*;
 use essential_constraint_asm as asm;
 
 pub fn delta_contract() -> Vec<u8> {
@@ -10,20 +9,12 @@ pub fn delta_contract() -> Vec<u8> {
         jump_if(
             [
                 read_state_slot(state_slot_offset::CONTRACT_EXISTS, 0, 1, true),
-                ops![
-                    PUSH: 1,
-                    EQ,
-                    AND,
-                ],
+                vec![PUSH(1), EQ, AND],
             ]
             .concat(),
         ),
         state_slot_len(state_slot_offset::CONTRACT_EXISTS, true),
-        ops![
-            PUSH: 1,
-            EQ,
-            AND,
-        ],
+        vec![PUSH(1), EQ, AND],
     ]
     .concat();
     asm::to_bytes(r).collect()

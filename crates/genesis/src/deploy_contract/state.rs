@@ -1,5 +1,5 @@
 use super::{constraint as c, tags};
-use crate::utils::state::*;
+pub use asm::short::*;
 use essential_constraint_asm as c_asm;
 use essential_state_asm as asm;
 use essential_types::Word;
@@ -57,126 +57,67 @@ pub fn predicate_addrs_i_tag() -> Vec<asm::Op> {
 }
 
 pub fn alloc(amount: Word) -> Vec<asm::Op> {
-    ops![
-        PUSH: amount,
-        ALLOC_SLOTS,
-    ]
+    vec![PUSH(amount), SALC]
 }
 
 pub fn single_key(key_len: Word, slot_ix: Word) -> Vec<asm::Op> {
-    ops![
-        PUSH: key_len,
-        PUSH: 1,
-        PUSH: slot_ix,
-        KEY_RANGE,
-    ]
+    vec![PUSH(key_len), PUSH(1), PUSH(slot_ix), KRNG]
 }
 
 pub fn single_key_at_counter(key_len: Word) -> Vec<asm::Op> {
-    ops![
-        PUSH: key_len,
-        PUSH: 1,
-        REPEAT_COUNTER,
-        KEY_RANGE,
-    ]
+    vec![PUSH(key_len), PUSH(1), REPC, KRNG]
 }
 
 pub fn slot_size(slot_ix: Word) -> Vec<asm::Op> {
-    ops![
-        PUSH: slot_ix,
-        VALUE_LEN,
-    ]
+    vec![PUSH(slot_ix), SVLEN]
 }
 
 pub fn clear_slot(slot_ix: Word) -> Vec<asm::Op> {
-    ops![
-        PUSH: slot_ix,
-        CLEAR,
-    ]
+    vec![PUSH(slot_ix), SCLR]
 }
 
 pub fn clear_last_slot() -> Vec<asm::Op> {
-    ops![
-        LENGTH,
-        PUSH: 1,
-        SUB,
-        CLEAR,
-    ]
+    vec![SCLR, PUSH(1), SUB, SCLR]
 }
 
 pub fn store_state_slot(len: Word, slot_ix: Word) -> Vec<asm::Op> {
-    ops![
-        PUSH: len,
-        PUSH: slot_ix,
-        STORE,
-    ]
+    vec![PUSH(len), PUSH(slot_ix), SSTR]
 }
 
 pub fn store_last_state_slot(len: Word) -> Vec<asm::Op> {
-    ops![
-        PUSH: len,
-        LENGTH,
-        PUSH: 1,
-        SUB,
-        STORE,
-    ]
+    vec![PUSH(len), SCLR, PUSH(1), SUB, SSTR]
 }
 
 pub fn extend_storage_mem(len: Word, slot_ix: Word) -> Vec<asm::Op> {
-    ops![
-        PUSH: len,
-        PUSH: slot_ix,
-        EXTEND,
-    ]
+    vec![PUSH(len), PUSH(slot_ix), SEXT]
 }
 
 pub fn value_len_state_slot(slot_ix: Word) -> Vec<asm::Op> {
-    ops![
-        PUSH: slot_ix,
-        VALUE_LEN,
-    ]
+    vec![PUSH(slot_ix), SVLEN]
 }
 
 pub fn load_state_slot(slot_ix: Word, value_ix: Word, len: Word) -> Vec<asm::Op> {
-    ops![
-        PUSH: slot_ix,
-        PUSH: value_ix,
-        PUSH: len,
-        LOAD,
-    ]
+    vec![PUSH(slot_ix), PUSH(value_ix), PUSH(len), SLD]
 }
 
 pub fn load_all_state_slot(slot_ix: Word) -> Vec<asm::Op> {
-    ops![
-        PUSH: slot_ix,
-        PUSH: 0,
-        PUSH: slot_ix,
-        VALUE_LEN,
-        LOAD,
-    ]
+    vec![PUSH(slot_ix), PUSH(0), PUSH(slot_ix), SVLEN, SLD]
 }
 
 pub fn load_last_state_slot(value_ix: Word, len: Word) -> Vec<asm::Op> {
-    ops![
-        LENGTH,
-        PUSH: 1,
-        SUB,
-        PUSH: value_ix,
-        PUSH: len,
-        LOAD,
-    ]
+    vec![SCLR, PUSH(1), SUB, PUSH(value_ix), PUSH(len), SLD]
 }
 
 pub fn match_asm_tag(tag_asm: Vec<asm::Op>, tag: Word, body: Vec<asm::Op>) -> Vec<asm::Op> {
     [
         tag_asm,
-        ops![
-            PUSH: tag,
+        vec![
+            PUSH(tag),
             EQ,
             NOT,
-            PUSH: (body.len() + 1) as Word,
+            PUSH((body.len() + 1) as Word),
             SWAP,
-            JUMP_FORWARD_IF,
+            JMPIF,
         ],
         body,
     ]
@@ -186,13 +127,13 @@ pub fn match_asm_tag(tag_asm: Vec<asm::Op>, tag: Word, body: Vec<asm::Op>) -> Ve
 pub fn match_tag(tag: Word, body: Vec<asm::Op>) -> Vec<asm::Op> {
     [
         read_predicate_tag(),
-        ops![
-            PUSH: tag,
+        vec![
+            PUSH(tag),
             EQ,
             NOT,
-            PUSH: (body.len() + 1) as Word,
+            PUSH((body.len() + 1) as Word),
             SWAP,
-            JUMP_FORWARD_IF,
+            JMPIF,
         ],
         body,
     ]
@@ -202,16 +143,7 @@ pub fn match_tag(tag: Word, body: Vec<asm::Op>) -> Vec<asm::Op> {
 pub fn panic_on_no_match_asm_tag(tag: Vec<asm::Op>) -> Vec<asm::Op> {
     [
         tag,
-        ops![
-            DUP,
-            PUSH: tags::NUM_TAGS,
-            GTE,
-            SWAP,
-            PUSH: 0,
-            LT,
-            OR,
-            PANIC_IF,
-        ],
+        vec![DUP, PUSH(tags::NUM_TAGS), GTE, SWAP, PUSH(0), LT, OR, PNCIF],
     ]
     .concat()
 }
@@ -227,11 +159,7 @@ pub fn debug() -> Vec<asm::Op> {
 pub fn jump_if_cond(cond: Vec<asm::Op>, body: Vec<asm::Op>) -> Vec<asm::Op> {
     [
         cond,
-        ops![
-            PUSH: (body.len() + 1) as Word,
-            SWAP,
-            JUMP_FORWARD_IF,
-        ],
+        vec![PUSH((body.len() + 1) as Word), SWAP, JMPIF],
         body,
     ]
     .concat()

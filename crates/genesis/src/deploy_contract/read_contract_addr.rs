@@ -1,35 +1,23 @@
 use super::state::*;
 use super::state_mem_offset;
-use super::state_slot_offset;
 use super::tags;
-use crate::{deploy_contract::storage_index, utils::state::*};
+use crate::deploy_contract::storage_index;
 use essential_state_asm as asm;
 
 fn new_tag_body() -> Vec<asm::Op> {
     [
         jump_if_cond(
-            ops![
-                PUSH: 1,
-                NUM_SLOTS,
-                PUSH: 3,
-                EQ,
-            ],
+            vec![PUSH(1), NSLT, PUSH(3), EQ],
             [
                 read_predicate_words(),
                 read_predicate_words_len(),
                 read_predicate_padding_len(),
-                ops![SHA_256],
+                vec![SHA2],
             ]
             .concat(),
         ),
         jump_if_cond(
-            ops![
-                PUSH: 1,
-                NUM_SLOTS,
-                PUSH: 3,
-                EQ,
-                NOT,
-            ],
+            vec![PUSH(1), NSLT, PUSH(3), EQ, NOT],
             predicate_addrs_i_address(),
         ),
     ]
@@ -37,30 +25,25 @@ fn new_tag_body() -> Vec<asm::Op> {
 }
 
 fn load_last_addr() -> Vec<asm::Op> {
-    ops![
-        PUSH: state_mem_offset::PREDICATE_ADDRS,
-        REPEAT_COUNTER,
-        PUSH: 5,
+    vec![
+        PUSH(state_mem_offset::PREDICATE_ADDRS),
+        REPC,
+        PUSH(5),
         MUL,
-        PUSH: 1,
+        PUSH(1),
         ADD,
-        PUSH: 4,
-        LOAD,
+        PUSH(4),
+        SLD,
     ]
 }
 
 pub fn read_contract_addr() -> Vec<u8> {
     let r = [
-        ops![
-            PUSH: storage_index::CONTRACTS,
-        ],
+        vec![PUSH(storage_index::CONTRACTS)],
         alloc(3),
         // for i in 0..predicates_size
         read_predicate_size(),
-        ops![
-            PUSH: 1,
-            REPEAT,
-        ],
+        vec![PUSH(1), REP],
         read_predicate_tag(),
         // match tag
         // NEW_TAG
@@ -76,21 +59,14 @@ pub fn read_contract_addr() -> Vec<u8> {
         load_last_addr(),
         //
         // loop end
-        ops![REPEAT_END,],
+        vec![REPE],
         // salt
         //
         read_salt(),
         //
         // sha256([predicate_hashes..., salt])
         read_predicate_size(),
-        ops![
-            PUSH: 4,
-            MUL,
-            PUSH: 4,
-            ADD,
-            PUSH: 0,
-            SHA_256,
-        ],
+        vec![PUSH(4), MUL, PUSH(4), ADD, PUSH(0), SHA2],
         // Write contract_addr as set to storage
         store_state_slot(4, state_mem_offset::CONTRACT_ADDR),
         load_state_slot(state_mem_offset::CONTRACT_ADDR, 0, 4),
