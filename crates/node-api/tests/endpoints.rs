@@ -277,7 +277,7 @@ async fn test_subscribe_blocks() {
     let blocks2 = blocks.clone();
     let state = node_api::State {
         conn_pool: db.clone(),
-        new_block: Some(block_rx.to_inner()),
+        new_block: Some(block_rx),
     };
     let server = with_test_server(state, |port| async move {
         let response = reqwest_get(port, "/subscribe-blocks?start_block=0").await;

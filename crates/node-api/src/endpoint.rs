@@ -8,7 +8,7 @@ use axum::{
     },
     Json,
 };
-use essential_node::db;
+use essential_node::{db, BlockRx};
 use essential_types::{
     contract::Contract, convert::word_from_bytes, predicate::Predicate, Block, ContentAddress,
     Value, Word,
@@ -56,7 +56,7 @@ pub enum SubscriptionError {
 }
 
 /// Provides an [`db::AwaitNewBlock`] implementation for the API.
-struct AwaitNewBlock(Option<tokio::sync::watch::Receiver<()>>);
+struct AwaitNewBlock(Option<BlockRx>);
 
 impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {

@@ -128,7 +128,7 @@ async fn run(args: Args) -> anyhow::Result<()> {
 
     // Run the API.
     let api_state = node_api::State {
-        new_block: Some(block_rx.to_inner()),
+        new_block: Some(block_rx),
         conn_pool: db.clone(),
     };
     let router = node_api::router(api_state);

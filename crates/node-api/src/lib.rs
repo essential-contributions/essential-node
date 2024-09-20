@@ -5,7 +5,7 @@
 //! To serve the node API, construct a [`router`], a [`TcpListener`] and call [`serve`].
 
 use axum::{routing::get, Router};
-use essential_node::db;
+use essential_node::{db, BlockRx};
 use std::{io, net::SocketAddr};
 use thiserror::Error;
 use tokio::{
@@ -25,7 +25,7 @@ pub struct State {
     ///
     /// In the case that this is `None`, subscription streams will close after
     /// the last available item in the DB.
-    pub new_block: Option<tokio::sync::watch::Receiver<()>>,
+    pub new_block: Option<BlockRx>,
 }
 
 /// An error occurred while attempting to serve a new connection.

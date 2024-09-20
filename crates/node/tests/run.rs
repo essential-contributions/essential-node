@@ -137,7 +137,7 @@ async fn test_node() -> (NodeServer, BlockTx) {
     let source_block_rx = source_block_tx.new_listener();
     let state = essential_node_api::State {
         conn_pool: db,
-        new_block: Some(source_block_rx.to_inner()),
+        new_block: Some(source_block_rx),
     };
     let node_server = setup_node_as_server(state).await;
 

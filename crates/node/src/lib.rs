@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 //! The Essential node implementation.
 //!
 //! The primary API for accessing blocks and contracts is provided via the
@@ -9,11 +10,10 @@
 //! - Performs validation.
 
 use db::ConnectionPool;
-use error::CriticalError;
+use error::{ConnPoolNewError, CriticalError};
 use essential_relayer::Relayer;
 pub use handles::node::Handle;
 use state_derivation::state_derivation_stream;
-use thiserror::Error;
 use validation::validation_stream;
 
 pub mod db;
@@ -21,18 +21,22 @@ mod error;
 mod handles;
 mod state_derivation;
 #[cfg(any(feature = "test-utils", test))]
+#[allow(missing_docs)]
 pub mod test_utils;
 mod validate;
 mod validation;
 
-/// Connection pool creation failure.
-#[derive(Debug, Error)]
-#[error("Connection pool creation failed: {0}")]
-pub struct NewError(#[from] pub rusqlite::Error);
-
+/// Wrapper around `watch::Sender` to notify of new blocks.
+///
+/// This is used by `essential-builder` to notify `essential-relayer`
+/// and by `essential-relayer` to notify [`state_derivation`] and [`validation`] streams.
 #[derive(Default)]
 pub struct BlockTx(tokio::sync::watch::Sender<()>);
 
+/// Wrapper around `watch::Receiver` to listen to new blocks.
+///
+/// This is used by [`db::subscribe_blocks`] stream.
+#[derive(Clone)]
 pub struct BlockRx(tokio::sync::watch::Receiver<()>);
 
 /// Create a new `ConnectionPool` from the given configuration.
@@ -54,7 +58,7 @@ pub struct BlockRx(tokio::sync::watch::Receiver<()>);
 /// # }
 /// ```
 
-pub fn db(conf: &db::Config) -> Result<ConnectionPool, NewError> {
+pub fn db(conf: &db::Config) -> Result<ConnectionPool, ConnPoolNewError> {
     // Initialize the connection pool.
     let db = db::ConnectionPool::new(conf)?;
 
@@ -91,25 +95,28 @@ pub fn run(
 }
 
 impl BlockTx {
+    /// Create a new [`BlockTx`] to notify listeners of new blocks.
     pub fn new() -> Self {
         let (block_tx, _block_rx) = tokio::sync::watch::channel(());
         Self(block_tx)
     }
 
-    /// Best effort notification of blocks.
-    /// Ignores `send` error.
+    /// Notify listeners that a new block has been received.
+    ///
+    /// Note this is best effort and will still send even if there are currently no listeners.
     pub fn notify(&self) {
         let _ = self.0.send(());
     }
 
-    /// Receiver end of this block notifier.
+    /// Create a new [`BlockRx`] to listen for new blocks.
     pub fn new_listener(&self) -> BlockRx {
         BlockRx(self.0.subscribe())
     }
 }
 
 impl BlockRx {
-    pub fn to_inner(self) -> tokio::sync::watch::Receiver<()> {
-        self.0
+    /// Waits for a change notification.
+    pub async fn changed(&mut self) -> Result<(), tokio::sync::watch::error::RecvError> {
+        self.0.changed().await
     }
 }
