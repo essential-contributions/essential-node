@@ -3,7 +3,7 @@ use crate::test_utils::{
     self, assert_multiple_block_mutations, assert_state_progress_is_none,
     assert_state_progress_is_some, test_conn_pool,
 };
-use essential_node_db::{create_tables, insert_block, insert_contract};
+use essential_node_db::{insert_block, insert_contract};
 use essential_types::{contract::Contract, Block};
 use rusqlite::Connection;
 use std::time::Duration;
@@ -12,12 +12,12 @@ use std::time::Duration;
 fn insert_block_and_send_notification(
     conn: &mut Connection,
     block: &Block,
-    state_rx: &tokio::sync::watch::Sender<()>,
+    state_tx: &tokio::sync::watch::Sender<()>,
 ) {
     let tx = conn.transaction().unwrap();
     insert_block(&tx, block).unwrap();
     tx.commit().unwrap();
-    state_rx.send(()).unwrap();
+    state_tx.send(()).unwrap();
 }
 
 fn insert_contracts_to_db(conn: &mut Connection, contracts: Vec<Contract>) {
@@ -35,10 +35,6 @@ async fn can_derive_state() {
 
     let conn_pool = test_conn_pool();
     let mut conn = conn_pool.acquire().await.unwrap();
-
-    let tx = conn.transaction().unwrap();
-    create_tables(&tx).unwrap();
-    tx.commit().unwrap();
 
     let test_blocks_count = 4;
     let (test_blocks, contracts) = test_utils::test_blocks(test_blocks_count);

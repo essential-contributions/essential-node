@@ -5,7 +5,6 @@ pub struct Handle {
     relayer: essential_relayer::Handle,
     state: crate::handles::state::Handle<CriticalError>,
     validation: crate::handles::validation::Handle<CriticalError>,
-    new_block: tokio::sync::watch::Receiver<()>,
 }
 
 impl Handle {
@@ -14,13 +13,11 @@ impl Handle {
         relayer: essential_relayer::Handle,
         state: crate::handles::state::Handle<CriticalError>,
         validation: crate::handles::validation::Handle<CriticalError>,
-        new_block: tokio::sync::watch::Receiver<()>,
     ) -> Self {
         Self {
             relayer,
             state,
             validation,
-            new_block,
         }
     }
 
@@ -38,11 +35,6 @@ impl Handle {
         relayer.close().await?;
         validation.close().await?;
         Ok(())
-    }
-
-    /// Returns a new-block notification receiver.
-    pub fn new_block(&self) -> tokio::sync::watch::Receiver<()> {
-        self.new_block.clone()
     }
 
     /// Join the relayer, state derivation and validation streams.

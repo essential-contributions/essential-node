@@ -1,6 +1,7 @@
 use essential_node::{
-    db::{Config as DbConfig, ConnectionPool},
-    Node,
+    self as node,
+    db::{Config, ConnectionPool, Source},
+    BlockTx,
 };
 use essential_relayer::{DataSyncError, Relayer};
 use essential_types::{
@@ -26,7 +27,7 @@ struct NodeServer {
 async fn test_sync() {
     let relayer_conn = new_conn_pool();
 
-    let (node_server, source_block_notify) = test_node().await;
+    let (node_server, block_tx) = test_node().await;
     let source_db = node_server.conn_pool.clone();
 
     let mut test_conn = relayer_conn.acquire().await.unwrap();
@@ -37,7 +38,7 @@ async fn test_sync() {
     let (solutions, blocks) = test_structs();
 
     source_db.insert_block(blocks[0].clone()).await.unwrap();
-    source_block_notify.send(()).unwrap();
+    block_tx.notify();
 
     let relayer = Relayer::new(node_server.address.as_str()).unwrap();
     let (block_notify, mut new_block) = tokio::sync::watch::channel(());
@@ -51,7 +52,7 @@ async fn test_sync() {
     assert_eq!(result[0].solutions[0], solutions[0]);
 
     source_db.insert_block(blocks[1].clone()).await.unwrap();
-    source_block_notify.send(()).unwrap();
+    block_tx.notify();
 
     new_block.changed().await.unwrap();
     let result = essential_node_db::list_blocks(&test_conn, 0..100).unwrap();
@@ -64,7 +65,7 @@ async fn test_sync() {
 
     for block in &blocks[2..] {
         source_db.insert_block(block.clone()).await.unwrap();
-        source_block_notify.clone().send(()).unwrap();
+        block_tx.notify();
     }
     let relayer = Relayer::new(node_server.address.as_str()).unwrap();
     let (block_notify, _new_block) = tokio::sync::watch::channel(());
@@ -171,23 +172,21 @@ async fn setup_node_as_server(state: essential_node_api::State) -> NodeServer {
 
 // Setup node as server with a unique database of default configuration.
 // Returns server and block notify channel.
-async fn test_node() -> (NodeServer, tokio::sync::watch::Sender<()>) {
-    let node_conf = essential_node::Config {
-        db: DbConfig {
-            conn_limit: essential_node::db::Config::default_conn_limit(),
-            source: essential_node::db::Source::Memory(uuid::Uuid::new_v4().to_string()),
-        },
+async fn test_node() -> (NodeServer, BlockTx) {
+    let conf = Config {
+        source: Source::Memory(uuid::Uuid::new_v4().into()),
+        ..Default::default()
     };
-    let node = Node::new(&node_conf).unwrap();
-    let source_db = node.db();
-    let (source_block_notify, node_new_block) = tokio::sync::watch::channel(());
+    let db = node::db(&conf).unwrap();
+    let source_block_tx = BlockTx::new();
+    let source_block_rx = source_block_tx.new_listener();
     let state = essential_node_api::State {
-        conn_pool: source_db.clone(),
-        new_block: Some(node_new_block.clone()),
+        conn_pool: db,
+        new_block: Some(source_block_rx),
     };
-    let node_server = setup_node_as_server(state.clone()).await;
+    let node_server = setup_node_as_server(state).await;
 
-    (node_server, source_block_notify)
+    (node_server, source_block_tx)
 }
 
 // Tear down the server by:

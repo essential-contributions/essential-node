@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::db::ConnectionPool;
+use crate::db::{Config, ConnectionPool, Source};
 use essential_node_db::{get_state_progress, get_validation_progress, query_state};
 use essential_types::{
     contract::Contract,
@@ -12,14 +12,15 @@ use rusqlite::Connection;
 use std::time::Duration;
 
 pub fn test_conn_pool() -> ConnectionPool {
-    let config = test_db_conf();
-    ConnectionPool::new(&config.db).unwrap()
+    let conf = test_db_conf();
+    crate::db(&conf).unwrap()
 }
 
-pub fn test_db_conf() -> crate::Config {
-    let mut conf = crate::Config::default();
-    conf.db.source = crate::db::Source::Memory(uuid::Uuid::new_v4().into());
-    conf
+pub fn test_db_conf() -> Config {
+    Config {
+        source: Source::Memory(uuid::Uuid::new_v4().into()),
+        ..Default::default()
+    }
 }
 
 pub fn test_blocks(n: u64) -> (Vec<Block>, Vec<Contract>) {

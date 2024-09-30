@@ -4,6 +4,10 @@ use essential_types::{ContentAddress, PredicateAddress};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[error("Connection pool creation failed: {0}")]
+pub struct ConnPoolNewError(#[from] pub rusqlite::Error);
+
+#[derive(Debug, Error)]
 pub(super) enum InternalError {
     #[error(transparent)]
     Recoverable(#[from] RecoverableError),

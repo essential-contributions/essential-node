@@ -2,13 +2,14 @@
 
 use essential_hash::content_addr;
 use essential_node::{
-    db::{Config as DbConfig, ConnectionPool},
+    self as node,
+    db::{Config, ConnectionPool, Source},
     test_utils::{
         assert_multiple_block_mutations, assert_state_progress_is_none,
         assert_state_progress_is_some, assert_validation_progress_is_none,
         assert_validation_progress_is_some, test_blocks, test_db_conf,
     },
-    Node,
+    BlockTx,
 };
 use essential_types::Block;
 use rusqlite::Connection;
@@ -23,15 +24,15 @@ struct NodeServer {
 
 #[tokio::test]
 async fn test_run() {
-    let (node_server, source_block_notify) = test_node().await;
+    let (node_server, source_block_tx) = test_node().await;
 
     // Setup node
     let conf = test_db_conf();
-    let node = Node::new(&conf).unwrap();
+    let db = node::db(&conf).unwrap();
 
     // Run node
-    let db = node.db();
-    let _handle = node.run(node_server.address).unwrap();
+    let block_tx = BlockTx::new();
+    let _handle = node::run(db.clone(), block_tx, node_server.address).unwrap();
 
     // Create test blocks
     let test_blocks_count = 4;
@@ -55,7 +56,7 @@ async fn test_run() {
         .insert_block(test_blocks[0].clone().into())
         .await
         .unwrap();
-    source_block_notify.clone().send(()).unwrap();
+    source_block_tx.notify();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Check block, state and state progress
@@ -68,13 +69,13 @@ async fn test_run() {
         .insert_block(test_blocks[1].clone().into())
         .await
         .unwrap();
-    source_block_notify.clone().send(()).unwrap();
+    source_block_tx.notify();
     node_server
         .conn_pool
         .insert_block(test_blocks[2].clone().into())
         .await
         .unwrap();
-    source_block_notify.clone().send(()).unwrap();
+    source_block_tx.notify();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Check block, state and state progress
@@ -87,7 +88,7 @@ async fn test_run() {
         .insert_block(test_blocks[3].clone().into())
         .await
         .unwrap();
-    source_block_notify.clone().send(()).unwrap();
+    source_block_tx.notify();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Check block, state and state progress
@@ -128,23 +129,21 @@ async fn setup_node_as_server(state: essential_node_api::State) -> NodeServer {
 
 // Setup node as server with a unique database of default configuration.
 // Returns server and block notify channel.
-async fn test_node() -> (NodeServer, tokio::sync::watch::Sender<()>) {
-    let node_conf = essential_node::Config {
-        db: DbConfig {
-            conn_limit: essential_node::db::Config::default_conn_limit(),
-            source: essential_node::db::Source::Memory(uuid::Uuid::new_v4().to_string()),
-        },
+async fn test_node() -> (NodeServer, BlockTx) {
+    let conf = Config {
+        source: Source::Memory(uuid::Uuid::new_v4().into()),
+        ..Default::default()
     };
-    let node = Node::new(&node_conf).unwrap();
-    let source_db = node.db();
-    let (source_block_notify, node_new_block) = tokio::sync::watch::channel(());
+    let db = node::db(&conf).unwrap();
+    let source_block_tx = BlockTx::new();
+    let source_block_rx = source_block_tx.new_listener();
     let state = essential_node_api::State {
-        conn_pool: source_db.clone(),
-        new_block: Some(node_new_block.clone()),
+        conn_pool: db,
+        new_block: Some(source_block_rx),
     };
-    let node_server = setup_node_as_server(state.clone()).await;
+    let node_server = setup_node_as_server(state).await;
 
-    (node_server, source_block_notify)
+    (node_server, source_block_tx)
 }
 
 // Fetch blocks from node database and assert that they contain the same solutions as expected.

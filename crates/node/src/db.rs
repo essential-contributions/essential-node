@@ -65,9 +65,13 @@ pub type AcquireThenRusqliteError = AcquireThenError<rusqlite::Error>;
 /// An `acquire_then` error whose function returns a result with a query error.
 pub type AcquireThenQueryError = AcquireThenError<db::QueryError>;
 
+/// One or more connections failed to close.
+#[derive(Debug, Error)]
+pub struct ConnectionCloseErrors(pub Vec<(rusqlite::Connection, rusqlite::Error)>);
+
 impl ConnectionPool {
     /// Create the connection pool from the given configuration.
-    pub(crate) fn new(conf: &Config) -> rusqlite::Result<Self> {
+    pub fn new(conf: &Config) -> rusqlite::Result<Self> {
         Ok(Self(new_conn_pool(conf)?))
     }
 
@@ -86,6 +90,16 @@ impl ConnectionPool {
     /// the node has been closed.
     pub fn try_acquire(&self) -> Result<ConnectionHandle, TryAcquireError> {
         self.0.try_acquire().map(ConnectionHandle)
+    }
+
+    /// Close a connection pool, returning a `ConnectionCloseErrors` in the case of any errors.
+    pub fn close(&self) -> Result<(), ConnectionCloseErrors> {
+        let res = self.0.close();
+        let errs: Vec<_> = res.into_iter().filter_map(Result::err).collect();
+        if !errs.is_empty() {
+            return Err(ConnectionCloseErrors(errs));
+        }
+        Ok(())
     }
 }
 
@@ -250,6 +264,11 @@ impl ConnectionPool {
 }
 
 impl Config {
+    /// Config with specified source and connection limit.
+    pub fn new(source: Source, conn_limit: usize) -> Self {
+        Self { source, conn_limit }
+    }
+
     /// The default connection limit.
     ///
     /// This default uses the number of available CPUs as a heuristic for a
@@ -306,6 +325,16 @@ impl Default for Config {
             conn_limit: Self::default_conn_limit(),
             source: Source::default(),
         }
+    }
+}
+
+impl core::fmt::Display for ConnectionCloseErrors {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        writeln!(f, "failed to close one or more connections:")?;
+        for (ix, (_conn, err)) in self.0.iter().enumerate() {
+            writeln!(f, "  {ix}: {err}")?;
+        }
+        Ok(())
     }
 }
 
