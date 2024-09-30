@@ -130,8 +130,10 @@ async fn setup_node_as_server(state: essential_node_api::State) -> NodeServer {
 // Setup node as server with a unique database of default configuration.
 // Returns server and block notify channel.
 async fn test_node() -> (NodeServer, BlockTx) {
-    let mut conf = Config::default();
-    conf.source = Source::Memory(uuid::Uuid::new_v4().into());
+    let conf = Config {
+        source: Source::Memory(uuid::Uuid::new_v4().into()),
+        ..Default::default()
+    };
     let db = node::db(&conf).unwrap();
     let source_block_tx = BlockTx::new();
     let source_block_rx = source_block_tx.new_listener();

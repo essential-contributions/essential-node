@@ -17,9 +17,10 @@ pub fn test_conn_pool() -> ConnectionPool {
 }
 
 pub fn test_db_conf() -> Config {
-    let mut conf = Config::default();
-    conf.source = Source::Memory(uuid::Uuid::new_v4().into());
-    conf
+    Config {
+        source: Source::Memory(uuid::Uuid::new_v4().into()),
+        ..Default::default()
+    }
 }
 
 pub fn test_blocks(n: u64) -> (Vec<Block>, Vec<Contract>) {

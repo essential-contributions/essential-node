@@ -19,8 +19,10 @@ pub fn init_tracing_subscriber() {
 }
 
 pub fn test_conn_pool() -> ConnectionPool {
-    let mut conf = Config::default();
-    conf.source = Source::Memory(uuid::Uuid::new_v4().into());
+    let conf = Config {
+        source: Source::Memory(uuid::Uuid::new_v4().into()),
+        ..Default::default()
+    };
     node::db(&conf).unwrap()
 }
 
