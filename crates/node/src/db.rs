@@ -31,9 +31,9 @@ pub struct ConnectionHandle(AsyncConnectionHandle);
 #[derive(Clone, Debug)]
 pub struct Config {
     /// The number of simultaneous connections to the database to maintain.
-    conn_limit: usize,
+    pub conn_limit: usize,
     /// How to source the node's database.
-    source: Source,
+    pub source: Source,
 }
 
 /// The source of the node's database.
@@ -277,18 +277,6 @@ impl Config {
     pub fn default_conn_limit() -> usize {
         // TODO: Unsure if wasm-compatible? May want a feature for this?
         num_cpus::get().saturating_mul(4)
-    }
-
-    /// Config with specified source.
-    pub fn with_source(mut self, source: Source) -> Self {
-        self.source = source;
-        self
-    }
-
-    /// Config with specified connection limit.
-    pub fn with_conn_limit(mut self, new_conn_limit: usize) -> Self {
-        self.conn_limit = new_conn_limit;
-        self
     }
 }
 

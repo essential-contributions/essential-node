@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::db::ConnectionPool;
+use crate::db::{Config, ConnectionPool, Source};
 use essential_node_db::{get_state_progress, get_validation_progress, query_state};
 use essential_types::{
     contract::Contract,
@@ -16,8 +16,10 @@ pub fn test_conn_pool() -> ConnectionPool {
     crate::db(&conf).unwrap()
 }
 
-pub fn test_db_conf() -> crate::db::Config {
-    crate::db::Config::default().with_source(crate::db::Source::Memory(uuid::Uuid::new_v4().into()))
+pub fn test_db_conf() -> Config {
+    let mut conf = Config::default();
+    conf.source = Source::Memory(uuid::Uuid::new_v4().into());
+    conf
 }
 
 pub fn test_blocks(n: u64) -> (Vec<Block>, Vec<Contract>) {

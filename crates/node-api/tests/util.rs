@@ -1,4 +1,7 @@
-use essential_node::{self as node, db::ConnectionPool};
+use essential_node::{
+    self as node,
+    db::{Config, ConnectionPool, Source},
+};
 use essential_node_api as node_api;
 use std::future::Future;
 
@@ -16,8 +19,8 @@ pub fn init_tracing_subscriber() {
 }
 
 pub fn test_conn_pool() -> ConnectionPool {
-    let conf = node::db::Config::default()
-        .with_source(node::db::Source::Memory(uuid::Uuid::new_v4().into()));
+    let mut conf = Config::default();
+    conf.source = Source::Memory(uuid::Uuid::new_v4().into());
     node::db(&conf).unwrap()
 }
 
