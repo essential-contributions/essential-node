@@ -1,8 +1,8 @@
 //! Basic tests for testing insertion behaviour.
 
 use essential_hash::content_addr;
-use essential_node_db::{self as node_db};
-use essential_types::{predicate::Predicate, ContentAddress, Hash};
+use essential_node_db::{self as node_db, decode};
+use essential_types::{predicate::Predicate, ContentAddress, Hash, Value};
 use rusqlite::Connection;
 use std::time::Duration;
 use util::test_blocks;
@@ -39,6 +39,7 @@ fn test_insert_block() {
 
     // Verify that the solutions were inserted correctly
     for solution in &block.solutions {
+        // Verify solution were inserted
         let solution_address = &content_addr(solution);
         let solution_blob = node_db::encode(solution);
         let query = "SELECT solution FROM solution WHERE content_hash = ?";
@@ -47,6 +48,56 @@ fn test_insert_block() {
         let row = rows.next().unwrap().unwrap();
         let solution_data: Vec<u8> = row.get(0).unwrap();
         assert_eq!(solution_data, solution_blob);
+
+        // Query dec vars
+        let query = "SELECT dec_var.data_index, dec_var.dec_var_index, dec_var.value 
+        FROM dec_var JOIN solution ON dec_var.solution_id = solution.id 
+        WHERE solution.content_hash = ?";
+        let mut stmt = conn.prepare(query).unwrap();
+        let mut dec_var_result = stmt
+            .query_map([solution_address.0], |row| {
+                Ok((
+                    row.get::<_, usize>("data_index")?,
+                    row.get::<_, usize>("dec_var_index")?,
+                    row.get::<_, Vec<u8>>("value")?,
+                ))
+            })
+            .unwrap();
+
+        // Query pub vars
+        let query = "SELECT pub_var.data_index, pub_var.key, pub_var.value 
+        FROM pub_var JOIN solution ON pub_var.solution_id = solution.id 
+        WHERE solution.content_hash = ?";
+        let mut stmt = conn.prepare(query).unwrap();
+        let mut pub_var_result = stmt
+            .query_map([solution_address.0], |row| {
+                Ok((
+                    row.get::<_, usize>("data_index")?,
+                    row.get::<_, Vec<u8>>("key")?,
+                    row.get::<_, Vec<u8>>("value")?,
+                ))
+            })
+            .unwrap();
+
+        for (di, data) in solution.data.iter().enumerate() {
+            // Verify dec vars were inserted correctly
+            for (dvi, dec_var) in data.decision_variables.iter().enumerate() {
+                let (data_index, index, value_blob) = dec_var_result.next().unwrap().unwrap();
+                let value: Value = decode(&value_blob).unwrap();
+                assert_eq!(data_index, di);
+                assert_eq!(index, dvi);
+                assert_eq!(value, *dec_var);
+            }
+            // Verify pub vars were inserted correctly
+            for pub_var in &data.transient_data {
+                let (data_index, key_blob, value_blob) = pub_var_result.next().unwrap().unwrap();
+                let key: Value = decode(&key_blob).unwrap();
+                let value: Value = decode(&value_blob).unwrap();
+                assert_eq!(data_index, di);
+                assert_eq!(pub_var.key, key);
+                assert_eq!(pub_var.value, value);
+            }
+        }
     }
 }
 

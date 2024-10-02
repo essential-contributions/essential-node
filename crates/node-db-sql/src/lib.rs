@@ -29,6 +29,7 @@ pub mod create {
     decl_const_sql_str!(FINALIZED_BLOCK, "create/finalized_block.sql");
     decl_const_sql_str!(MUTATION, "create/mutation.sql");
     decl_const_sql_str!(PREDICATE, "create/predicate.sql");
+    decl_const_sql_str!(PUB_VAR, "create/pub_var.sql");
     decl_const_sql_str!(SOLUTION, "create/solution.sql");
     decl_const_sql_str!(STATE, "create/state.sql");
     decl_const_sql_str!(STATE_PROGRESS, "create/state_progress.sql");
@@ -40,13 +41,14 @@ pub mod insert {
     decl_const_sql_str!(BLOCK, "insert/block.sql");
     decl_const_sql_str!(BLOCK_SOLUTION, "insert/block_solution.sql");
     decl_const_sql_str!(CONTRACT, "insert/contract.sql");
-    decl_const_sql_str!(DEC_VAR, "insert/dec_var.sql");
     decl_const_sql_str!(CONTRACT_PREDICATE, "insert/contract_predicate.sql");
     decl_const_sql_str!(CONTRACT_PROGRESS, "insert/contract_progress.sql");
+    decl_const_sql_str!(DEC_VAR, "insert/dec_var.sql");
     decl_const_sql_str!(FAILED_BLOCK, "insert/failed_block.sql");
     decl_const_sql_str!(FINALIZE_BLOCK, "insert/finalize_block.sql");
     decl_const_sql_str!(MUTATION, "insert/mutation.sql");
     decl_const_sql_str!(PREDICATE, "insert/predicate.sql");
+    decl_const_sql_str!(PUB_VAR, "insert/pub_var.sql");
     decl_const_sql_str!(SOLUTION, "insert/solution.sql");
     decl_const_sql_str!(STATE_PROGRESS, "insert/state_progress.sql");
     decl_const_sql_str!(VALIDATION_PROGRESS, "insert/validation_progress.sql");
@@ -118,6 +120,7 @@ pub mod table {
     pub const FINALIZED_BLOCK: Table = Table::new("finalized_block", create::FINALIZED_BLOCK);
     pub const MUTATION: Table = Table::new("mutation", create::MUTATION);
     pub const PREDICATE: Table = Table::new("predicate", create::PREDICATE);
+    pub const PUB_VAR: Table = Table::new("pub_var", create::PUB_VAR);
     pub const SOLUTION: Table = Table::new("solution", create::SOLUTION);
     pub const STATE: Table = Table::new("state", create::STATE);
     pub const STATE_PROGRESS: Table = Table::new("state_progress", create::STATE_PROGRESS);
@@ -136,6 +139,7 @@ pub mod table {
         FINALIZED_BLOCK,
         MUTATION,
         PREDICATE,
+        PUB_VAR,
         SOLUTION,
         STATE,
         STATE_PROGRESS,
