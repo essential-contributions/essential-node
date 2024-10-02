@@ -1,10 +1,8 @@
 INSERT
-    OR IGNORE INTO mutation (
+    OR IGNORE INTO dec_var (
         solution_id,
         data_index,
-        mutation_index,
-        contract_ca,
-        key,
+        dec_var_index,
         value
     )
 VALUES
@@ -18,5 +16,5 @@ VALUES
                 content_hash = :solution_hash
             LIMIT
                 1
-        ), :data_index, :mutation_index, :contract_ca, :key, :value
+        ), :data_index, :dec_var_index, :value
     );

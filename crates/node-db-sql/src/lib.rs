@@ -24,6 +24,7 @@ pub mod create {
     decl_const_sql_str!(CONTRACT_PREDICATE, "create/contract_predicate.sql");
     decl_const_sql_str!(CONTRACT_PROGRESS, "create/contract_progress.sql");
     decl_const_sql_str!(CONTRACT, "create/contract.sql");
+    decl_const_sql_str!(DEC_VAR, "create/dec_var.sql");
     decl_const_sql_str!(FAILED_BLOCK, "create/failed_block.sql");
     decl_const_sql_str!(FINALIZED_BLOCK, "create/finalized_block.sql");
     decl_const_sql_str!(MUTATION, "create/mutation.sql");
@@ -39,6 +40,7 @@ pub mod insert {
     decl_const_sql_str!(BLOCK, "insert/block.sql");
     decl_const_sql_str!(BLOCK_SOLUTION, "insert/block_solution.sql");
     decl_const_sql_str!(CONTRACT, "insert/contract.sql");
+    decl_const_sql_str!(DEC_VAR, "insert/dec_var.sql");
     decl_const_sql_str!(CONTRACT_PREDICATE, "insert/contract_predicate.sql");
     decl_const_sql_str!(CONTRACT_PROGRESS, "insert/contract_progress.sql");
     decl_const_sql_str!(FAILED_BLOCK, "insert/failed_block.sql");
@@ -111,6 +113,7 @@ pub mod table {
     pub const CONTRACT_PREDICATE: Table =
         Table::new("contract_predicate", create::CONTRACT_PREDICATE);
     pub const CONTRACT_PROGRESS: Table = Table::new("contract_progress", create::CONTRACT_PROGRESS);
+    pub const DEC_VAR: Table = Table::new("dec_var", create::DEC_VAR);
     pub const FAILED_BLOCK: Table = Table::new("failed_block", create::FAILED_BLOCK);
     pub const FINALIZED_BLOCK: Table = Table::new("finalized_block", create::FINALIZED_BLOCK);
     pub const MUTATION: Table = Table::new("mutation", create::MUTATION);
@@ -128,6 +131,7 @@ pub mod table {
         CONTRACT,
         CONTRACT_PREDICATE,
         CONTRACT_PROGRESS,
+        DEC_VAR,
         FAILED_BLOCK,
         FINALIZED_BLOCK,
         MUTATION,

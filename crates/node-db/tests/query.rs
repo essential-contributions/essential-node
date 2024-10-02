@@ -1,6 +1,6 @@
 use essential_hash::content_addr;
-use essential_node_db::{self as node_db};
-use essential_types::{contract::Contract, solution::Mutation, ContentAddress, Word};
+use essential_node_db::{self as node_db, decode};
+use essential_types::{contract::Contract, solution::Mutation, ContentAddress, Value, Word};
 use rusqlite::Connection;
 use std::time::Duration;
 use util::test_block;
@@ -305,6 +305,7 @@ fn test_query_at_finalized() {
                             value: vec![v],
                         })
                         .collect();
+                    data.decision_variables = values.by_ref().take(2).map(|v| vec![v]).collect();
                 }
             }
             block
@@ -324,6 +325,26 @@ fn test_query_at_finalized() {
     // Test queries at each block and solution.
     for block in &blocks {
         for (si, solution) in block.solutions.iter().enumerate() {
+            let query = "SELECT id FROM solution WHERE content_hash = ? LIMIT 1";
+            let mut stmt = tx.prepare(query).unwrap();
+            let mut result = stmt
+                .query_map([&content_addr(solution).0], |row| {
+                    Ok((row.get::<_, u64>("id")?,))
+                })
+                .unwrap();
+            let solution_id = result.next().unwrap().unwrap().0;
+
+            let query = "SELECT dec_var_index, value FROM dec_var WHERE solution_id = ?";
+            let mut stmt = tx.prepare(query).unwrap();
+            let mut dec_var_result = stmt
+                .query_map([&solution_id], |row| {
+                    Ok((
+                        row.get::<_, usize>("dec_var_index")?,
+                        row.get::<_, Vec<u8>>("value")?,
+                    ))
+                })
+                .unwrap();
+
             for (di, data) in solution.data.iter().enumerate() {
                 for (mi, mutation) in data.state_mutations.iter().enumerate() {
                     let state = node_db::finalized::query_state_inclusive_block(
@@ -398,6 +419,12 @@ fn test_query_at_finalized() {
                             block.solutions[si - 1].data[di].state_mutations[mi].value
                         );
                     }
+                }
+                for (dvi, dec_var) in data.decision_variables.iter().enumerate() {
+                    let (index, value_blob) = dec_var_result.next().unwrap().unwrap();
+                    let value: Value = decode(&value_blob).unwrap();
+                    assert_eq!(index, dvi);
+                    assert_eq!(value, *dec_var);
                 }
             }
         }
