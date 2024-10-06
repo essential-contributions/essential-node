@@ -2,8 +2,8 @@
 
 use essential_hash::content_addr;
 use essential_node_db::{self as node_db, decode};
-use essential_types::{predicate::Predicate, ContentAddress, Hash, Value};
-use rusqlite::Connection;
+use essential_types::{predicate::Predicate, ContentAddress, Hash, Key, Value};
+use rusqlite::{params, Connection};
 use std::time::Duration;
 use util::test_blocks;
 
@@ -80,6 +80,19 @@ fn test_insert_block() {
             .unwrap();
 
         for (di, data) in solution.data.iter().enumerate() {
+            // Verify contract to mutation mappings were inserted correctly
+            for (mi, mutation) in data.state_mutations.iter().enumerate() {
+                // Query deployed contract
+                let query = "SELECT mutation.key FROM mutation WHERE mutation.mutation_index = ?";
+                let mut stmt = conn.prepare(query).unwrap();
+                let mut result = stmt
+                    .query_map(params![mi as i64], |row| Ok(row.get::<_, Vec<u8>>("key")?))
+                    .unwrap();
+                let key_blob = result.next().unwrap().unwrap();
+                let key: Key = decode(&key_blob).unwrap();
+                assert_eq!(mutation.key, key);
+            }
+
             // Verify dec vars were inserted correctly
             for (dvi, dec_var) in data.decision_variables.iter().enumerate() {
                 let (data_index, index, value_blob) = dec_var_result.next().unwrap().unwrap();
