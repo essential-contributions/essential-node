@@ -5,14 +5,14 @@ use essential_node_db::{self as node_db, decode};
 use essential_types::{predicate::Predicate, ContentAddress, Hash, Key, Value};
 use rusqlite::{params, Connection};
 use std::time::Duration;
-use util::test_blocks;
+use util::{test_blocks, test_blocks_with_vars};
 
 mod util;
 
 #[test]
 fn test_insert_block() {
     // Test block that we'll insert.
-    let block = util::test_block(1, Duration::from_secs(1));
+    let (_contract_addr, blocks) = test_blocks_with_vars(10);
 
     // Create an in-memory SQLite database
     let mut conn = Connection::open_in_memory().unwrap();
@@ -20,95 +20,106 @@ fn test_insert_block() {
     // Create the necessary tables and insert the block.
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
-    node_db::insert_block(&tx, &block).unwrap();
+    for block in &blocks {
+        node_db::insert_block(&tx, block).unwrap();
+    }
     tx.commit().unwrap();
 
-    // Verify that the block was inserted correctly
-    let query = "SELECT number, timestamp_secs, timestamp_nanos FROM block WHERE number = 1";
-    let mut stmt = conn.prepare(query).unwrap();
-    let mut rows = stmt.query(()).unwrap();
-
-    let row = rows.next().unwrap().unwrap();
-    let id: i64 = row.get(0).expect("number");
-    let timestamp_secs: u64 = row.get(1).expect("timestamp_secs");
-    let timestamp_nanos: u32 = row.get(2).expect("timestamp_nanos");
-    let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
-
-    assert_eq!(id, block.number as i64);
-    assert_eq!(timestamp, block.timestamp);
-
-    // Verify that the solutions were inserted correctly
-    for solution in &block.solutions {
-        // Verify solution were inserted
-        let solution_address = &content_addr(solution);
-        let solution_blob = node_db::encode(solution);
-        let query = "SELECT solution FROM solution WHERE content_hash = ?";
+    for (block_ix, block) in blocks.iter().enumerate() {
+        // Verify that the blocks were inserted correctly
+        let query = "SELECT number, timestamp_secs, timestamp_nanos FROM block WHERE number = ?";
         let mut stmt = conn.prepare(query).unwrap();
-        let mut rows = stmt.query([&solution_address.0]).unwrap();
+        let mut rows = stmt.query(params![block_ix]).unwrap();
+
         let row = rows.next().unwrap().unwrap();
-        let solution_data: Vec<u8> = row.get(0).unwrap();
-        assert_eq!(solution_data, solution_blob);
+        let id: i64 = row.get(0).expect("number");
+        let timestamp_secs: u64 = row.get(1).expect("timestamp_secs");
+        let timestamp_nanos: u32 = row.get(2).expect("timestamp_nanos");
+        let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
 
-        // Query dec vars
-        let query = "SELECT dec_var.data_index, dec_var.dec_var_index, dec_var.value 
-        FROM dec_var JOIN solution ON dec_var.solution_id = solution.id 
-        WHERE solution.content_hash = ?";
-        let mut stmt = conn.prepare(query).unwrap();
-        let mut dec_var_result = stmt
-            .query_map([solution_address.0], |row| {
-                Ok((
-                    row.get::<_, usize>("data_index")?,
-                    row.get::<_, usize>("dec_var_index")?,
-                    row.get::<_, Vec<u8>>("value")?,
-                ))
-            })
-            .unwrap();
+        assert_eq!(id, block.number as i64);
+        assert_eq!(timestamp, block.timestamp);
 
-        // Query pub vars
-        let query = "SELECT pub_var.data_index, pub_var.key, pub_var.value 
-        FROM pub_var JOIN solution ON pub_var.solution_id = solution.id 
-        WHERE solution.content_hash = ?";
-        let mut stmt = conn.prepare(query).unwrap();
-        let mut pub_var_result = stmt
-            .query_map([solution_address.0], |row| {
-                Ok((
-                    row.get::<_, usize>("data_index")?,
-                    row.get::<_, Vec<u8>>("key")?,
-                    row.get::<_, Vec<u8>>("value")?,
-                ))
-            })
-            .unwrap();
+        // Verify that the solutions were inserted correctly
+        for (solution_ix, solution) in block.solutions.iter().enumerate() {
+            // Verify solution were inserted
+            let solution_address = &content_addr(solution);
+            let solution_blob = node_db::encode(solution);
+            let query = "SELECT solution FROM solution WHERE content_hash = ?";
+            let mut stmt = conn.prepare(query).unwrap();
+            let mut rows = stmt.query([&solution_address.0]).unwrap();
+            let row = rows.next().unwrap().unwrap();
+            let solution_data: Vec<u8> = row.get(0).unwrap();
+            assert_eq!(solution_data, solution_blob);
 
-        for (di, data) in solution.data.iter().enumerate() {
-            // Verify contract to mutation mappings were inserted correctly
-            for (mi, mutation) in data.state_mutations.iter().enumerate() {
-                // Query deployed contract
-                let query = "SELECT mutation.key FROM mutation WHERE mutation.mutation_index = ?";
+            for (data_ix, data) in solution.data.iter().enumerate() {
+                // Verify contract to mutation mappings were inserted correctly
+                for (mutation_ix, mutation) in data.state_mutations.iter().enumerate() {
+                    // Query deployed contract
+                    let query = "SELECT mutation.key FROM mutation 
+                    JOIN solution ON mutation.solution_id = solution.id
+                    WHERE solution.content_hash = ? AND mutation.mutation_index = ? AND mutation.data_index = ? 
+                    ORDER BY mutation.mutation_index ASC";
+                    let mut stmt = conn.prepare(query).unwrap();
+                    let mut result = stmt
+                        .query_map(
+                            params![solution_address.0, mutation_ix as i64, data_ix as i64],
+                            |row| row.get::<_, Vec<u8>>("key"),
+                        )
+                        .unwrap();
+                    let key_blob = result.next().unwrap().unwrap();
+                    let key: Key = decode(&key_blob).unwrap();
+                    assert_eq!(mutation.key, key);
+                }
+
+                // Verify dec vars were inserted correctly
+                for (dvi, dec_var) in data.decision_variables.iter().enumerate() {
+                    // Query dec vars
+                    let query = "SELECT dec_var.value 
+                        FROM dec_var JOIN solution ON dec_var.solution_id = solution.id 
+                        WHERE dec_var.data_index = ? AND dec_var.dec_var_index = ? AND solution.content_hash = ?";
+                    let mut stmt = conn.prepare(query).unwrap();
+                    let mut dec_var_result = stmt
+                        .query_map(params![data_ix, dvi, solution_address.0], |row| {
+                            row.get::<_, Vec<u8>>("value")
+                        })
+                        .unwrap();
+
+                    let value_blob = dec_var_result.next().unwrap().unwrap();
+                    let value: Value = decode(&value_blob).unwrap();
+                    assert_eq!(value, *dec_var);
+                }
+
+                // Query pub vars
+                let query = "SELECT pub_var.key, pub_var.value 
+                FROM pub_var 
+                JOIN block_solution ON block_solution.solution_id = pub_var.solution_id
+                JOIN solution ON block_solution.solution_id = solution.id 
+                JOIN block ON block.id = block_solution.block_id
+                WHERE pub_var.data_index = ? AND solution.content_hash = ? AND block_solution.solution_index = ? AND block.number = ?
+                ORDER BY pub_var.key ASC";
                 let mut stmt = conn.prepare(query).unwrap();
-                let mut result = stmt
-                    .query_map(params![mi as i64], |row| Ok(row.get::<_, Vec<u8>>("key")?))
+                let pub_var_result = stmt
+                    .query_map(
+                        params![data_ix, solution_address.0, solution_ix, block.number],
+                        |row| {
+                            Ok((
+                                row.get::<_, Vec<u8>>("key")?,
+                                row.get::<_, Vec<u8>>("value")?,
+                            ))
+                        },
+                    )
                     .unwrap();
-                let key_blob = result.next().unwrap().unwrap();
-                let key: Key = decode(&key_blob).unwrap();
-                assert_eq!(mutation.key, key);
-            }
 
-            // Verify dec vars were inserted correctly
-            for (dvi, dec_var) in data.decision_variables.iter().enumerate() {
-                let (data_index, index, value_blob) = dec_var_result.next().unwrap().unwrap();
-                let value: Value = decode(&value_blob).unwrap();
-                assert_eq!(data_index, di);
-                assert_eq!(index, dvi);
-                assert_eq!(value, *dec_var);
-            }
-            // Verify pub vars were inserted correctly
-            for pub_var in &data.transient_data {
-                let (data_index, key_blob, value_blob) = pub_var_result.next().unwrap().unwrap();
-                let key: Value = decode(&key_blob).unwrap();
-                let value: Value = decode(&value_blob).unwrap();
-                assert_eq!(data_index, di);
-                assert_eq!(pub_var.key, key);
-                assert_eq!(pub_var.value, value);
+                // Verify pub vars were inserted correctly
+                for (res_ix, res) in pub_var_result.enumerate() {
+                    let (key_blob, value_blob) = res.unwrap();
+
+                    let key: Value = decode(&key_blob).unwrap();
+                    let value: Value = decode(&value_blob).unwrap();
+                    assert_eq!(data.transient_data[res_ix].key, key);
+                    assert_eq!(data.transient_data[res_ix].value, value);
+                }
             }
         }
     }

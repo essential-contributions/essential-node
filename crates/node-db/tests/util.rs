@@ -3,10 +3,48 @@
 use essential_types::{
     contract::Contract,
     predicate::Predicate,
-    solution::{Solution, SolutionData},
-    Block, ConstraintBytecode, PredicateAddress, StateReadBytecode, Word,
+    solution::{Mutation, Solution, SolutionData},
+    Block, ConstraintBytecode, ContentAddress, PredicateAddress, StateReadBytecode, Word,
 };
 use std::time::Duration;
+
+pub fn test_blocks_with_vars(n: u64) -> (ContentAddress, Vec<Block>) {
+    let mut values = 0..Word::MAX;
+    let contract_addr = ContentAddress([42; 32]);
+    let blocks = test_blocks(n)
+        .into_iter()
+        .map(|mut block| {
+            for solution in block.solutions.iter_mut() {
+                solution.data.push(test_solution_data(0));
+                let mut keys = 0..Word::MAX;
+                for data in &mut solution.data {
+                    data.predicate_to_solve.contract = contract_addr.clone();
+                    data.state_mutations = values
+                        .by_ref()
+                        .take(2)
+                        .zip(keys.by_ref())
+                        .map(|(v, k)| Mutation {
+                            key: vec![k as Word],
+                            value: vec![v],
+                        })
+                        .collect();
+                    data.decision_variables = values.by_ref().take(2).map(|v| vec![v]).collect();
+                    data.transient_data = values
+                        .by_ref()
+                        .take(2)
+                        .zip(keys.by_ref())
+                        .map(|(v, k)| Mutation {
+                            key: vec![k as Word],
+                            value: vec![v],
+                        })
+                        .collect();
+                }
+            }
+            block
+        })
+        .collect::<Vec<_>>();
+    (contract_addr, blocks)
+}
 
 pub fn test_blocks(n: u64) -> Vec<Block> {
     (0..n)
