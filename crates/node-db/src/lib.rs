@@ -104,6 +104,8 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
     let mut stmt_solution = tx.prepare(sql::insert::SOLUTION)?;
     let mut stmt_block_solution = tx.prepare(sql::insert::BLOCK_SOLUTION)?;
     let mut stmt_mutation = tx.prepare(sql::insert::MUTATION)?;
+    let mut stmt_dec_var = tx.prepare(sql::insert::DEC_VAR)?;
+    let mut stmt_pub_var = tx.prepare(sql::insert::PUB_VAR)?;
 
     for (ix, (solution, ca)) in block.solutions.iter().zip(solution_hashes).enumerate() {
         // Insert the solution.
@@ -134,11 +136,32 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
                     ":value": value_blob,
                 })?;
             }
+            for (dec_var_ix, dec_var) in data.decision_variables.iter().enumerate() {
+                let blob = encode(&dec_var);
+                stmt_dec_var.execute(named_params! {
+                    ":solution_hash": ca.0,
+                    ":data_index": data_ix,
+                    ":dec_var_index": dec_var_ix,
+                    ":value": blob
+                })?;
+            }
+            for pub_var in &data.transient_data {
+                let key_blob = encode(&pub_var.key);
+                let value_blob = encode(&pub_var.value);
+                stmt_pub_var.execute(named_params! {
+                    ":solution_hash": ca.0,
+                    ":data_index": data_ix,
+                    ":key": key_blob,
+                    ":value": value_blob,
+                })?;
+            }
         }
     }
     stmt_solution.finalize()?;
     stmt_block_solution.finalize()?;
     stmt_mutation.finalize()?;
+    stmt_dec_var.finalize()?;
+    stmt_pub_var.finalize()?;
 
     Ok(())
 }

@@ -1,9 +1,7 @@
 INSERT
-    OR IGNORE INTO mutation (
+    OR IGNORE INTO pub_var (
         solution_id,
         data_index,
-        mutation_index,
-        contract_ca,
         key,
         value
     )
@@ -18,5 +16,5 @@ VALUES
                 content_hash = :solution_hash
             LIMIT
                 1
-        ), :data_index, :mutation_index, :contract_ca, :key, :value
+        ), :data_index, :key, :value
     );

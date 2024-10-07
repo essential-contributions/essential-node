@@ -1,9 +1,9 @@
 use essential_hash::content_addr;
 use essential_node_db::{self as node_db};
-use essential_types::{contract::Contract, solution::Mutation, ContentAddress, Word};
+use essential_types::{contract::Contract, ContentAddress, Word};
 use rusqlite::Connection;
 use std::time::Duration;
-use util::test_block;
+use util::{test_block, test_blocks_with_vars};
 
 mod util;
 
@@ -286,30 +286,8 @@ fn test_list_contracts() {
 
 #[test]
 fn test_query_at_finalized() {
-    let mut values = 0..Word::MAX;
-    let contract_addr = ContentAddress([42; 32]);
-    let blocks = util::test_blocks(10)
-        .into_iter()
-        .map(|mut block| {
-            for solution in block.solutions.iter_mut() {
-                solution.data.push(util::test_solution_data(0));
-                let mut keys = 0..Word::MAX;
-                for data in &mut solution.data {
-                    data.predicate_to_solve.contract = contract_addr.clone();
-                    data.state_mutations = values
-                        .by_ref()
-                        .take(2)
-                        .zip(keys.by_ref())
-                        .map(|(v, k)| Mutation {
-                            key: vec![k as Word],
-                            value: vec![v],
-                        })
-                        .collect();
-                }
-            }
-            block
-        })
-        .collect::<Vec<_>>();
+    // Test block that we'll insert.
+    let (contract_addr, blocks) = test_blocks_with_vars(10);
 
     // Create an in-memory SQLite database.
     let mut conn = Connection::open_in_memory().unwrap();
