@@ -83,6 +83,7 @@ pub fn create_tables(tx: &Transaction) -> rusqlite::Result<()> {
 ///
 /// 1. Insert an entry into the `block` table.
 /// 2. Insert each of its solutions into the `solution` and `block_solution` tables.
+/// 3. Insert mapping of each contract to state mutation into the `deployed_contract` table.
 pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
     // Insert the header.
     let secs = block.timestamp.as_secs();
@@ -106,6 +107,8 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
     let mut stmt_mutation = tx.prepare(sql::insert::MUTATION)?;
     let mut stmt_dec_var = tx.prepare(sql::insert::DEC_VAR)?;
     let mut stmt_pub_var = tx.prepare(sql::insert::PUB_VAR)?;
+    // Insert (contract, state mutation) mapping.
+    let mut stmt_deployed_contract = tx.prepare(sql::insert::DEPLOYED_CONTRACT)?;
 
     for (ix, (solution, ca)) in block.solutions.iter().zip(solution_hashes).enumerate() {
         // Insert the solution.
@@ -135,6 +138,12 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
                     ":key": key_blob,
                     ":value": value_blob,
                 })?;
+                stmt_deployed_contract.execute(named_params! {
+                    ":contract_hash": contract_ca_blob,
+                    ":solution_hash": ca.0,
+                    ":mutation_data_index": data_ix,
+                    ":mutation_index": mutation_ix,
+                })?;
             }
             for (dec_var_ix, dec_var) in data.decision_variables.iter().enumerate() {
                 let blob = encode(&dec_var);
@@ -160,6 +169,7 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
     stmt_solution.finalize()?;
     stmt_block_solution.finalize()?;
     stmt_mutation.finalize()?;
+    stmt_deployed_contract.finalize()?;
     stmt_dec_var.finalize()?;
     stmt_pub_var.finalize()?;
 
