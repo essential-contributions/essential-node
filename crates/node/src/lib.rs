@@ -64,11 +64,8 @@ pub fn db(conf: &db::Config) -> Result<ConnectionPool, ConnPoolNewError> {
 
     // Create the tables.
     let mut conn = db.try_acquire().expect("all permits available");
-    match conf.source {
-        db::Source::Path(_) => {
-            conn.pragma_update(None, "journal_mode", "WAL")?;
-        }
-        _ => {}
+    if let db::Source::Path(_) = conf.source {
+        conn.pragma_update(None, "journal_mode", "WAL")?;
     };
     db::with_tx(&mut conn, |tx| essential_node_db::create_tables(tx))?;
 
