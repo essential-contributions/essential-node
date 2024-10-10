@@ -1,7 +1,12 @@
 #![cfg(feature = "test-utils")]
 
-use essential_node::{self as node, test_utils};
+use essential_node::{
+    self as node,
+    db::{Config, Source},
+    test_utils,
+};
 use std::sync::Arc;
+use tempfile::TempDir;
 
 #[test]
 fn test_conn_pool_new() {
@@ -20,16 +25,7 @@ fn test_conn_pool_close() {
 async fn test_acquire() {
     let conf = test_utils::test_db_conf();
     let db = node::db(&conf).unwrap();
-    let conn = db.acquire().await.unwrap();
-    assert!(conn
-        .pragma(None, "trusted_schema", false, |_| { Ok(()) })
-        .is_ok());
-    assert!(conn
-        .pragma(None, "foreign_keys", true, |_| { Ok(()) })
-        .is_ok());
-    assert!(conn
-        .pragma(None, "synchronous", "1", |_| { Ok(()) })
-        .is_ok());
+    db.acquire().await.unwrap();
 }
 
 #[test]
@@ -37,6 +33,48 @@ fn test_try_acquire() {
     let conf = test_utils::test_db_conf();
     let db = node::db(&conf).unwrap();
     db.try_acquire().unwrap();
+}
+
+#[tokio::test]
+async fn test_conn_pool_path() {
+    let temp_dir = TempDir::new().unwrap();
+    let path = temp_dir.path().join("test_conn_pool_path.sqlite3");
+    let conf = Config {
+        source: Source::Path(path.clone()),
+        ..Default::default()
+    };
+    let db = node::db(&conf).unwrap();
+    let conn = db.acquire().await.unwrap();
+    conn.pragma_query(None, "trusted_schema", |row| {
+        let val = row.get::<_, bool>(0)?;
+        assert!(!val);
+        Ok(())
+    })
+    .unwrap();
+    conn.pragma_query(None, "foreign_keys", |row| {
+        let val = row.get::<_, bool>(0)?;
+        assert!(val);
+        Ok(())
+    })
+    .unwrap();
+    conn.pragma_query(None, "synchronous", |row| {
+        let val = row.get::<_, i64>(0)?;
+        assert_eq!(val, 1);
+        Ok(())
+    })
+    .unwrap();
+
+    // Reopen the database for the `journal_mode` change to be effective.
+    drop(db);
+    let db = node::db(&conf).unwrap();
+    let conn = db.acquire().await.unwrap();
+
+    conn.pragma_query(None, "journal_mode", |row| {
+        let val = row.get::<_, String>(0)?;
+        assert_eq!(val, "wal");
+        Ok(())
+    })
+    .unwrap();
 }
 
 #[tokio::test]
