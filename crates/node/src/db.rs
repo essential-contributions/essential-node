@@ -366,7 +366,7 @@ pub(crate) fn new_conn(source: &Source) -> rusqlite::Result<rusqlite::Connection
             let conn = rusqlite::Connection::open(p)?;
             conn.pragma_update(None, "trusted_schema", false)?;
             conn.pragma_update(None, "foreign_keys", true)?;
-            conn.pragma_update(None, "synchronous", "1")?;
+            conn.pragma_update(None, "synchronous", 1)?;
             Ok(conn)
         }
     }
