@@ -20,7 +20,16 @@ fn test_conn_pool_close() {
 async fn test_acquire() {
     let conf = test_utils::test_db_conf();
     let db = node::db(&conf).unwrap();
-    db.acquire().await.unwrap();
+    let conn = db.acquire().await.unwrap();
+    assert!(conn
+        .pragma(None, "trusted_schema", false, |_| { Ok(()) })
+        .is_ok());
+    assert!(conn
+        .pragma(None, "foreign_keys", true, |_| { Ok(()) })
+        .is_ok());
+    assert!(conn
+        .pragma(None, "synchronous", "1", |_| { Ok(()) })
+        .is_ok());
 }
 
 #[test]

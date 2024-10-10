@@ -362,7 +362,13 @@ fn new_conn_pool(conf: &Config) -> rusqlite::Result<AsyncConnectionPool> {
 pub(crate) fn new_conn(source: &Source) -> rusqlite::Result<rusqlite::Connection> {
     match source {
         Source::Memory(id) => new_mem_conn(id),
-        Source::Path(p) => rusqlite::Connection::open(p),
+        Source::Path(p) => {
+            let conn = rusqlite::Connection::open(p)?;
+            conn.pragma_update(None, "trusted_schema", false)?;
+            conn.pragma_update(None, "foreign_keys", true)?;
+            conn.pragma_update(None, "synchronous", "1")?;
+            Ok(conn)
+        }
     }
 }
 
