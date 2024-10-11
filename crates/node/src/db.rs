@@ -360,10 +360,17 @@ fn new_conn_pool(conf: &Config) -> rusqlite::Result<AsyncConnectionPool> {
 
 /// Create a new connection given a DB source.
 pub(crate) fn new_conn(source: &Source) -> rusqlite::Result<rusqlite::Connection> {
-    match source {
+    let conn = match source {
         Source::Memory(id) => new_mem_conn(id),
-        Source::Path(p) => rusqlite::Connection::open(p),
-    }
+        Source::Path(p) => {
+            let conn = rusqlite::Connection::open(p)?;
+            conn.pragma_update(None, "trusted_schema", false)?;
+            conn.pragma_update(None, "synchronous", 1)?;
+            Ok(conn)
+        }
+    }?;
+    conn.pragma_update(None, "foreign_keys", true)?;
+    Ok(conn)
 }
 
 /// Create an in-memory connection with the given ID

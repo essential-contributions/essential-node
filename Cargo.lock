@@ -659,6 +659,7 @@ dependencies = [
  "rusqlite",
  "rusqlite-pool",
  "secp256k1",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-stream",

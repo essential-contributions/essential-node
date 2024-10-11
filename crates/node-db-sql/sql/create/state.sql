@@ -3,6 +3,6 @@ CREATE TABLE IF NOT EXISTS state (
     contract_id INTEGER NOT NULL,
     key BLOB NOT NULL,
     value BLOB NOT NULL,
-    FOREIGN KEY (contract_id) REFERENCES contracts (id),
+    FOREIGN KEY (contract_id) REFERENCES contract (id),
     UNIQUE(contract_id, key)
 );
