@@ -1,9 +1,8 @@
 use essential_hash::content_addr;
 use essential_node_db::{self as node_db};
 use essential_types::{contract::Contract, ContentAddress, Word};
-use rusqlite::Connection;
 use std::time::Duration;
-use util::{test_block, test_blocks_with_vars};
+use util::{test_block, test_blocks_with_vars, test_conn};
 
 mod util;
 
@@ -15,7 +14,7 @@ fn get_contract_salt() {
     let contract = util::test_contract(seed);
 
     // Create an in-memory SQLite database.
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
 
     // Create the necessary tables and insert a contract.
     let tx = conn.transaction().unwrap();
@@ -38,7 +37,7 @@ fn get_contract_predicates() {
     let contract = util::test_contract(seed);
 
     // Create an in-memory SQLite database.
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
 
     // Create the necessary tables and insert a contract.
     let tx = conn.transaction().unwrap();
@@ -63,7 +62,7 @@ fn test_get_contract() {
     let contract = util::test_contract(seed);
 
     // Create an in-memory SQLite database.
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
 
     // Create the necessary tables and insert a contract.
     let tx = conn.transaction().unwrap();
@@ -81,7 +80,7 @@ fn test_get_contract() {
 #[test]
 fn test_get_contract_progress() {
     // Create an in-memory SQLite database.
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
 
     // Create the necessary tables and insert the contract progress.
     let tx = conn.transaction().unwrap();
@@ -104,7 +103,7 @@ fn test_get_predicate() {
     let contract = util::test_contract(seed);
 
     // Create an in-memory SQLite database.
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
 
     // Create the necessary tables and insert a contract.
     let tx = conn.transaction().unwrap();
@@ -126,7 +125,7 @@ fn test_get_solution() {
     let block = util::test_block(42, Duration::from_secs(69));
 
     // Create an in-memory SQLite database.
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
 
     // Create the necessary tables and insert the block.
     let tx = conn.transaction().unwrap();
@@ -149,7 +148,7 @@ fn test_get_state_progress() {
     let block_address = content_addr(&block);
 
     // Create an in-memory SQLite database.
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
 
     // Create the necessary tables and insert the contract progress.
     let tx = conn.transaction().unwrap();
@@ -171,7 +170,7 @@ fn test_get_validation_progress() {
     let block_address = content_addr(&block);
 
     // Create an in-memory SQLite database.
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
 
     // Create the necessary tables and insert the contract progress.
     let tx = conn.transaction().unwrap();
@@ -192,7 +191,7 @@ fn test_list_blocks() {
     let blocks = util::test_blocks(100);
 
     // Create an in-memory SQLite database.
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
 
     // Create the necessary tables and insert blocks.
     let tx = conn.transaction().unwrap();
@@ -213,7 +212,7 @@ fn test_list_blocks_by_time() {
     let blocks = util::test_blocks(10);
 
     // Create an in-memory SQLite database.
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
 
     // Create the necessary tables and insert blocks.
     let tx = conn.transaction().unwrap();
@@ -255,7 +254,7 @@ fn test_list_contracts() {
         .collect();
 
     // Create an in-memory SQLite database.
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
 
     // Create the necessary tables and insert contracts.
     let tx = conn.transaction().unwrap();
@@ -290,7 +289,7 @@ fn test_query_at_finalized() {
     let (contract_addr, blocks) = test_blocks_with_vars(10);
 
     // Create an in-memory SQLite database.
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
     for block in &blocks {

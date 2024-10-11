@@ -2,7 +2,7 @@
 
 use essential_node_db as node_db;
 use essential_types::{Key, Value};
-use rusqlite::Connection;
+use util::test_conn;
 
 mod util;
 
@@ -16,7 +16,7 @@ fn test_state_value() {
     let value = Value::from([0xCD; 32]);
 
     // Create an in-memory SQLite database.
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
     node_db::insert_contract(&tx, &contract, da_block).unwrap();
@@ -52,7 +52,7 @@ fn test_state_values_with_deletion() {
     }
 
     // Create an in-memory SQLite database.
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
     let tx = conn.transaction().unwrap();
 
     // Create tables, contract, insert values.

@@ -6,7 +6,14 @@ use essential_types::{
     solution::{Mutation, Solution, SolutionData},
     Block, ConstraintBytecode, ContentAddress, PredicateAddress, StateReadBytecode, Word,
 };
+use rusqlite::Connection;
 use std::time::Duration;
+
+pub fn test_conn() -> Connection {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.pragma_update(None, "foreign_keys", true).unwrap();
+    conn
+}
 
 pub fn test_blocks_with_vars(n: u64) -> (ContentAddress, Vec<Block>) {
     let mut values = 0..Word::MAX;

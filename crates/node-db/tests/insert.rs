@@ -3,9 +3,9 @@
 use essential_hash::content_addr;
 use essential_node_db::{self as node_db, decode};
 use essential_types::{predicate::Predicate, ContentAddress, Hash, Key, Value};
-use rusqlite::{params, Connection};
+use rusqlite::params;
 use std::time::Duration;
-use util::{test_blocks, test_blocks_with_vars};
+use util::{test_blocks, test_blocks_with_vars, test_conn};
 
 mod util;
 
@@ -15,7 +15,7 @@ fn test_insert_block() {
     let (_contract_addr, blocks) = test_blocks_with_vars(10);
 
     // Create an in-memory SQLite database
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
 
     // Create the necessary tables and insert the block.
     let tx = conn.transaction().unwrap();
@@ -141,7 +141,7 @@ fn test_finalize_block() {
     let blocks = util::test_blocks(NUM_BLOCKS);
 
     // Create an in-memory SQLite database
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
 
     // Create the necessary tables and insert the block.
     let tx = conn.transaction().unwrap();
@@ -227,7 +227,7 @@ fn test_failed_block() {
     let blocks = util::test_blocks(NUM_BLOCKS);
 
     // Create an in-memory SQLite database
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
 
     // Create the necessary tables and insert the block.
     let tx = conn.transaction().unwrap();
@@ -283,7 +283,7 @@ fn test_fork_block() {
     let fork_b = util::test_block(1, Duration::from_secs(2));
 
     // Create an in-memory SQLite database
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
 
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
@@ -312,7 +312,7 @@ fn test_insert_contract() {
     let block_n = 69;
 
     // Create an in-memory SQLite database.
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
 
     // Create the necessary tables and insert the contract.
     let tx = conn.transaction().unwrap();
@@ -360,7 +360,7 @@ fn test_insert_contract() {
 
 #[test]
 fn test_insert_contract_progress() {
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
     node_db::insert_contract_progress(&tx, 0, &ContentAddress([0; 32]))
@@ -417,7 +417,7 @@ fn test_update_state_progress() {
     let blocks = test_blocks(2);
     let block_addresses = blocks.iter().map(content_addr).collect::<Vec<_>>();
 
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
     for block in &blocks {
@@ -474,7 +474,7 @@ fn test_update_validation_progress() {
     let blocks = test_blocks(2);
     let block_addresses = blocks.iter().map(content_addr).collect::<Vec<_>>();
 
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
     for block in &blocks {

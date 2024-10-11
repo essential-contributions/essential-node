@@ -126,11 +126,13 @@ async fn test_sync() {
 fn new_conn_pool() -> AsyncConnectionPool {
     let id = uuid::Uuid::new_v4().to_string();
     AsyncConnectionPool::new(3, || {
-        rusqlite::Connection::open_with_flags_and_vfs(
+        let conn = rusqlite::Connection::open_with_flags_and_vfs(
             format!("file:/{}", id),
             Default::default(),
             "memdb",
-        )
+        )?;
+        conn.pragma_update(None, "foreign_keys", true)?;
+        Ok(conn)
     })
     .unwrap()
 }
