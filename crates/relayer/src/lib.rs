@@ -1,6 +1,6 @@
 #![warn(missing_docs)]
 //! Relayer is a library that syncs data from a remote source into a local database.
-//! The relayer syncs contracts and blocks.
+//! The relayer syncs blocks.
 //! There are notify channels to signal when new data has been synced.
 
 use error::CriticalError;
@@ -43,7 +43,7 @@ impl Relayer {
     }
 
     /// Run the relayer client.
-    /// This will sync contracts and blocks from the remote source into the local database.
+    /// This will sync blocks from the remote source into the local database.
     ///
     /// Streams are spawned and run in the background.
     /// A handle is returned that can be used to close or join the streams.

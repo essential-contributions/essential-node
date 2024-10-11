@@ -1,10 +1,11 @@
 [package]
 name = "essential-node-db"
 version = "0.1.0"
-description = "Database for essential node"
-edition.workspace = true
+description = "Database for essential node."
 authors.workspace = true
+edition.workspace = true
 homepage.workspace = true
+license.workspace = true
 repository.workspace = true
 
 [dependencies]

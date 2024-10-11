@@ -1,10 +1,11 @@
 [package]
 name = "essential-node"
 version = "0.1.0"
-description = "Derive state from essential protocol"
-edition.workspace = true
+description = "State derivation and validation for essential protocol."
 authors.workspace = true
+edition.workspace = true
 homepage.workspace = true
+license.workspace = true
 repository.workspace = true
 
 [dependencies]
