@@ -1,8 +1,9 @@
 [package]
 name = "essential-node-db-sql"
 version = "0.1.0"
-description = "SQL statements for the essential node DB"
-edition.workspace = true
+description = "SQL statements for the essential node database."
 authors.workspace = true
+edition.workspace = true
 homepage.workspace = true
+license.workspace = true
 repository.workspace = true

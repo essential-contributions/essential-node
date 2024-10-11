@@ -1,11 +1,12 @@
 [package]
+name = "essential-relayer"
+version = "0.1.0"
+description = "Relay blocks from L1 to essential node."
 authors.workspace = true
-description = "Relay blocks and contracts from L1 to node"
 edition.workspace = true
 homepage.workspace = true
-name = "essential-relayer"
+license.workspace = true
 repository.workspace = true
-version = "0.1.0"
 
 [dependencies]
 essential-hash.workspace = true

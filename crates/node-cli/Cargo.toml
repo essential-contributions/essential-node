@@ -1,10 +1,11 @@
 [package]
 name = "essential-node-cli"
-description = "Essential Node CLI"
 version = "0.1.0"
-edition.workspace = true
+description = "Essential node CLI."
 authors.workspace = true
+edition.workspace = true
 homepage.workspace = true
+license.workspace = true
 repository.workspace = true
 
 [[bin]]

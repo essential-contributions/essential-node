@@ -1,10 +1,11 @@
 [package]
 name = "rusqlite-pool"
-version = "0.0.0"
+version = "0.1.0"
 description = "A minimal connection pool for rusqlite."
-edition.workspace = true
 authors.workspace = true
+edition.workspace = true
 homepage.workspace = true
+license.workspace = true
 repository.workspace = true
 
 [dependencies]

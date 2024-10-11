@@ -8,6 +8,7 @@ resolver = "2"
 edition = "2021"
 authors = ["Essential Contributions <contact@essentialcontributions.com>"]
 homepage = "https://essential.builders/"
+license = "Apache-2.0"
 repository = "https://github.com/essential-contributions/essential-node"
 
 [workspace.dependencies]
