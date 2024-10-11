@@ -14,4 +14,4 @@
 [actions-badge]: https://github.com/essential-contributions/essential-node/workflows/ci/badge.svg
 [actions-url]: https://github.com/essential-contributions/essential-node/actions
 
-Relay blocks from L1 to essential node.
+Relay blocks from essential builder to essential node.

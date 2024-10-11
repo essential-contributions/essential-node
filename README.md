@@ -14,4 +14,4 @@
 [actions-badge]: https://github.com/essential-contributions/essential-node/workflows/ci/badge.svg
 [actions-url]: https://github.com/essential-contributions/essential-node/actions
 
-Derive current head from L1 and sync state between nodes.
+Derive current head from essential builder and sync state between nodes.
