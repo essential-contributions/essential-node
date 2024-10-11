@@ -86,8 +86,7 @@ jobs:
         id: publish-crates
         with:
           registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          # dry-run: ${{ github.event_name != 'push' }}
-          dry-run: true
+          dry-run: ${{ github.event_name != 'push' }}
           ignore-unpublished-changes: true
       - name: List published crates
         if: ${{ steps.publish-crates.outputs.published != '' }}
