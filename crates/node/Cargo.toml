@@ -28,7 +28,7 @@ uuid = { workspace = true, optional = true }
 
 [dev-dependencies]
 essential-constraint-asm = { workspace = true }
-essential-node-api = { workspace = true }
+essential-node-api = { path = "../node-api" }
 essential-sign = { workspace = true }
 essential-state-asm = { workspace = true }
 reqwest = { workspace = true }
