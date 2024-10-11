@@ -1,9 +1,11 @@
 use essential_node_db as node_db;
-use rusqlite::Connection;
+use util::test_conn;
+
+mod util;
 
 #[test]
 fn create_tables() {
-    let mut conn = Connection::open_in_memory().unwrap();
+    let mut conn = test_conn();
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
     tx.commit().unwrap();

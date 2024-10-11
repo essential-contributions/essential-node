@@ -7,7 +7,10 @@ mod util;
 
 fn new_mem_conn(unique_id: &str) -> rusqlite::Result<Connection> {
     let conn_str = format!("file:/{unique_id}");
-    rusqlite::Connection::open_with_flags_and_vfs(conn_str, Default::default(), "memdb")
+    let conn =
+        rusqlite::Connection::open_with_flags_and_vfs(conn_str, Default::default(), "memdb")?;
+    conn.pragma_update(None, "foreign_keys", true)?;
+    Ok(conn)
 }
 
 struct AcquireConn(AsyncConnectionPool);
