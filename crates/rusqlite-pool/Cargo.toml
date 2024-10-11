@@ -1,12 +1,15 @@
 [package]
 name = "rusqlite-pool"
-version = "0.1.0"
+version = "0.1.1"
 description = "A minimal connection pool for rusqlite."
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
 repository.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
 
 [dependencies]
 crossbeam = { workspace = true }
