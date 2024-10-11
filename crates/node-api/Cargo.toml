@@ -26,7 +26,7 @@ tracing = { workspace = true, optional = true }
 
 [dev-dependencies]
 essential-hash = { workspace = true }
-essential-node-api = { workspace = true, features = ["test-utils"] }
+essential-node-api = { path = ".", features = ["test-utils"] }
 reqwest = { workspace = true }
 serde_json = { workspace = true }
 tokio-util = { workspace = true }
