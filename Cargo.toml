@@ -51,4 +51,4 @@ essential-node-api = { path = "crates/node-api", version = "0.1.0" }
 essential-node-db-sql = { path = "crates/node-db-sql", version = "0.1.0" }
 essential-node-db = { path = "crates/node-db", version = "0.1.0" }
 essential-relayer = { path = "crates/relayer", version = "0.1.0" }
-rusqlite-pool = { path = "crates/rusqlite-pool", version = "0.0.0" }
+rusqlite-pool = { path = "crates/rusqlite-pool", version = "0.1.0" }

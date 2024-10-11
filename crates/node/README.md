@@ -1,4 +1,4 @@
-# Essential Node
+# essential-node
 
 [![Crates.io][crates-badge]][crates-url]
 [![Documentation][docs-badge]][docs-url]
@@ -14,4 +14,4 @@
 [actions-badge]: https://github.com/essential-contributions/essential-node/workflows/ci/badge.svg
 [actions-url]: https://github.com/essential-contributions/essential-node/actions
 
-Derive current head from L1 and sync state between nodes.
+State derivation and validation for essential protocol.
