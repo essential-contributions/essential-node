@@ -739,8 +739,11 @@ version = "0.2.0"
 name = "essential-node-types"
 version = "0.1.0"
 dependencies = [
+ "essential-hash",
  "essential-types",
  "serde",
+ "serde_yaml",
+ "sha2",
 ]
 
 [[package]]
