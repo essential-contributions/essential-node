@@ -1,5 +1,5 @@
 use super::constraint::*;
-use super::state_slot_offset;
+use super::state_slot_offset_old;
 use super::tags;
 use essential_constraint_asm as asm;
 use essential_types::Word;
@@ -7,7 +7,7 @@ use essential_types::Word;
 fn predicate_exists_i_tag() -> Vec<asm::Op> {
     vec![
         // slot_ix
-        PUSH(state_slot_offset::PREDICATE_EXISTS),
+        PUSH(state_slot_offset_old::PREDICATE_EXISTS),
         REPC,
         ADD,
         // value_ix
@@ -23,7 +23,7 @@ fn predicate_exists_i_tag() -> Vec<asm::Op> {
 fn predicate_exists_i_bool(delta: bool) -> Vec<asm::Op> {
     vec![
         // slot_ix
-        PUSH(state_slot_offset::PREDICATE_EXISTS),
+        PUSH(state_slot_offset_old::PREDICATE_EXISTS),
         REPC,
         ADD,
         // value_ix

@@ -5,15 +5,15 @@ use essential_state_asm as asm;
 use essential_types::Word;
 
 fn state_mem_i_not_nil() -> Vec<asm::Op> {
-    vec![REPC, SVLEN, PUSH(0), EQ, NOT]
+    vec![REPC, SMVLEN, PUSH(0), EQ, NOT]
 }
 
 fn state_mem_i_store_words(num: Word) -> Vec<asm::Op> {
-    vec![PUSH(num), REPC, SSTR]
+    vec![PUSH(num), REPC, STOS]
 }
 
 fn state_mem_i_clear() -> Vec<asm::Op> {
-    vec![REPC, SCLR]
+    vec![REPC, TRUNC]
 }
 
 fn body() -> Vec<asm::Op> {
@@ -21,7 +21,7 @@ fn body() -> Vec<asm::Op> {
         vec![PUSH(storage_index::PREDICATES)],
         predicate_addrs_i_address(),
         alloc(1),
-        single_key_at_counter(5),
+        read_single_key_counter_slot(5),
         predicate_addrs_i_tag(),
         state_mem_i_not_nil(),
         state_mem_i_clear(),

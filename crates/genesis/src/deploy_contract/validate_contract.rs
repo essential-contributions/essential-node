@@ -187,7 +187,7 @@ fn check_state_read_sizes() -> Vec<asm::Op> {
 }
 
 fn sum_total_bytes() -> Vec<asm::Op> {
-    vec![DUP, PUSH(0), TLD, ADD, PUSH(0), SWAP, TSTR]
+    vec![DUP, PUSH(0), LOD, ADD, PUSH(0), SWAP, STO]
 }
 
 /// bool
@@ -255,7 +255,7 @@ fn check() -> Vec<asm::Op> {
             PUSH(2),
             ADD,
             PUSH(0),
-            TLD,
+            LOD,
             ADD,
             PUSH(Predicate::MAX_BYTES as Word),
             LTE,
@@ -265,11 +265,12 @@ fn check() -> Vec<asm::Op> {
     .concat()
 }
 
+/// 
 pub fn validate_contract() -> Vec<u8> {
     let r = [
         check_num_predicates(),
         read_predicate_size(),
-        vec![PUSH(1), TALC, POP, PUSH(1), REP],
+        vec![PUSH(1), ALOCT, POP, PUSH(1), REP],
         match_tag(tags::NEW, check()),
         vec![REPE],
     ]

@@ -13,6 +13,13 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.systems.follows = "nixpkgs";
     };
+
+    # The pint programming language.
+    pint = {
+      url = "github:essential-contributions/pint.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.systems.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs:
@@ -20,6 +27,7 @@
       overlays = [
         inputs.essential-server.overlays.default
         inputs.self.overlays.default
+        inputs.pint.overlays.default
       ];
       perSystemPkgs = f:
         inputs.nixpkgs.lib.genAttrs (import inputs.systems)
@@ -37,7 +45,8 @@
       });
 
       devShells = perSystemPkgs (pkgs: {
-        essential-node-dev = pkgs.callPackage ./shell.nix { };
+        essential-node-dev = pkgs.callPackage ./shells/shell.nix { };
+        pint-dev = pkgs.callPackage ./shells/pint.nix { };
         default = inputs.self.devShells.${pkgs.system}.essential-node-dev;
       });
 

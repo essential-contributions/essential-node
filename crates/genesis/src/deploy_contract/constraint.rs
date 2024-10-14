@@ -1,10 +1,13 @@
 use super::dec_var_slot_offset;
 use super::predicate_layout_offset;
 use super::tags;
-use crate::deploy_contract::state_slot_offset;
+use crate::deploy_contract::state_slot_offset_old;
 pub use asm::short::*;
 use essential_constraint_asm as asm;
 use essential_types::Word;
+
+#[cfg(test)]
+mod tests;
 
 pub fn push_predicate_i() -> Vec<asm::Op> {
     vec![REPC, PUSH(dec_var_slot_offset::PREDICATES), ADD]
@@ -26,10 +29,10 @@ pub fn read_predicate_len() -> Vec<asm::Op> {
     [push_predicate_i(), vec![VLEN]].concat()
 }
 
-pub fn read_predicate_padding_len() -> Vec<asm::Op> {
+pub fn read_predicate_bytes_len() -> Vec<asm::Op> {
     [
         push_predicate_i(),
-        vec![PUSH(predicate_layout_offset::PADDING_LEN), PUSH(1), VAR],
+        vec![PUSH(predicate_layout_offset::BYTES_LEN), PUSH(1), VAR],
     ]
     .concat()
 }
@@ -61,17 +64,6 @@ pub fn read_predicate_word_i(i: Word) -> Vec<asm::Op> {
     .concat()
 }
 
-pub fn read_predicate_word_i_asm(i: Vec<asm::Op>) -> Vec<asm::Op> {
-    [
-        push_predicate_i(),
-        vec![PUSH(predicate_layout_offset::WORDS)],
-        i,
-        vec![ADD, PUSH(1)],
-        vec![VAR],
-    ]
-    .concat()
-}
-
 pub fn read_predicate_size() -> Vec<asm::Op> {
     read_dec_var(dec_var_slot_offset::NUM_PREDICATES, 0, 1)
 }
@@ -81,7 +73,7 @@ pub fn read_salt() -> Vec<asm::Op> {
 }
 
 pub fn predicate_addrs_i() -> Vec<asm::Op> {
-    vec![PUSH(state_slot_offset::PREDICATE_ADDRS), REPC, PUSH(5), MUL]
+    vec![PUSH(state_slot_offset_old::PREDICATE_ADDRS), REPC, PUSH(5), MUL]
 }
 
 pub fn predicate_addrs_i_address() -> Vec<asm::Op> {

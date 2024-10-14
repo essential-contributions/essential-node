@@ -1,0 +1,105 @@
+type PredicateCA = b256;
+type PredicateBytes = { byte_len: int, bytes: int[ceil(bytes_len / 8)] };
+union NewOrExisting = New(PredicateBytes) | Existing(PredicateCA);
+
+type FoundHash = { found: bool, hash: PredicateCA };
+union NewOrExistingHash = New(PredicateCA) | Existing(PredicateCA);
+
+storage {
+    contracts: (b256 => int),
+    predicates: (b256 => int),
+}
+
+const SIZE_OF_TAG_HASH = 5;
+const MAX_PREDICATES = ?;
+const MAX_CONTRACT_BYTES = ?;
+const MAX_PREDICATE_BYTES = ?;
+
+predicate Deploy {
+    var num_predicates: int;
+    var salt: b256;
+    var predicates: NewOrExisting[num_predicates];
+
+    state (hashes, contract_addr): (NewOrExistingHash[num_predicates], b256) = {
+        // memory: Vec<Vec<Word>>
+        // stack: Vec<Word>
+        memory.reserve(1);
+        for i in 0..num_predicates {
+            match predicates[i] {
+                New(bytes) => {
+                    stack.push(Tag::New);
+                    stack.extend(hash(bytes));
+                    memory.store(stack[-SIZE_OF_TAG_HASH..], 0, i * SIZE_OF_TAG_HASH, SIZE_OF_TAG_HASH);
+                    stack.extend(memory.load(0, i * SIZE_OF_TAG_HASH + 1, 4));
+                },
+                Existing(hash) => {
+                    stack.push(Tag::Existing);
+                    stack.extend(hash);
+                    memory.store(stack[-SIZE_OF_TAG_HASH..], 0, i * SIZE_OF_TAG_HASH, SIZE_OF_TAG_HASH);
+                    stack.extend(memory.load(0, i * SIZE_OF_TAG_HASH + 1, 4));
+                },
+            }
+        }
+        stack.push(salt);
+        memory.store(hash(stack, (4 * num_predicates + 4) * 8), 0, num_predicates * SIZE_OF_TAG_HASH, 4);
+    };
+
+    state (found_predicates, found_contract): (bool[num_predicates], bool) = {
+        // memory: Vec<Vec<Word>>
+        // stack: Vec<Word>
+        memory.reserve(1);
+        for i in 0..num_predicates {
+            match hashes[i] {
+                New(hash) => {
+                    memory.store(storage::predicates[hash] == true, 0, i, 1);
+                },
+                Existing(hash) => {
+                    memory.store(storage::predicates[hash] == true, 0, i, 1);
+                },
+            }
+        }
+        memory.store(storage::contracts[contract_addr] == true, 0, num_predicates, 1);
+    };
+
+    constraint num_predicates > 0 && !found_contract && found_contract';
+
+    constraint forall i in 0..num_predicates { 
+        match predicates[i] {
+            New(bytes) => !found_predicates[i] && found_predicates[i]',
+            Existing(hash) => found_predicates[i] && found_predicates[i]',
+        }
+    };
+
+    constraint __mut_keys() == (0..num_predicates).fold(set, |acc, i| acc.union(set(hashes[i].hash))).union(set(contract_hash));
+
+    constraint num_predicates <= MAX_PREDICATES && __num_slots(Slots::Var) == num_predicates + 2;
+
+    // Hashes are unique
+    constraint forall i in 0..num_predicates {
+        forall j in i + 1..num_predicates {
+            hashes[i] != hashes[j]
+        }
+    };
+
+    constraint {
+        let total: int = 0;
+        forall i in 0..num_predicates {
+            total += __var_len(i + 2);
+            __var_len(i + 2) <= MAX_PREDICATE_BYTES
+            && match predicates[i] {
+                New(bytes) => {
+                    __read(bytes, 1, 0, 1) <= MAX_STATE_READS
+                    && __read(bytes, 1, 1, 1) <= MAX_CONSTRAINTS
+                    && forall j in 0..__read(bytes, 1, 0, 1) {
+                        __read(bytes, 1, 2 + j * 2, 2) <= MAX_STATE_READ_SIZE
+                    }
+                    && forall j in 0..__read(bytes, 1, 1, 1) {
+                        __read(bytes, 1, 2 + j * 2 * __read(bytes, 1, 0, 1), 2) <= MAX_CONSTRAINT_SIZE
+                    }
+                },
+                Existing(_) => true,
+            }
+        } && total <= MAX_CONTRACT_BYTES
+    };
+
+}

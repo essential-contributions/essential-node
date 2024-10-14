@@ -7,16 +7,22 @@ repository.workspace = true
 version = "0.1.0"
 
 [dependencies]
-essential-check = { git = "https://github.com/essential-contributions/essential-base", branch = "freesig/hash-bytes" }
-essential-constraint-asm = { git = "https://github.com/essential-contributions/essential-base", branch = "freesig/hash-bytes" }
-essential-hash = { git = "https://github.com/essential-contributions/essential-base", branch = "freesig/hash-bytes" }
-essential-state-asm = { git = "https://github.com/essential-contributions/essential-base", branch = "freesig/hash-bytes" }
-essential-types = { git = "https://github.com/essential-contributions/essential-base", branch = "freesig/hash-bytes" }
+essential-check = { git = "https://github.com/essential-contributions/essential-base" }
+essential-constraint-asm = { git = "https://github.com/essential-contributions/essential-base" }
+essential-hash = { git = "https://github.com/essential-contributions/essential-base" }
+essential-state-asm = { git = "https://github.com/essential-contributions/essential-base" }
+essential-types = { git = "https://github.com/essential-contributions/essential-base" }
 tracing.workspace = true
 
 [dev-dependencies]
 essential-check = { git = "https://github.com/essential-contributions/essential-base", features = [
     "tracing",
-], branch = "freesig/hash-bytes" }
+] }
+essential-constraint-vm = { git = "https://github.com/essential-contributions/essential-base", features = [
+    "tracing",
+] }
+essential-state-read-vm = { git = "https://github.com/essential-contributions/essential-base", features = [
+    "tracing",
+] }
 tokio.workspace = true
 tracing-subscriber.workspace = true

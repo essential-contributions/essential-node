@@ -3,27 +3,27 @@ use super::state_mem_offset;
 use super::tags;
 use crate::deploy_contract::storage_index;
 use essential_state_asm as asm;
+use essential_types::Word;
+
+#[cfg(test)]
+mod tests;
 
 fn new_tag_body() -> Vec<asm::Op> {
     [
-        jump_if_cond(
-            vec![PUSH(1), NSLT, PUSH(3), EQ],
-            [
-                read_predicate_words(),
-                read_predicate_words_len(),
-                read_predicate_padding_len(),
-                vec![SHA2],
-            ]
-            .concat(),
-        ),
-        jump_if_cond(
-            vec![PUSH(1), NSLT, PUSH(3), EQ, NOT],
-            predicate_addrs_i_address(),
-        ),
+        read_predicate_words(),
+        read_predicate_bytes_len(),
+        vec![SHA2],
     ]
     .concat()
 }
 
+/// # Args
+///
+/// # Accesses
+///  Repeat counter
+///
+/// # Returns
+/// State memory 4 words
 fn load_last_addr() -> Vec<asm::Op> {
     vec![
         PUSH(state_mem_offset::PREDICATE_ADDRS),
@@ -33,18 +33,36 @@ fn load_last_addr() -> Vec<asm::Op> {
         PUSH(1),
         ADD,
         PUSH(4),
-        SLD,
+        LODS,
     ]
 }
 
-pub fn read_contract_addr() -> Vec<u8> {
-    let r = [
-        vec![PUSH(storage_index::CONTRACTS)],
-        alloc(3),
-        // for i in 0..predicates_size
-        read_predicate_size(),
-        vec![PUSH(1), REP],
+fn repeat(num: Word, count_up: bool, ops: Vec<asm::Op>) -> Vec<asm::Op> {
+    [
+        vec![PUSH(num), PUSH(count_up as Word), REP],
+        ops,
+        vec![REPE],
+    ]
+    .concat()
+}
+
+fn repeat_num(mut num: Vec<asm::Op>, count_up: bool, ops: Vec<asm::Op>) -> Vec<asm::Op> {
+    let ops = repeat(0, count_up, ops);
+    num.extend_from_slice(&ops[1..]);
+    num
+}
+
+fn body_setup() -> Vec<asm::Op> {
+    [
+        vec![PUSH(state_mem_offset::PREDICATE_ADDRS), DUP, SMVLEN],
         read_predicate_tag(),
+    ]
+    .concat()
+}
+
+fn repeat_body() -> Vec<asm::Op> {
+    [
+        body_setup(),
         // match tag
         // NEW_TAG
         match_tag(tags::NEW, new_tag_body()),
@@ -55,11 +73,20 @@ pub fn read_contract_addr() -> Vec<u8> {
         // No match
         panic_on_no_match(),
         // Write tag and predicate address to storage
-        extend_storage_mem(5, state_mem_offset::PREDICATE_ADDRS),
+        vec![PUSH(5), STOS],
         load_last_addr(),
         //
         // loop end
-        vec![REPE],
+    ]
+    .concat()
+}
+
+pub fn read_contract_addr() -> Vec<u8> {
+    let r = [
+        vec![PUSH(storage_index::CONTRACTS)],
+        alloc(3),
+        // for i in 0..predicates_size
+        repeat_num(read_predicate_size(), true, repeat_body()),
         // salt
         //
         read_salt(),
@@ -72,7 +99,7 @@ pub fn read_contract_addr() -> Vec<u8> {
         load_state_slot(state_mem_offset::CONTRACT_ADDR, 0, 4),
         //
         // state deployed_contract = storage::contracts[hash];
-        single_key(5, state_mem_offset::CONTRACT_EXISTS),
+        read_single_key(5, state_mem_offset::CONTRACT_EXISTS),
     ]
     .concat();
     asm::to_bytes(r).collect()

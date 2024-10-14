@@ -583,10 +583,10 @@ dependencies = [
 [[package]]
 name = "essential-asm-gen"
 version = "0.3.1"
-source = "git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes#13720fca9dc31a9120ef4f5412d489815b378507"
+source = "git+https://github.com/essential-contributions/essential-base#ffc20f902f03d99a10ed1b9632cf97075a1c333b"
 dependencies = [
- "essential-asm-spec 0.2.1 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
- "essential-types 0.2.0 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
+ "essential-asm-spec 0.2.1 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-types 0.2.0 (git+https://github.com/essential-contributions/essential-base)",
  "proc-macro2",
  "quote",
  "syn",
@@ -605,7 +605,7 @@ dependencies = [
 [[package]]
 name = "essential-asm-spec"
 version = "0.2.1"
-source = "git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes#13720fca9dc31a9120ef4f5412d489815b378507"
+source = "git+https://github.com/essential-contributions/essential-base#ffc20f902f03d99a10ed1b9632cf97075a1c333b"
 dependencies = [
  "serde",
  "serde_yaml",
@@ -629,13 +629,13 @@ dependencies = [
 [[package]]
 name = "essential-check"
 version = "0.5.0"
-source = "git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes#13720fca9dc31a9120ef4f5412d489815b378507"
+source = "git+https://github.com/essential-contributions/essential-base#ffc20f902f03d99a10ed1b9632cf97075a1c333b"
 dependencies = [
- "essential-constraint-vm 0.3.0 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
- "essential-hash 0.3.0 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
- "essential-sign 0.3.0 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
- "essential-state-read-vm 0.4.0 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
- "essential-types 0.2.0 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
+ "essential-constraint-vm 0.3.0 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-hash 0.3.0 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-sign 0.3.0 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-state-read-vm 0.4.0 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-types 0.2.0 (git+https://github.com/essential-contributions/essential-base)",
  "rayon",
  "thiserror",
  "tokio",
@@ -656,10 +656,10 @@ dependencies = [
 [[package]]
 name = "essential-constraint-asm"
 version = "0.3.1"
-source = "git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes#13720fca9dc31a9120ef4f5412d489815b378507"
+source = "git+https://github.com/essential-contributions/essential-base#ffc20f902f03d99a10ed1b9632cf97075a1c333b"
 dependencies = [
- "essential-asm-gen 0.3.1 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
- "essential-types 0.2.0 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
+ "essential-asm-gen 0.3.1 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-types 0.2.0 (git+https://github.com/essential-contributions/essential-base)",
  "serde",
 ]
 
@@ -681,11 +681,11 @@ dependencies = [
 [[package]]
 name = "essential-constraint-vm"
 version = "0.3.0"
-source = "git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes#13720fca9dc31a9120ef4f5412d489815b378507"
+source = "git+https://github.com/essential-contributions/essential-base#ffc20f902f03d99a10ed1b9632cf97075a1c333b"
 dependencies = [
  "ed25519-dalek",
- "essential-constraint-asm 0.3.1 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
- "essential-types 0.2.0 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
+ "essential-constraint-asm 0.3.1 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-types 0.2.0 (git+https://github.com/essential-contributions/essential-base)",
  "rayon",
  "secp256k1",
  "sha2",
@@ -697,11 +697,13 @@ dependencies = [
 name = "essential-genesis"
 version = "0.1.0"
 dependencies = [
- "essential-check 0.5.0 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
- "essential-constraint-asm 0.3.1 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
- "essential-hash 0.3.0 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
- "essential-state-asm 0.3.1 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
- "essential-types 0.2.0 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
+ "essential-check 0.5.0 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-constraint-asm 0.3.1 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-constraint-vm 0.3.0 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-hash 0.3.0 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-state-asm 0.3.1 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-state-read-vm 0.4.0 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-types 0.2.0 (git+https://github.com/essential-contributions/essential-base)",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -722,9 +724,9 @@ dependencies = [
 [[package]]
 name = "essential-hash"
 version = "0.3.0"
-source = "git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes#13720fca9dc31a9120ef4f5412d489815b378507"
+source = "git+https://github.com/essential-contributions/essential-base#ffc20f902f03d99a10ed1b9632cf97075a1c333b"
 dependencies = [
- "essential-types 0.2.0 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
+ "essential-types 0.2.0 (git+https://github.com/essential-contributions/essential-base)",
  "postcard",
  "serde",
  "sha2",
@@ -852,10 +854,10 @@ dependencies = [
 [[package]]
 name = "essential-sign"
 version = "0.3.0"
-source = "git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes#13720fca9dc31a9120ef4f5412d489815b378507"
+source = "git+https://github.com/essential-contributions/essential-base#ffc20f902f03d99a10ed1b9632cf97075a1c333b"
 dependencies = [
- "essential-hash 0.3.0 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
- "essential-types 0.2.0 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
+ "essential-hash 0.3.0 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-types 0.2.0 (git+https://github.com/essential-contributions/essential-base)",
  "secp256k1",
 ]
 
@@ -873,10 +875,10 @@ dependencies = [
 [[package]]
 name = "essential-state-asm"
 version = "0.3.1"
-source = "git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes#13720fca9dc31a9120ef4f5412d489815b378507"
+source = "git+https://github.com/essential-contributions/essential-base#ffc20f902f03d99a10ed1b9632cf97075a1c333b"
 dependencies = [
- "essential-asm-gen 0.3.1 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
- "essential-constraint-asm 0.3.1 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
+ "essential-asm-gen 0.3.1 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-constraint-asm 0.3.1 (git+https://github.com/essential-contributions/essential-base)",
  "serde",
 ]
 
@@ -895,11 +897,11 @@ dependencies = [
 [[package]]
 name = "essential-state-read-vm"
 version = "0.4.0"
-source = "git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes#13720fca9dc31a9120ef4f5412d489815b378507"
+source = "git+https://github.com/essential-contributions/essential-base#ffc20f902f03d99a10ed1b9632cf97075a1c333b"
 dependencies = [
- "essential-constraint-vm 0.3.0 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
- "essential-state-asm 0.3.1 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
- "essential-types 0.2.0 (git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes)",
+ "essential-constraint-vm 0.3.0 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-state-asm 0.3.1 (git+https://github.com/essential-contributions/essential-base)",
+ "essential-types 0.2.0 (git+https://github.com/essential-contributions/essential-base)",
  "thiserror",
  "tracing",
 ]
@@ -917,7 +919,7 @@ dependencies = [
 [[package]]
 name = "essential-types"
 version = "0.2.0"
-source = "git+https://github.com/essential-contributions/essential-base?branch=freesig/hash-bytes#13720fca9dc31a9120ef4f5412d489815b378507"
+source = "git+https://github.com/essential-contributions/essential-base#ffc20f902f03d99a10ed1b9632cf97075a1c333b"
 dependencies = [
  "hex",
  "serde",

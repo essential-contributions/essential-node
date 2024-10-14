@@ -9,14 +9,22 @@ use essential_types::{
 mod tests;
 
 mod check_exists;
-mod constrain_keys;
-mod delta_contract;
 mod read_contract_addr;
 mod read_predicate_addr;
 mod validate_contract;
 
 mod constraint;
 mod state;
+
+mod find_contract;
+mod generate_hashes;
+
+mod check_max;
+mod constrain_keys;
+mod delta_contract;
+mod found_predicates;
+mod max_predicates;
+mod unique_hashes;
 
 mod storage_index {
     use essential_types::Word;
@@ -28,9 +36,9 @@ mod storage_index {
 mod dec_var_slot_offset {
     use essential_types::Word;
 
-    pub const SALT: Word = 0;
-    pub const NUM_PREDICATES: Word = SALT + 1;
-    pub const PREDICATES: Word = NUM_PREDICATES + 1;
+    pub const NUM_PREDICATES: Word = 0;
+    pub const SALT: Word = NUM_PREDICATES + 1;
+    pub const PREDICATES: Word = SALT + 1;
 }
 
 mod tags {
@@ -45,17 +53,24 @@ mod predicate_layout_offset {
     use essential_types::Word;
 
     pub const TAG: Word = 0;
-    pub const PADDING_LEN: Word = TAG + 1;
-    pub const WORDS: Word = PADDING_LEN + 1;
+    pub const BYTES_LEN: Word = TAG + 1;
+    pub const WORDS: Word = BYTES_LEN + 1;
 }
 
-mod state_slot_offset {
+mod state_slot_offset_old {
     use essential_types::Word;
 
     pub const CONTRACT_EXISTS: Word = 0;
     pub const PREDICATE_ADDRS: Word = CONTRACT_EXISTS + 1;
     pub const CONTRACT_ADDR: Word = PREDICATE_ADDRS + 1;
     pub const PREDICATE_EXISTS: Word = CONTRACT_ADDR + 1;
+}
+
+mod state_slot_offset {
+    use essential_types::Word;
+
+    pub const GENERATE_HASHES: Word = 0;
+    pub const FIND_CONTRACT: Word = GENERATE_HASHES + 1;
 }
 
 mod state_mem_offset {
@@ -79,9 +94,9 @@ fn deploy() -> Predicate {
         read_predicate_addr::read_predicate_addr(),
     ];
     let constraints = vec![
-        delta_contract::delta_contract(),
+        delta_contract::delta_contract_bytes(),
         check_exists::check_exists(),
-        constrain_keys::constrain_keys(),
+        constrain_keys::constrain_keys_bytes(),
         validate_contract::validate_contract(),
     ];
     Predicate {
@@ -110,9 +125,7 @@ pub fn predicates_to_dec_vars<'p>(
             let v = match p {
                 DeployedPredicate::New(p) => {
                     let bytes: Vec<_> = p.encode()?.collect();
-                    let padding_len =
-                        core::mem::size_of::<Word>() - (bytes.len() % core::mem::size_of::<Word>());
-                    let mut v = vec![tags::NEW, padding_len as Word];
+                    let mut v = vec![tags::NEW, bytes.len() as Word];
                     let iter = bytes.chunks(core::mem::size_of::<Word>()).map(|chunk| {
                         if chunk.len() == core::mem::size_of::<Word>() {
                             word_from_bytes(chunk.try_into().unwrap())
@@ -126,7 +139,7 @@ pub fn predicates_to_dec_vars<'p>(
                     v
                 }
                 DeployedPredicate::Existing(addr) => {
-                    let mut v = vec![tags::EXISTING, 0];
+                    let mut v = vec![tags::EXISTING, 32];
                     v.extend(word_4_from_u8_32(addr.0));
                     v
                 }

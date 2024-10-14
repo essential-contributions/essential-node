@@ -116,7 +116,7 @@ async fn test_delta_contract() {
 
     let predicate = Predicate {
         state_read: vec![read_contract_addr(), read_predicate_addr()],
-        constraints: vec![delta_contract::delta_contract()],
+        constraints: vec![delta_contract::delta_contract_bytes()],
     };
 
     let predicate = Arc::new(predicate);
@@ -140,7 +140,7 @@ async fn test_constrain_keys() {
 
     let predicate = Predicate {
         state_read: vec![read_contract_addr(), read_predicate_addr()],
-        constraints: vec![constrain_keys::constrain_keys()],
+        constraints: vec![constrain_keys::constrain_keys_bytes()],
     };
 
     let predicate = Arc::new(predicate);
