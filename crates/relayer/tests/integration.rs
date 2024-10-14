@@ -6,9 +6,9 @@ use essential_node::{
 use essential_relayer::{DataSyncError, Relayer};
 use essential_types::{
     contract::Contract,
-    predicate::{Directive, Predicate},
+    predicate::Predicate,
     solution::{Mutation, Solution, SolutionData},
-    Block, PredicateAddress,
+    Block, PredicateAddress, Word,
 };
 use rusqlite_pool::tokio::AsyncConnectionPool;
 use std::sync::Arc;
@@ -114,7 +114,7 @@ async fn test_sync() {
             r,
             Err(essential_relayer::Error::DataSyncFailed(
                 DataSyncError::Fork(i, _, None)
-            )) if i == (num_blocks - 1) as u64
+            )) if i == (num_blocks - 1) as Word
         ),
         "{} {:?}",
         num_blocks,
@@ -213,7 +213,6 @@ fn test_structs() -> (Vec<Solution>, Vec<Arc<Block>>) {
     let predicate = Predicate {
         state_read: vec![],
         constraints: vec![],
-        directive: Directive::Satisfy,
     };
     let contracts: Vec<_> = (0..200)
         .map(|i| {
@@ -250,7 +249,7 @@ fn test_structs() -> (Vec<Solution>, Vec<Arc<Block>>) {
         .enumerate()
         .map(|(i, s)| {
             Arc::new(Block {
-                number: i as u64,
+                number: i as Word,
                 timestamp: std::time::Duration::from_secs(i as u64),
                 solutions: vec![s.clone()],
             })

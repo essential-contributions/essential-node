@@ -1,5 +1,5 @@
 use essential_node_db::QueryError;
-use essential_types::ContentAddress;
+use essential_types::{ContentAddress, Word};
 use thiserror::Error;
 
 /// The result type for the relayer.
@@ -67,7 +67,7 @@ pub(crate) enum RecoverableError {
     HttpClient(#[from] reqwest::Error),
     /// A new block was not sequentially after the last block.
     #[error("a new block was not sequentially after the last block. Got: {0}, expected: {1}")]
-    NonSequentialBlock(u64, u64),
+    NonSequentialBlock(Word, Word),
     /// The stream returned an error.
     #[error("the stream returned an error: {0}")]
     StreamError(String),
@@ -83,7 +83,7 @@ pub enum DataSyncError {
     #[error(
         "While syncing blocks a fork was detected at block number {0}. Got: {1}, expected: {}", display_address(.2)
     )]
-    Fork(u64, ContentAddress, Option<ContentAddress>),
+    Fork(Word, ContentAddress, Option<ContentAddress>),
 }
 
 fn display_address<T>(addr: &Option<T>) -> String

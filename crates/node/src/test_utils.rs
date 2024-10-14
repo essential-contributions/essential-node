@@ -23,15 +23,15 @@ pub fn test_db_conf() -> Config {
     }
 }
 
-pub fn test_blocks(n: u64) -> (Vec<Block>, Vec<Contract>) {
+pub fn test_blocks(n: Word) -> (Vec<Block>, Vec<Contract>) {
     let (blocks, contracts) = (0..n)
         .map(|i| test_block(i, Duration::from_secs(i as _)))
         .unzip::<_, _, Vec<_>, Vec<_>>();
     (blocks, contracts.into_iter().flatten().collect())
 }
 
-pub fn test_block(number: u64, timestamp: Duration) -> (Block, Vec<Contract>) {
-    let seed = number as i64 * 3;
+pub fn test_block(number: Word, timestamp: Duration) -> (Block, Vec<Contract>) {
+    let seed = number * 3;
     let (solutions, contracts) = (0..3)
         .map(|i| test_solution(seed + i))
         .unzip::<_, _, Vec<_>, Vec<_>>();
@@ -46,8 +46,8 @@ pub fn test_block(number: u64, timestamp: Duration) -> (Block, Vec<Contract>) {
     )
 }
 
-pub fn test_invalid_block(number: u64, timestamp: Duration) -> (Block, Contract) {
-    let seed = number as i64;
+pub fn test_invalid_block(number: Word, timestamp: Duration) -> (Block, Contract) {
+    let seed = number;
 
     let predicate = Predicate {
         state_read: test_state_reads(seed),
@@ -58,7 +58,6 @@ pub fn test_invalid_block(number: u64, timestamp: Duration) -> (Block, Contract)
             essential_constraint_asm::Stack::Push(0).into(),
         ])
         .collect()],
-        directive: essential_types::predicate::Directive::Satisfy,
     };
     let contract = Contract {
         predicates: vec![predicate],
@@ -124,13 +123,11 @@ pub fn test_solution_data(seed: Word) -> (SolutionData, Contract) {
 }
 
 pub fn test_contract(seed: Word) -> Contract {
-    let n = (1 + seed % 2) as usize;
+    let n = 1 + seed % 2;
     Contract {
         // Make sure each predicate is unique, or contract will have a different
         // number of entries after insertion when multiple predicates have same CA.
-        predicates: (0..n)
-            .map(|ix| test_predicate(seed * (2 + ix as i64)))
-            .collect(),
+        predicates: (0..n).map(|ix| test_predicate(seed * (2 + ix))).collect(),
         salt: essential_types::convert::u8_32_from_word_4([seed; 4]),
     }
 }
@@ -139,7 +136,6 @@ pub fn test_predicate(seed: Word) -> Predicate {
     Predicate {
         state_read: test_state_reads(seed),
         constraints: test_constraints(seed),
-        directive: essential_types::predicate::Directive::Satisfy,
     }
 }
 

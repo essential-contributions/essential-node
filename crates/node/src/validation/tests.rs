@@ -4,7 +4,7 @@ use crate::test_utils::{
     test_conn_pool, test_invalid_block,
 };
 use essential_node_db::{insert_block, insert_contract};
-use essential_types::{contract::Contract, Block};
+use essential_types::{contract::Contract, Block, Word};
 use rusqlite::Connection;
 use std::time::Duration;
 
@@ -36,7 +36,7 @@ async fn can_validate() {
     let conn_pool = test_conn_pool();
     let mut conn = conn_pool.acquire().await.unwrap();
 
-    const NUM_TEST_BLOCKS: u64 = 4;
+    const NUM_TEST_BLOCKS: Word = 4;
     let (test_blocks, contracts) = test_blocks(NUM_TEST_BLOCKS);
     insert_contracts_to_db(&mut conn, contracts);
 

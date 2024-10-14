@@ -23,16 +23,16 @@ use thiserror::Error;
 #[derive(Deserialize)]
 pub struct BlockRange {
     /// Start of the range.
-    pub start: u64,
+    pub start: Word,
     /// The end of the range (exclusive).
-    pub end: u64,
+    pub end: Word,
 }
 
 /// Type to deserialize a block number query parameter.
 #[derive(Deserialize)]
 pub struct StartBlock {
     /// The block number to start from.
-    pub start_block: u64,
+    pub start_block: Word,
 }
 
 /// Any endpoint error that might occur.
@@ -144,7 +144,7 @@ pub mod list_contracts {
     pub async fn handler(
         State(state): State<crate::State>,
         Query(block_range): Query<BlockRange>,
-    ) -> Result<Json<Vec<(u64, Vec<Contract>)>>, Error> {
+    ) -> Result<Json<Vec<(Word, Vec<Contract>)>>, Error> {
         let contracts = state
             .conn_pool
             .list_contracts(block_range.start..block_range.end)

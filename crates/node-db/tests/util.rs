@@ -15,7 +15,7 @@ pub fn test_conn() -> Connection {
     conn
 }
 
-pub fn test_blocks_with_vars(n: u64) -> (ContentAddress, Vec<Block>) {
+pub fn test_blocks_with_vars(n: Word) -> (ContentAddress, Vec<Block>) {
     let mut values = 0..Word::MAX;
     let contract_addr = ContentAddress([42; 32]);
     let blocks = test_blocks(n)
@@ -53,14 +53,14 @@ pub fn test_blocks_with_vars(n: u64) -> (ContentAddress, Vec<Block>) {
     (contract_addr, blocks)
 }
 
-pub fn test_blocks(n: u64) -> Vec<Block> {
+pub fn test_blocks(n: Word) -> Vec<Block> {
     (0..n)
         .map(|i| test_block(i, Duration::from_secs(i as _)))
         .collect()
 }
 
-pub fn test_block(number: u64, timestamp: Duration) -> Block {
-    let seed = number as i64 * 79;
+pub fn test_block(number: Word, timestamp: Duration) -> Block {
+    let seed = number * 79;
     Block {
         number,
         timestamp,
@@ -97,13 +97,11 @@ pub fn test_pred_addr() -> PredicateAddress {
 }
 
 pub fn test_contract(seed: Word) -> Contract {
-    let n = (1 + seed % 2) as usize;
+    let n = 1 + seed % 2;
     Contract {
         // Make sure each predicate is unique, or contract will have a different
         // number of entries after insertion when multiple predicates have same CA.
-        predicates: (0..n)
-            .map(|ix| test_predicate(seed * (1 + ix as i64)))
-            .collect(),
+        predicates: (0..n).map(|ix| test_predicate(seed * (1 + ix))).collect(),
         salt: essential_types::convert::u8_32_from_word_4([seed; 4]),
     }
 }
@@ -112,7 +110,6 @@ pub fn test_predicate(seed: Word) -> Predicate {
     Predicate {
         state_read: test_state_reads(seed),
         constraints: test_constraints(seed),
-        directive: essential_types::predicate::Directive::Satisfy,
     }
 }
 

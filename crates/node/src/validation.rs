@@ -91,7 +91,6 @@ async fn validate_next_block(
         // Validation was successful.
         ValidateOutcome::Valid(ValidOutcome {
             total_gas: _total_gas,
-            utility: _utility,
         }) => {
             let mut conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
             let r: Result<(), InternalError> = tokio::task::spawn_blocking(move || {
@@ -170,8 +169,8 @@ async fn get_next_block(
                 None => 0..1,
             };
 
-            let blocks =
-                essential_node_db::list_blocks(&tx, range).map_err(RecoverableError::from)?;
+            let blocks = essential_node_db::list_unchecked_blocks(&tx, range)
+                .map_err(RecoverableError::from)?;
 
             Ok(blocks)
         }

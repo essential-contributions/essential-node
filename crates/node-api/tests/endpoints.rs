@@ -218,7 +218,7 @@ async fn test_list_contracts() {
 
     // Create the necessary tables and insert contracts.
     for (ix, contracts) in block_contracts.iter().enumerate() {
-        let block_n = ix.try_into().unwrap();
+        let block_n = ix as Word;
         for contract in contracts {
             let contract = std::sync::Arc::new(contract.clone());
             db.insert_contract(contract, block_n).await.unwrap();
@@ -226,8 +226,8 @@ async fn test_list_contracts() {
     }
 
     // Query the second and third blocks.
-    let start = 1;
-    let end = 3;
+    let start: Word = 1;
+    let end: Word = 3;
 
     // Fetch the blocks.
     let fetched_contracts = with_test_server(state_db_only(db), |port| async move {
@@ -240,7 +240,7 @@ async fn test_list_contracts() {
             .await
             .unwrap();
         assert!(response.status().is_success());
-        response.json::<Vec<(u64, Vec<Contract>)>>().await.unwrap()
+        response.json::<Vec<(Word, Vec<Contract>)>>().await.unwrap()
     })
     .await;
 
@@ -248,7 +248,7 @@ async fn test_list_contracts() {
     let expected = &block_contracts[start as usize..end as usize];
     for ((ix, expected), (block, contracts)) in expected.iter().enumerate().zip(&fetched_contracts)
     {
-        assert_eq!(ix as u64 + start, *block);
+        assert_eq!(ix as Word + start, *block);
         assert_eq!(expected, contracts);
     }
 }
