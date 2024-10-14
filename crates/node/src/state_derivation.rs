@@ -7,7 +7,7 @@ use essential_hash::content_addr;
 use essential_node_db::{
     get_block_number, get_latest_finalized_block_address, update_state, update_state_progress,
 };
-use essential_types::{solution::Mutation, Block, ContentAddress};
+use essential_types::{solution::Mutation, Block, ContentAddress, Word};
 use futures::stream::{StreamExt, TryStreamExt};
 use tokio::sync::watch;
 use tokio_stream::wrappers::WatchStream;
@@ -183,7 +183,7 @@ async fn get_next_block(
 async fn update_state_in_db<S, I>(
     conn_pool: ConnectionPool,
     mutations: I,
-    block_number: u64,
+    block_number: Word,
     block_address: ContentAddress,
 ) -> Result<bool, InternalError>
 where
@@ -225,7 +225,7 @@ where
 fn update_state_in_db_inner<S, I>(
     conn: &mut ConnectionHandle,
     mutations: I,
-    block_number: u64,
+    block_number: Word,
     block_address: ContentAddress,
 ) -> Result<(), CriticalError>
 where

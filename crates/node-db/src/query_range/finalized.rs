@@ -2,7 +2,7 @@
 //! given block number or solution index for blocks that have been finalized.
 
 use essential_node_db_sql as sql;
-use essential_types::{ContentAddress, Key, Value};
+use essential_types::{ContentAddress, Key, Value, Word};
 use rusqlite::{named_params, Connection, OptionalExtension};
 
 use crate::{decode, encode, QueryError};
@@ -15,7 +15,7 @@ pub fn query_state_inclusive_block(
     conn: &Connection,
     contract_ca: &ContentAddress,
     key: &Key,
-    block_number: u64,
+    block_number: Word,
 ) -> Result<Option<Value>, QueryError> {
     let contract_ca_blob = encode(contract_ca);
     let key_blob = encode(key);
@@ -41,7 +41,7 @@ pub fn query_state_exclusive_block(
     conn: &Connection,
     contract_ca: &ContentAddress,
     key: &Key,
-    block_number: u64,
+    block_number: Word,
 ) -> Result<Option<Value>, QueryError> {
     match block_number.checked_sub(1) {
         Some(block_number) => query_state_inclusive_block(conn, contract_ca, key, block_number),
@@ -59,7 +59,7 @@ pub fn query_state_inclusive_solution(
     conn: &Connection,
     contract_ca: &ContentAddress,
     key: &Key,
-    block_number: u64,
+    block_number: Word,
     solution_index: u64,
 ) -> Result<Option<Value>, QueryError> {
     let contract_ca_blob = encode(contract_ca);
@@ -88,7 +88,7 @@ pub fn query_state_exclusive_solution(
     conn: &Connection,
     contract_ca: &ContentAddress,
     key: &Key,
-    block_number: u64,
+    block_number: Word,
     solution_index: u64,
 ) -> Result<Option<Value>, QueryError> {
     match solution_index.checked_sub(1) {

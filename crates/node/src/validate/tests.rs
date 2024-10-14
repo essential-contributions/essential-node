@@ -32,9 +32,8 @@ async fn valid_block() {
     let outcome = validate::validate(&conn_pool, &block).await.unwrap();
 
     match outcome {
-        ValidateOutcome::Valid(ValidOutcome { total_gas, utility }) => {
+        ValidateOutcome::Valid(ValidOutcome { total_gas }) => {
             assert!(total_gas > 0);
-            assert!(utility > 0.0);
         }
         ValidateOutcome::Invalid(_) => {
             panic!("expected ValidateOutcome::Valid, found {:?}", outcome)

@@ -91,7 +91,6 @@ async fn validate_next_block(
         // Validation was successful.
         ValidateOutcome::Valid(ValidOutcome {
             total_gas: _total_gas,
-            utility: _utility,
         }) => {
             let mut conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
             let r: Result<(), InternalError> = tokio::task::spawn_blocking(move || {

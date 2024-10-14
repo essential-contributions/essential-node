@@ -7,7 +7,8 @@ use core::ops::Range;
 use essential_node_db as db;
 pub use essential_node_db::{AwaitNewBlock, QueryError};
 use essential_types::{
-    contract::Contract, predicate::Predicate, solution::Solution, Block, ContentAddress, Key, Value,
+    contract::Contract, predicate::Predicate, solution::Solution, Block, ContentAddress, Key,
+    Value, Word,
 };
 use futures::Stream;
 use rusqlite::Transaction;
@@ -143,7 +144,7 @@ impl ConnectionPool {
     pub async fn insert_contract(
         &self,
         contract: Arc<Contract>,
-        l2_block_num: u64,
+        l2_block_num: Word,
     ) -> Result<(), AcquireThenRusqliteError> {
         self.acquire_then(move |h| {
             with_tx(h, |tx| db::insert_contract(tx, &contract, l2_block_num))
@@ -224,7 +225,7 @@ impl ConnectionPool {
     /// Lists all blocks in the given range.
     pub async fn list_blocks(
         &self,
-        block_range: Range<u64>,
+        block_range: Range<Word>,
     ) -> Result<Vec<Block>, AcquireThenQueryError> {
         self.acquire_then(move |h| db::list_blocks(h, block_range))
             .await
@@ -247,8 +248,8 @@ impl ConnectionPool {
     /// `Vec<Contract>` containing the contracts appearing in that block.
     pub async fn list_contracts(
         &self,
-        block_range: Range<u64>,
-    ) -> Result<Vec<(u64, Vec<Contract>)>, AcquireThenQueryError> {
+        block_range: Range<Word>,
+    ) -> Result<Vec<(Word, Vec<Contract>)>, AcquireThenQueryError> {
         self.acquire_then(move |h| db::list_contracts(h, block_range))
             .await
     }
@@ -256,7 +257,7 @@ impl ConnectionPool {
     /// Subscribe to all blocks from the given starting block number.
     pub fn subscribe_blocks(
         &self,
-        start_block: u64,
+        start_block: Word,
         await_new_block: impl AwaitNewBlock,
     ) -> impl Stream<Item = Result<Block, QueryError>> {
         db::subscribe_blocks(start_block, self.clone(), await_new_block)

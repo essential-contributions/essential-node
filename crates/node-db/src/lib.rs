@@ -17,7 +17,7 @@ use essential_hash::content_addr;
 pub use essential_node_db_sql as sql;
 use essential_types::{
     contract::Contract, predicate::Predicate, solution::Solution, Block, ContentAddress, Hash, Key,
-    Value,
+    Value, Word,
 };
 use futures::Stream;
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
@@ -203,7 +203,7 @@ pub fn insert_failed_block(
 pub fn insert_contract(
     tx: &Transaction,
     contract: &Contract,
-    l2_block_number: u64,
+    l2_block_number: Word,
 ) -> rusqlite::Result<()> {
     // Collect the predicate content addresses.
     let predicate_cas: Vec<_> = contract.predicates.iter().map(content_addr).collect();
@@ -256,13 +256,11 @@ pub fn insert_contract(
 /// This is because we need to initialize the first progress.
 pub fn insert_contract_progress(
     conn: &Connection,
-    l2_block_number: u64,
+    l2_block_number: Word,
     contract_ca: &ContentAddress,
 ) -> rusqlite::Result<()> {
     let contract_ca_blob = encode(contract_ca);
 
-    // Cast to i64 to match the type of the column.
-    let l2_block_number = l2_block_number as i64;
     conn.execute(
         sql::insert::CONTRACT_PROGRESS,
         named_params! {
@@ -400,12 +398,12 @@ pub fn get_contract(
 /// Fetches the contract progress.
 pub fn get_contract_progress(
     conn: &Connection,
-) -> Result<Option<(u64, ContentAddress)>, QueryError> {
+) -> Result<Option<(Word, ContentAddress)>, QueryError> {
     let Some((l2_block_number, content_hash)) = conn
         .query_row(sql::query::GET_CONTRACT_PROGRESS, [], |row| {
-            let l2_block_number: i64 = row.get("l2_block_number")?;
+            let l2_block_number: Word = row.get("l2_block_number")?;
             let content_hash: Vec<u8> = row.get("content_hash")?;
-            Ok((l2_block_number as u64, content_hash))
+            Ok((l2_block_number, content_hash))
         })
         .optional()?
     else {
@@ -465,13 +463,13 @@ pub fn query_state(
 pub fn get_block_number(
     conn: &Connection,
     block_address: &ContentAddress,
-) -> Result<Option<u64>, rusqlite::Error> {
+) -> Result<Option<Word>, rusqlite::Error> {
     conn.query_row(
         sql::query::GET_BLOCK_NUMBER,
         named_params! {
             ":block_address": block_address.0,
         },
-        |row| row.get::<_, Option<u64>>("number"),
+        |row| row.get::<_, Option<Word>>("number"),
     )
 }
 
@@ -510,7 +508,7 @@ pub fn get_validation_progress(conn: &Connection) -> Result<Option<ContentAddres
 }
 
 /// Lists all blocks in the given range.
-pub fn list_blocks(conn: &Connection, block_range: Range<u64>) -> Result<Vec<Block>, QueryError> {
+pub fn list_blocks(conn: &Connection, block_range: Range<Word>) -> Result<Vec<Block>, QueryError> {
     let mut stmt = conn.prepare(sql::query::LIST_BLOCKS)?;
     let rows = stmt.query_map(
         named_params! {
@@ -519,7 +517,7 @@ pub fn list_blocks(conn: &Connection, block_range: Range<u64>) -> Result<Vec<Blo
         },
         |row| {
             let block_address: essential_types::Hash = row.get("block_address")?;
-            let block_number: u64 = row.get("number")?;
+            let block_number: Word = row.get("number")?;
             let timestamp_secs: u64 = row.get("timestamp_secs")?;
             let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
             let solution_blob: Vec<u8> = row.get("solution")?;
@@ -534,7 +532,7 @@ pub fn list_blocks(conn: &Connection, block_range: Range<u64>) -> Result<Vec<Blo
     for res in rows {
         let (block_address, block_number, timestamp, solution_blob): (
             essential_types::Hash,
-            u64,
+            Word,
             Duration,
             Vec<u8>,
         ) = res?;
@@ -579,7 +577,7 @@ pub fn list_blocks_by_time(
         },
         |row| {
             let block_address: essential_types::Hash = row.get("block_address")?;
-            let block_number: u64 = row.get("number")?;
+            let block_number: Word = row.get("number")?;
             let timestamp_secs: u64 = row.get("timestamp_secs")?;
             let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
             let solution_blob: Vec<u8> = row.get("solution")?;
@@ -594,7 +592,7 @@ pub fn list_blocks_by_time(
     for res in rows {
         let (block_address, block_number, timestamp, solution_blob): (
             essential_types::Hash,
-            u64,
+            Word,
             Duration,
             Vec<u8>,
         ) = res?;
@@ -627,8 +625,8 @@ pub fn list_blocks_by_time(
 /// block.
 pub fn list_contracts(
     conn: &Connection,
-    block_range: Range<u64>,
-) -> Result<Vec<(u64, Vec<Contract>)>, QueryError> {
+    block_range: Range<Word>,
+) -> Result<Vec<(Word, Vec<Contract>)>, QueryError> {
     let mut stmt = conn.prepare(sql::query::LIST_CONTRACTS)?;
     let rows = stmt.query_map(
         named_params! {
@@ -636,7 +634,7 @@ pub fn list_contracts(
             ":end_block": block_range.end,
         },
         |row| {
-            let block_num: u64 = row.get("l2_block_number")?;
+            let block_num: Word = row.get("l2_block_number")?;
             let salt_blob: Vec<u8> = row.get("salt")?;
             let contract_ca_blob: Vec<u8> = row.get("content_hash")?;
             let pred_blob: Vec<u8> = row.get("predicate")?;
@@ -645,11 +643,11 @@ pub fn list_contracts(
     )?;
 
     // Query yields in order of block number and predicate ID.
-    let mut blocks: Vec<(u64, Vec<Contract>)> = vec![];
-    let mut last_block_num: Option<u64> = None;
+    let mut blocks: Vec<(Word, Vec<Contract>)> = vec![];
+    let mut last_block_num: Option<Word> = None;
     let mut last_contract_ca = None;
     for res in rows {
-        let (l2_block_num, ca_blob, salt_blob, pred_blob): (u64, Vec<u8>, Vec<u8>, Vec<u8>) = res?;
+        let (l2_block_num, ca_blob, salt_blob, pred_blob): (Word, Vec<u8>, Vec<u8>, Vec<u8>) = res?;
         let contract_ca: ContentAddress = decode(&ca_blob)?;
         let salt: Hash = decode(&salt_blob)?;
 
@@ -685,8 +683,8 @@ pub fn list_contracts(
 /// List failed blocks as (block number, solution hash) within a given range.
 pub fn list_failed_blocks(
     conn: &Connection,
-    block_range: Range<u64>,
-) -> Result<Vec<(u64, ContentAddress)>, QueryError> {
+    block_range: Range<Word>,
+) -> Result<Vec<(Word, ContentAddress)>, QueryError> {
     let mut stmt = conn.prepare(sql::query::LIST_FAILED_BLOCKS)?;
     let rows = stmt.query_map(
         named_params! {
@@ -694,7 +692,7 @@ pub fn list_failed_blocks(
             ":end_block": block_range.end,
         },
         |row| {
-            let block_number: u64 = row.get("number")?;
+            let block_number: Word = row.get("number")?;
             let solution_hash: Hash = row.get("content_hash")?;
             Ok((block_number, ContentAddress(solution_hash)))
         },
@@ -723,7 +721,7 @@ pub fn list_failed_blocks(
 /// If `await_new_block` returns `None`, the source of new block notifications
 /// is assumed to have been closed and the stream will close.
 pub fn subscribe_blocks(
-    start_block: u64,
+    start_block: Word,
     acquire_conn: impl AcquireConnection,
     await_new_block: impl AwaitNewBlock,
 ) -> impl Stream<Item = Result<Block, QueryError>> {

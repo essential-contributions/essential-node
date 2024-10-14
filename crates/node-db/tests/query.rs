@@ -260,7 +260,7 @@ fn test_list_contracts() {
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
     for (ix, contracts) in block_contracts.iter().enumerate() {
-        let block_n = ix.try_into().unwrap();
+        let block_n = ix as Word;
         for contract in contracts {
             node_db::insert_contract(&tx, contract, block_n).unwrap();
         }
@@ -278,7 +278,7 @@ fn test_list_contracts() {
     let expected = &block_contracts[start as usize..end as usize];
     for ((ix, expected), (block, contracts)) in expected.iter().enumerate().zip(&fetched_contracts)
     {
-        assert_eq!(ix as u64 + start, *block);
+        assert_eq!(ix as Word + start, *block);
         assert_eq!(expected, contracts);
     }
 }

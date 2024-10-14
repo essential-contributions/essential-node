@@ -3,7 +3,7 @@ use crate::{
     error::{StateReadError, ValidationError},
 };
 use essential_check::{
-    solution::{check_predicates, CheckPredicateConfig, PredicatesError, Utility},
+    solution::{check_predicates, CheckPredicateConfig, PredicatesError},
     state_read_vm::{Gas, StateRead},
 };
 use essential_node_db::{
@@ -23,7 +23,7 @@ mod tests;
 
 #[derive(Clone)]
 struct State {
-    block_number: u64,
+    block_number: Word,
     solution_index: u64,
     pre_state: bool,
     conn_pool: db::ConnectionPool,
@@ -41,7 +41,6 @@ pub enum ValidateOutcome {
 #[derive(Debug)]
 pub struct ValidOutcome {
     pub total_gas: Gas,
-    pub utility: Utility,
 }
 
 /// Outcome of an invalid block.
@@ -58,7 +57,6 @@ pub struct InvalidOutcome {
 pub enum ValidateFailure {
     #[allow(dead_code)]
     PredicatesError(PredicatesError<StateReadError>),
-    UtilityOverflow,
     GasOverflow,
 }
 
@@ -111,7 +109,6 @@ pub async fn validate(
     .await??;
 
     let mut total_gas: u64 = 0;
-    let mut utility: f64 = 0.0;
 
     // Check predicates.
     for (solution_index, solution) in block.solutions.iter().enumerate() {
@@ -143,14 +140,7 @@ pub async fn validate(
         )
         .await
         {
-            Ok((u, g)) => {
-                utility += u;
-                if utility == f64::INFINITY {
-                    return Ok(ValidateOutcome::Invalid(InvalidOutcome {
-                        failure: ValidateFailure::UtilityOverflow,
-                        solution_index,
-                    }));
-                }
+            Ok(g) => {
                 if let Some(g) = total_gas.checked_add(g) {
                     total_gas = g;
                 } else {
@@ -179,13 +169,12 @@ pub async fn validate(
 
     #[cfg(feature = "tracing")]
     tracing::debug!(
-        "Validation successful for block with number {} and address {}. Utility: {}, Gas: {}",
+        "Validation successful for block with number {} and address {}. Gas: {}",
         block.number,
         essential_hash::content_addr(block),
-        utility,
         total_gas
     );
-    Ok(ValidateOutcome::Valid(ValidOutcome { total_gas, utility }))
+    Ok(ValidateOutcome::Valid(ValidOutcome { total_gas }))
 }
 
 impl StateRead for State {

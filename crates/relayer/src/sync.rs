@@ -1,5 +1,6 @@
 use essential_types::Block;
 use essential_types::ContentAddress;
+use essential_types::Word;
 use futures::stream::TryStreamExt;
 use futures::Stream;
 use rusqlite_pool::tokio::AsyncConnectionPool;
@@ -17,7 +18,7 @@ mod streams;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockProgress {
     /// The last l2 block number that was synced.
-    pub last_block_number: u64,
+    pub last_block_number: Word,
     /// The address of the last block that was synced.
     /// Used to check for forks.
     pub last_block_address: ContentAddress,

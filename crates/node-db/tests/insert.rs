@@ -2,7 +2,7 @@
 
 use essential_hash::content_addr;
 use essential_node_db::{self as node_db, decode};
-use essential_types::{predicate::Predicate, ContentAddress, Hash, Key, Value};
+use essential_types::{predicate::Predicate, ContentAddress, Hash, Key, Value, Word};
 use rusqlite::params;
 use std::time::Duration;
 use util::{test_blocks, test_blocks_with_vars, test_conn};
@@ -32,12 +32,12 @@ fn test_insert_block() {
         let mut rows = stmt.query(params![block_ix]).unwrap();
 
         let row = rows.next().unwrap().unwrap();
-        let id: i64 = row.get(0).expect("number");
+        let id: Word = row.get(0).expect("number");
         let timestamp_secs: u64 = row.get(1).expect("timestamp_secs");
         let timestamp_nanos: u32 = row.get(2).expect("timestamp_nanos");
         let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
 
-        assert_eq!(id, block.number as i64);
+        assert_eq!(id, block.number);
         assert_eq!(timestamp, block.timestamp);
 
         // Verify that the solutions were inserted correctly
@@ -128,10 +128,10 @@ fn test_insert_block() {
 #[test]
 fn test_finalize_block() {
     // Number of blocks to insert.
-    const NUM_BLOCKS: u64 = 3;
+    const NUM_BLOCKS: Word = 3;
 
     // Number of blocks to finalize.
-    const NUM_FINALIZED_BLOCKS: u64 = 2;
+    const NUM_FINALIZED_BLOCKS: Word = 2;
 
     if NUM_FINALIZED_BLOCKS > NUM_BLOCKS {
         panic!("NUM_FINALIZED_BLOCKS must be less than or equal to NUM_BLOCKS");
@@ -200,7 +200,7 @@ fn test_finalize_block() {
     // Check that I can't finalize two blocks with the same number
     let fork = util::test_block(
         NUM_FINALIZED_BLOCKS - 1,
-        Duration::from_secs(NUM_FINALIZED_BLOCKS + 1000),
+        Duration::from_secs((NUM_FINALIZED_BLOCKS + 1000) as u64),
     );
     let tx = conn.transaction().unwrap();
     node_db::insert_block(&tx, &fork).unwrap();
@@ -221,7 +221,7 @@ fn test_finalize_block() {
 
 #[test]
 fn test_failed_block() {
-    const NUM_BLOCKS: u64 = 2;
+    const NUM_BLOCKS: Word = 2;
 
     // Test blocks that we'll insert.
     let blocks = util::test_blocks(NUM_BLOCKS);
@@ -329,7 +329,7 @@ fn test_insert_contract() {
             Ok((
                 row.get::<_, Vec<u8>>(0)?,
                 row.get::<_, Vec<u8>>(1)?,
-                row.get::<_, u64>(2)?,
+                row.get::<_, Word>(2)?,
             ))
         })
         .unwrap();
@@ -374,7 +374,7 @@ fn test_insert_contract_progress() {
         .query_map((), |row| {
             Ok((
                 row.get::<_, u64>("id")?,
-                row.get::<_, u64>("l2_block_number")?,
+                row.get::<_, Word>("l2_block_number")?,
                 row.get::<_, Vec<u8>>("content_hash")?,
             ))
         })
@@ -388,13 +388,13 @@ fn test_insert_contract_progress() {
     );
     assert!(result.next().is_none());
 
-    node_db::insert_contract_progress(&conn, u64::MAX, &ContentAddress([1; 32]))
+    node_db::insert_contract_progress(&conn, Word::MAX, &ContentAddress([1; 32]))
         .expect("Failed to insert contract progress");
 
     drop(result);
 
     let result = node_db::get_contract_progress(&conn).unwrap().unwrap();
-    assert_eq!(result.0, u64::MAX);
+    assert_eq!(result.0, Word::MAX);
     assert_eq!(result.1, ContentAddress([1; 32]));
 
     // Id should always be 1 because we only inserted one row.
