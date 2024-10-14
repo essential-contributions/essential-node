@@ -736,6 +736,14 @@ name = "essential-node-db-sql"
 version = "0.2.0"
 
 [[package]]
+name = "essential-node-types"
+version = "0.1.0"
+dependencies = [
+ "essential-types",
+ "serde",
+]
+
+[[package]]
 name = "essential-relayer"
 version = "0.2.0"
 dependencies = [

@@ -1,0 +1,13 @@
+[package]
+name = "essential-node-types"
+version = "0.1.0"
+description = "Core types used within this implementation of the Essential protocol."
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+essential-types = { workspace = true }
+serde = { workspace = true }
