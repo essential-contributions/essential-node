@@ -1,7 +1,7 @@
 [package]
 name = "essential-relayer"
 version = "0.1.0"
-description = "Relay blocks from essential builder to essential node."
+description = "Relay blocks from Essential builder to Essential node"
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true

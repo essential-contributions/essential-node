@@ -14,4 +14,4 @@
 [actions-badge]: https://github.com/essential-contributions/essential-node/workflows/ci/badge.svg
 [actions-url]: https://github.com/essential-contributions/essential-node/actions
 
-SQL statements for the essential node database.
+SQL statements for the Essential node database.

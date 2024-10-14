@@ -14,4 +14,4 @@
 [actions-badge]: https://github.com/essential-contributions/essential-node/workflows/ci/badge.svg
 [actions-url]: https://github.com/essential-contributions/essential-node/actions
 
-State derivation and validation for essential protocol.
+State derivation and validation for Essential protocol.
