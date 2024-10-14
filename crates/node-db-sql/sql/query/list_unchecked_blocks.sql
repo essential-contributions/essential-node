@@ -11,7 +11,7 @@ FROM
 WHERE
     block.number >= :start_block AND block.number < :end_block
     AND
-    block.id NOT IN (SELECT block_id FROM failed_block)
+    NOT EXISTS (SELECT 1 FROM failed_block WHERE block_id = block.id)
 ORDER BY
     block.number ASC,
     block.block_address ASC,
