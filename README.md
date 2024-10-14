@@ -15,3 +15,18 @@
 [actions-url]: https://github.com/essential-contributions/essential-node/actions
 
 Derive current head from essential builder and sync state between nodes.
+
+### Core functionality
+- [essential-node](./crates/node/README.md)
+- [essential-relayer](./crates/relayer/README.md)
+
+### Database
+- [essential-node-db](./crates/node-db/README.md)
+- [essential-node-db-sql](./crates/node-db-sql/README.md)
+
+### Interface
+- [essential-node-api](./crates/node-api/README.md)
+- [essential-node-cli](./crates/node-cli/README.md)
+
+### Utility
+- [rusqlite-pool](./crates/rusqlite-pool/README.md)
