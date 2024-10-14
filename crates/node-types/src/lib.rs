@@ -25,7 +25,7 @@ pub struct BigBangBlock {
     /// There are two primary regions of storage for the contract registry. The layout can be
     /// thought of as the following.
     ///
-    /// ```
+    /// ```ignore
     /// storage {
     ///     contracts: (b256 => Contract),
     ///     predicates: (b256 => Predicate),

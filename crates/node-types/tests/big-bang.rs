@@ -1,24 +1,16 @@
 use essential_node_types::BigBangBlock;
 use essential_types::{
     contract::Contract,
-    convert::{word_4_from_u8_32, word_from_bytes},
+    convert::{word_4_from_u8_32, word_from_bytes_slice},
     predicate::Predicate,
     solution::{Mutation, Solution, SolutionData},
-    Hash, PredicateAddress, Word,
+    PredicateAddress, Word,
 };
 
 // This function generates the default [`BigBangBlock`].
 //
 // This makes it easier to keep the `big-bang-block.yml` up to date.
 fn default_big_bang_block() -> BigBangBlock {
-    // TODO: remove in favour of `essential_hash::hash_bytes` after version update.
-    fn hash_bytes(bytes: &[u8]) -> Hash {
-        use sha2::Digest;
-        let mut hasher = <sha2::Sha256 as sha2::Digest>::new();
-        hasher.update(bytes);
-        hasher.finalize().into()
-    }
-
     fn padded_words_from_bytes(bytes: &[u8]) -> impl '_ + Iterator<Item = Word> {
         bytes
             .chunks(core::mem::size_of::<Word>())
@@ -29,13 +21,12 @@ fn default_big_bang_block() -> BigBangBlock {
         Predicate {
             state_read: vec![],
             constraints: vec![],
-            directive: essential_types::predicate::Directive::Satisfy,
         }
     }
 
     fn contract_registry_contract() -> Contract {
         Contract {
-            salt: hash_bytes("contract_registry".as_bytes()),
+            salt: essential_hash::hash_bytes("contract_registry".as_bytes()),
             // TODO: Use a proper predicate that validates given predicates, etc.
             predicates: vec![empty_predicate()],
         }
@@ -43,7 +34,7 @@ fn default_big_bang_block() -> BigBangBlock {
 
     fn block_state_contract() -> Contract {
         Contract {
-            salt: hash_bytes("block_state".as_bytes()),
+            salt: essential_hash::hash_bytes("block_state".as_bytes()),
             // TODO:
             predicates: vec![empty_predicate()],
         }
@@ -67,7 +58,7 @@ fn default_big_bang_block() -> BigBangBlock {
 
         // Add the salt at `[0, <contract-ca>, 0]`.
         muts.push(Mutation {
-            key: contract_key.into_iter().chain(Some(0)).collect(),
+            key: contract_key.iter().copied().chain(Some(0)).collect(),
             value: salt_w.to_vec(),
         });
 
@@ -78,7 +69,7 @@ fn default_big_bang_block() -> BigBangBlock {
 
             // Add to the contract `[0, <contract-addr>, <pred-addr>]`
             muts.push(Mutation {
-                key: contract_key.into_iter().chain(pred_ca_w).collect(),
+                key: contract_key.iter().copied().chain(pred_ca_w).collect(),
                 value: vec![1],
             });
 
@@ -92,17 +83,18 @@ fn default_big_bang_block() -> BigBangBlock {
                 .expect("statically known predicate must be valid")
                 .collect();
             let len_bytes = pred_bytes.len();
-            let len_bytes_w = Word::from(len_bytes);
+            let len_bytes_w =
+                Word::try_from(len_bytes).expect("static contract must be in size range");
 
             // Add the `len` mutation.
             muts.push(Mutation {
-                key: pred_key.into_iter().chain(Some(0)).collect(),
+                key: pred_key.iter().copied().chain(Some(0)).collect(),
                 value: vec![len_bytes_w],
             });
 
             // Add the encoded predicate.
             muts.push(Mutation {
-                key: pred_key.into_iter().chain(Some(1)).collect(),
+                key: pred_key.iter().copied().chain(Some(1)).collect(),
                 value: padded_words_from_bytes(&pred_bytes).collect(),
             });
         }
@@ -122,8 +114,6 @@ fn default_big_bang_block() -> BigBangBlock {
         contract: block_state_address.clone(),
         predicate: essential_hash::content_addr(&block_state.predicates[0]),
     };
-    let contract_registry_addr_words =
-        essential_types::convert::word_4_from_u8_32(contract_registry_address.0);
     let solution = Solution {
         data: vec![
             // A solution that adds the contract registry to itself.
@@ -166,8 +156,28 @@ fn default_big_bang_block() -> BigBangBlock {
     }
 }
 
+// A function that generates what should be in the `big-bang-block.yml`.
+fn gen_big_bang_block_yml() -> String {
+    let bbb = default_big_bang_block();
+    let bbb_yml = serde_yaml::to_string(&bbb).expect("big bang block must be valid");
+    println!("{bbb_yml}");
+    let comment = r#"# Generated via the `gen_big_bang_block_yml()` fn in `crates/node-types/tests/big-bang.rs`.
+# Run `cargo test` with `-- --nocapture` to see the expected format."#;
+    let s = format!("{comment}\n{bbb_yml}");
+    println!("{s}");
+    s
+}
+
 #[test]
 fn check_default_big_bang_block() {
     // Panics internally if the `big-bang-block.yml` is invalid.
     let _bbb = BigBangBlock::default();
+}
+
+#[test]
+fn big_bang_block_yml_matches_generated() {
+    assert_eq!(
+        essential_node_types::DEFAULT_BIG_BANG_BLOCK,
+        gen_big_bang_block_yml(),
+    );
 }
