@@ -25,7 +25,7 @@ pub fn test_db_conf() -> Config {
 
 pub fn test_blocks(n: Word) -> (Vec<Block>, Vec<Contract>) {
     let (blocks, contracts) = (0..n)
-        .map(|i| test_block(n, Duration::from_secs(i as _)))
+        .map(|i| test_block(i, Duration::from_secs(i as _)))
         .unzip::<_, _, Vec<_>, Vec<_>>();
     (blocks, contracts.into_iter().flatten().collect())
 }

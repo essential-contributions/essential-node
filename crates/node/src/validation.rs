@@ -169,8 +169,8 @@ async fn get_next_block(
                 None => 0..1,
             };
 
-            let blocks =
-                essential_node_db::list_blocks(&tx, range).map_err(RecoverableError::from)?;
+            let blocks = essential_node_db::list_unchecked_blocks(&tx, range)
+                .map_err(RecoverableError::from)?;
 
             Ok(blocks)
         }

@@ -75,6 +75,7 @@ pub mod query {
     decl_const_sql_str!(LIST_BLOCKS_BY_TIME, "query/list_blocks_by_time.sql");
     decl_const_sql_str!(LIST_CONTRACTS_BY_TIME, "query/list_contracts_by_time.sql");
     decl_const_sql_str!(LIST_FAILED_BLOCKS, "query/list_failed_blocks.sql");
+    decl_const_sql_str!(LIST_UNCHECKED_BLOCKS, "query/list_unchecked_blocks.sql");
     decl_const_sql_str!(
         QUERY_STATE_AT_BLOCK_FINALIZED,
         "query/query_state_at_block_finalized.sql"

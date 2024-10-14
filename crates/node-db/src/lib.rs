@@ -706,6 +706,60 @@ pub fn list_failed_blocks(
     Ok(failed_blocks)
 }
 
+/// Lists all unchecked blocks in the given range.
+pub fn list_unchecked_blocks(
+    conn: &Connection,
+    block_range: Range<Word>,
+) -> Result<Vec<Block>, QueryError> {
+    let mut stmt = conn.prepare(sql::query::LIST_UNCHECKED_BLOCKS)?;
+    let rows = stmt.query_map(
+        named_params! {
+            ":start_block": block_range.start,
+            ":end_block": block_range.end,
+        },
+        |row| {
+            let block_address: essential_types::Hash = row.get("block_address")?;
+            let block_number: Word = row.get("number")?;
+            let timestamp_secs: u64 = row.get("timestamp_secs")?;
+            let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
+            let solution_blob: Vec<u8> = row.get("solution")?;
+            let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
+            Ok((block_address, block_number, timestamp, solution_blob))
+        },
+    )?;
+
+    // Query yields in order of block number and solution index.
+    let mut blocks: Vec<Block> = vec![];
+    let mut last_block_address = None;
+    for res in rows {
+        let (block_address, block_number, timestamp, solution_blob): (
+            essential_types::Hash,
+            Word,
+            Duration,
+            Vec<u8>,
+        ) = res?;
+
+        // Fetch the block associated with the block number, inserting it first if new.
+        let block = match last_block_address {
+            Some(b) if b == block_address => blocks.last_mut().expect("last block must exist"),
+            _ => {
+                last_block_address = Some(block_address);
+                blocks.push(Block {
+                    number: block_number,
+                    timestamp,
+                    solutions: vec![],
+                });
+                blocks.last_mut().expect("last block must exist")
+            }
+        };
+
+        // Add the solution.
+        let solution: Solution = decode(&solution_blob)?;
+        block.solutions.push(solution);
+    }
+    Ok(blocks)
+}
+
 /// Subscribe to all blocks from the given starting block number.
 ///
 /// The given `acquire_conn` type will be used on each iteration to
