@@ -1,22 +1,15 @@
-use essential_node_types::BigBang;
+use essential_node_types::{register_contract_mutations, BigBang};
 use essential_types::{
     contract::Contract,
-    convert::{word_4_from_u8_32, word_from_bytes_slice},
     predicate::Predicate,
     solution::{Mutation, Solution, SolutionData},
-    PredicateAddress, Word,
+    PredicateAddress,
 };
 
 // This function generates the default [`BigBang`].
 //
 // This makes it easier to keep the `big-bang.yml` up to date.
 fn default_big_bang() -> BigBang {
-    fn padded_words_from_bytes(bytes: &[u8]) -> impl '_ + Iterator<Item = Word> {
-        bytes
-            .chunks(core::mem::size_of::<Word>())
-            .map(move |chunk| word_from_bytes_slice(chunk))
-    }
-
     fn empty_predicate() -> Predicate {
         Predicate {
             state_read: vec![],
@@ -38,68 +31,6 @@ fn default_big_bang() -> BigBang {
             // TODO:
             predicates: vec![empty_predicate()],
         }
-    }
-
-    // Generate mutations required to register a contract.
-    fn register_contract_mutations(contract: &Contract) -> Vec<Mutation> {
-        const CONTRACTS_PREFIX: Word = 0;
-        const PREDICATES_PREFIX: Word = 1;
-
-        let mut muts = vec![];
-
-        // Add the mutations that register the contract's salt and length.
-        let contract_ca = essential_hash::content_addr(contract);
-        let contract_ca_w = word_4_from_u8_32(contract_ca.0.clone());
-        let salt_w = word_4_from_u8_32(contract.salt.clone());
-        let contract_key: Vec<_> = Some(CONTRACTS_PREFIX)
-            .into_iter()
-            .chain(contract_ca_w)
-            .collect();
-
-        // Add the salt at `[0, <contract-ca>, 0]`.
-        muts.push(Mutation {
-            key: contract_key.iter().copied().chain(Some(0)).collect(),
-            value: salt_w.to_vec(),
-        });
-
-        // Register the predicates.
-        for pred in &contract.predicates {
-            let pred_ca = essential_hash::content_addr(pred);
-            let pred_ca_w = word_4_from_u8_32(pred_ca.0.clone());
-
-            // Add to the contract `[0, <contract-addr>, <pred-addr>]`
-            muts.push(Mutation {
-                key: contract_key.iter().copied().chain(pred_ca_w).collect(),
-                value: vec![1],
-            });
-
-            // Encode the predicate so that it may be registered.
-            let pred_key: Vec<_> = Some(PREDICATES_PREFIX)
-                .into_iter()
-                .chain(pred_ca_w)
-                .collect();
-            let pred_bytes: Vec<u8> = pred
-                .encode()
-                .expect("statically known predicate must be valid")
-                .collect();
-            let len_bytes = pred_bytes.len();
-            let len_bytes_w =
-                Word::try_from(len_bytes).expect("static contract must be in size range");
-
-            // Add the `len` mutation.
-            muts.push(Mutation {
-                key: pred_key.iter().copied().chain(Some(0)).collect(),
-                value: vec![len_bytes_w],
-            });
-
-            // Add the encoded predicate.
-            muts.push(Mutation {
-                key: pred_key.iter().copied().chain(Some(1)).collect(),
-                value: padded_words_from_bytes(&pred_bytes).collect(),
-            });
-        }
-
-        muts
     }
 
     let block_state = block_state_contract();

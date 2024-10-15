@@ -3,7 +3,12 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-use essential_types::{solution::Solution, Block, ContentAddress};
+use essential_types::{
+    contract::Contract,
+    convert::{word_4_from_u8_32, word_from_bytes_slice},
+    solution::{Mutation, Solution},
+    Block, ContentAddress, Word,
+};
 use serde::{Deserialize, Serialize};
 
 /// The default big-bang configuration.
@@ -41,7 +46,7 @@ pub struct BigBang {
     ///
     /// - `[0, <contract-ca>, 0]` is the key to the "salt", a `b256`.
     /// - `[0, <contract-ca>, <predicate-ca>]` is a key whose non-empty value specifies that the
-    /// predicate with the given address is associated with the contract.
+    ///   predicate with the given address is associated with the contract.
     ///
     /// ## Predicates
     ///
@@ -74,4 +79,74 @@ impl Default for BigBang {
         serde_yaml::from_str(DEFAULT_BIG_BANG)
             .expect("default `big-bang-block.yml` must be valid (checked in tests)")
     }
+}
+
+/// Generate the mutations required to register a given contract within the big bang's "contract
+/// registry" contract. This is useful for constructing contract deployment `Solution`s.
+///
+/// Learn more about the layout of state within the contract registry
+pub fn register_contract_mutations(contract: &Contract) -> Vec<Mutation> {
+    const CONTRACTS_PREFIX: Word = 0;
+    const PREDICATES_PREFIX: Word = 1;
+
+    let mut muts = vec![];
+
+    // Add the mutations that register the contract's salt and length.
+    let contract_ca = essential_hash::content_addr(contract);
+    let contract_ca_w = word_4_from_u8_32(contract_ca.0);
+    let salt_w = word_4_from_u8_32(contract.salt);
+    let contract_key: Vec<_> = Some(CONTRACTS_PREFIX)
+        .into_iter()
+        .chain(contract_ca_w)
+        .collect();
+
+    // Add the salt at `[0, <contract-ca>, 0]`.
+    muts.push(Mutation {
+        key: contract_key.iter().copied().chain(Some(0)).collect(),
+        value: salt_w.to_vec(),
+    });
+
+    // Register the predicates.
+    for pred in &contract.predicates {
+        let pred_ca = essential_hash::content_addr(pred);
+        let pred_ca_w = word_4_from_u8_32(pred_ca.0);
+
+        // Add to the contract `[0, <contract-addr>, <pred-addr>]`
+        muts.push(Mutation {
+            key: contract_key.iter().copied().chain(pred_ca_w).collect(),
+            value: vec![1],
+        });
+
+        // Encode the predicate so that it may be registered.
+        let pred_key: Vec<_> = Some(PREDICATES_PREFIX)
+            .into_iter()
+            .chain(pred_ca_w)
+            .collect();
+        let pred_bytes: Vec<u8> = pred
+            .encode()
+            .expect("statically known predicate must be valid")
+            .collect();
+        let len_bytes = pred_bytes.len();
+        let len_bytes_w = Word::try_from(len_bytes).expect("static contract must be in size range");
+
+        // Add the `len` mutation.
+        muts.push(Mutation {
+            key: pred_key.iter().copied().chain(Some(0)).collect(),
+            value: vec![len_bytes_w],
+        });
+
+        // Add the encoded predicate.
+        muts.push(Mutation {
+            key: pred_key.iter().copied().chain(Some(1)).collect(),
+            value: padded_words_from_bytes(&pred_bytes).collect(),
+        });
+    }
+
+    muts
+}
+
+fn padded_words_from_bytes(bytes: &[u8]) -> impl '_ + Iterator<Item = Word> {
+    bytes
+        .chunks(core::mem::size_of::<Word>())
+        .map(word_from_bytes_slice)
 }
