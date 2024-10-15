@@ -211,7 +211,12 @@ async fn run(args: Args) -> anyhow::Result<()> {
         run_state_derivation: !disable_state_derivation,
         run_validation: !disable_validation,
     };
-    let node_handle = node::run(db.clone(), run_conf, big_bang.contract_registry, block_tx)?;
+    let node_handle = node::run(
+        db.clone(),
+        run_conf,
+        big_bang.contract_registry.contract,
+        block_tx,
+    )?;
     let node_future = async move {
         if relayer_source_endpoint.is_none() && disable_state_derivation && disable_validation {
             node_handle.join().await

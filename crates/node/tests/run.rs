@@ -42,7 +42,7 @@ async fn test_run() {
     let _handle = node::run(
         db.clone(),
         run_conf,
-        big_bang.contract_registry,
+        big_bang.contract_registry.contract,
         block_tx,
     )
     .unwrap();
