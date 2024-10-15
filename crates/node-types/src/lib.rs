@@ -54,8 +54,8 @@ pub struct BigBang {
     /// Predicate entries contain their length in bytes as an `int` and their fully byte-encoded
     /// form within a `int[]` with padding in the final word if necessary. E.g.
     ///
-    /// - `[1, <predicate-ca>, 0]` to get the length bytes as `int`.
-    /// - `[1, <predicate-ca>, 1]` gets the padded encoded data as `int[]`.
+    /// - `[1, <predicate-ca>]` to get the length bytes as `int` followed by the fully encoded
+    ///   word-padded data as `int[]`.
     pub contract_registry: PredicateAddress,
     /// The `Solution` used to initialize arbitrary state for the big bang block.
     ///
@@ -85,6 +85,50 @@ impl Default for BigBang {
     }
 }
 
+/// Functions or constructing keys into the "contract registry" contract state.
+pub mod contract_registry {
+    use crate::padded_words_from_bytes;
+    use essential_types::{ContentAddress, Key, PredicateAddress, Word};
+
+    const CONTRACTS_PREFIX: Word = 0;
+    const PREDICATES_PREFIX: Word = 1;
+
+    /// A key that may be used to test if the predicate exists within the contract specified in the
+    /// `PredicateAddress`.
+    ///
+    /// The returned key is formatted as: `[0, <contract-ca>, <predicate-ca>]`
+    pub fn contract_salt_key(contract_ca: &ContentAddress) -> Key {
+        Some(CONTRACTS_PREFIX)
+            .into_iter()
+            .chain(padded_words_from_bytes(&contract_ca.0))
+            .chain(Some(0))
+            .collect()
+    }
+
+    /// A key that may be used to test if the predicate exists within the contract specified in the
+    /// `PredicateAddress`.
+    ///
+    /// The returned key is formatted as: `[0, <contract-ca>, <predicate-ca>]`
+    pub fn contract_predicate_key(pred_addr: &PredicateAddress) -> Key {
+        Some(CONTRACTS_PREFIX)
+            .into_iter()
+            .chain(padded_words_from_bytes(&pred_addr.contract.0))
+            .chain(padded_words_from_bytes(&pred_addr.predicate.0))
+            .collect()
+    }
+
+    /// A key that may be used to retrieve the full `Predicate` from the contract registry state.
+    ///
+    /// When queried, the `Predicate` data will be preceded by a single word that describes the
+    /// length of the predicate in bytes.
+    pub fn predicate_key(pred_ca: &ContentAddress) -> Key {
+        Some(PREDICATES_PREFIX)
+            .into_iter()
+            .chain(padded_words_from_bytes(&pred_ca.0))
+            .collect()
+    }
+}
+
 /// Create a solution for registering the given contract at the given
 pub fn register_contract_solution(
     registry_predicate: PredicateAddress,
@@ -103,56 +147,44 @@ pub fn register_contract_solution(
 ///
 /// Learn more about the layout of state within the contract registry
 pub fn register_contract_mutations(contract: &Contract) -> Result<Vec<Mutation>, PredicateError> {
-    const CONTRACTS_PREFIX: Word = 0;
-    const PREDICATES_PREFIX: Word = 1;
-
     let mut muts = vec![];
 
     // Add the mutations that register the contract's salt and length.
     let contract_ca = essential_hash::content_addr(contract);
-    let contract_ca_w = word_4_from_u8_32(contract_ca.0);
     let salt_w = word_4_from_u8_32(contract.salt);
-    let contract_key: Vec<_> = Some(CONTRACTS_PREFIX)
-        .into_iter()
-        .chain(contract_ca_w)
-        .collect();
 
     // Add the salt at `[0, <contract-ca>, 0]`.
     muts.push(Mutation {
-        key: contract_key.iter().copied().chain(Some(0)).collect(),
+        key: contract_registry::contract_salt_key(&contract_ca),
         value: salt_w.to_vec(),
     });
 
     // Register the predicates.
     for pred in &contract.predicates {
         let pred_ca = essential_hash::content_addr(pred);
-        let pred_ca_w = word_4_from_u8_32(pred_ca.0);
+        let pred_addr = PredicateAddress {
+            contract: contract_ca.clone(),
+            predicate: pred_ca,
+        };
 
         // Add to the contract `[0, <contract-addr>, <pred-addr>]`
         muts.push(Mutation {
-            key: contract_key.iter().copied().chain(pred_ca_w).collect(),
+            key: contract_registry::contract_predicate_key(&pred_addr),
             value: vec![1],
         });
 
         // Encode the predicate so that it may be registered.
-        let pred_key: Vec<_> = Some(PREDICATES_PREFIX)
-            .into_iter()
-            .chain(pred_ca_w)
-            .collect();
         let pred_bytes: Vec<u8> = pred.encode()?.collect();
         let len_bytes = pred_bytes.len();
         let len_bytes_w = Word::try_from(len_bytes).expect("checked during `encode`");
 
-        // Add the `len` mutation.
-        muts.push(Mutation {
-            key: pred_key.iter().copied().chain(Some(0)).collect(),
-            value: vec![len_bytes_w],
-        });
-
         // Add the encoded predicate.
         muts.push(Mutation {
-            key: pred_key.iter().copied().chain(Some(1)).collect(),
-            value: padded_words_from_bytes(&pred_bytes).collect(),
+            key: contract_registry::predicate_key(&pred_addr.predicate),
+            value: Some(len_bytes_w)
+                .into_iter()
+                .chain(padded_words_from_bytes(&pred_bytes))
+                .collect(),
         });
     }
 
