@@ -1,4 +1,4 @@
-use crate::db::AcquireThenQueryError;
+use crate::db::{AcquireThenQueryError, AcquireThenRusqliteError};
 use essential_node_db::QueryError;
 use essential_types::{ContentAddress, PredicateAddress};
 use thiserror::Error;
@@ -75,6 +75,28 @@ pub enum StateReadError {
     Join(#[from] tokio::task::JoinError),
     #[error("invalid key range")]
     KeyRangeError,
+}
+
+/// An error occurred while inserting of checking the big bang block.
+#[derive(Debug, Error)]
+pub enum BigBangError {
+    /// Failed to query the DB via the connection pool.
+    #[error("failed to query the DB via the connection pool: {0}")]
+    ListBlocks(#[from] AcquireThenQueryError),
+    /// Failed to insert the big bang block into the DB via the connection pool.
+    #[error("failed to insert the big bang `Block` into the DB via the connection pool: {0}")]
+    InsertBlock(#[from] AcquireThenRusqliteError),
+    /// A block already exists at block `0`, and its `ContentAddress` does not match that of the
+    /// big bang `Block` implied by the `BigBang` configuration.
+    #[error(
+        "existing big bang block does not match configuration\n  \
+        expected: {expected}\n  \
+        found:    {found}"
+    )]
+    UnexpectedBlock {
+        expected: ContentAddress,
+        found: ContentAddress,
+    },
 }
 
 impl From<ValidationError> for InternalError {

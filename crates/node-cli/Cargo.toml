@@ -18,6 +18,8 @@ clap = { workspace = true }
 dirs = { workspace = true }
 essential-node = { workspace = true }
 essential-node-api = { workspace = true }
+essential-node-types = { workspace = true }
+serde_yaml = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }

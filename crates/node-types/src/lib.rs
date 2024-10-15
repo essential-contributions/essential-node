@@ -3,15 +3,15 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-use essential_types::{solution::Solution, ContentAddress};
+use essential_types::{solution::Solution, Block, ContentAddress};
 use serde::{Deserialize, Serialize};
 
-/// The default big-bang-block configuration.
-pub const DEFAULT_BIG_BANG_BLOCK: &str = include_str!("../../../big-bang-block.yml");
+/// The default big-bang configuration.
+pub const DEFAULT_BIG_BANG: &str = include_str!("../../../big-bang.yml");
 
 /// Describes how to construct the big-bang (aka "genesis") block.
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Hash, Ord, Serialize, Deserialize)]
-pub struct BigBangBlock {
+pub struct BigBang {
     /// The address of the contract used to track block state.
     ///
     /// This contract includes special keys for the block number and block timestamp. E.g.
@@ -51,13 +51,27 @@ pub struct BigBangBlock {
     /// - `[1, <predicate-ca>, 0]` to get the length bytes as `int`.
     /// - `[1, <predicate-ca>, 1]` gets the padded encoded data as `int[]`.
     pub contract_registry_address: ContentAddress,
-    /// Specifies the initial state for both the block state and contract registry contracts.
+    /// The `Solution` used to initialize arbitrary state for the big bang block.
+    ///
+    /// The primary purpose is setting the initial block state and registering the big bang
+    /// contracts.
     pub solution: Solution,
 }
 
-impl Default for BigBangBlock {
+impl BigBang {
+    /// Produce the big bang [`Block`].
+    pub fn block(&self) -> Block {
+        Block {
+            number: 0,
+            timestamp: std::time::Duration::from_secs(0),
+            solutions: vec![self.solution.clone()],
+        }
+    }
+}
+
+impl Default for BigBang {
     fn default() -> Self {
-        serde_yaml::from_str(DEFAULT_BIG_BANG_BLOCK)
+        serde_yaml::from_str(DEFAULT_BIG_BANG)
             .expect("default `big-bang-block.yml` must be valid (checked in tests)")
     }
 }

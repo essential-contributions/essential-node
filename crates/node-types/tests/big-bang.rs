@@ -1,4 +1,4 @@
-use essential_node_types::BigBangBlock;
+use essential_node_types::BigBang;
 use essential_types::{
     contract::Contract,
     convert::{word_4_from_u8_32, word_from_bytes_slice},
@@ -7,10 +7,10 @@ use essential_types::{
     PredicateAddress, Word,
 };
 
-// This function generates the default [`BigBangBlock`].
+// This function generates the default [`BigBang`].
 //
-// This makes it easier to keep the `big-bang-block.yml` up to date.
-fn default_big_bang_block() -> BigBangBlock {
+// This makes it easier to keep the `big-bang.yml` up to date.
+fn default_big_bang() -> BigBang {
     fn padded_words_from_bytes(bytes: &[u8]) -> impl '_ + Iterator<Item = Word> {
         bytes
             .chunks(core::mem::size_of::<Word>())
@@ -149,7 +149,7 @@ fn default_big_bang_block() -> BigBangBlock {
         ],
     };
 
-    BigBangBlock {
+    BigBang {
         block_state_address,
         contract_registry_address,
         solution,
@@ -157,8 +157,8 @@ fn default_big_bang_block() -> BigBangBlock {
 }
 
 // A function that generates what should be in the `big-bang-block.yml`.
-fn gen_big_bang_block_yml() -> String {
-    let bbb = default_big_bang_block();
+fn gen_big_bang_yml() -> String {
+    let bbb = default_big_bang();
     let bbb_yml = serde_yaml::to_string(&bbb).expect("big bang block must be valid");
     println!("{bbb_yml}");
     let comment = r#"# Generated via the `gen_big_bang_block_yml()` fn in `crates/node-types/tests/big-bang.rs`.
@@ -169,15 +169,12 @@ fn gen_big_bang_block_yml() -> String {
 }
 
 #[test]
-fn check_default_big_bang_block() {
-    // Panics internally if the `big-bang-block.yml` is invalid.
-    let _bbb = BigBangBlock::default();
+fn check_default_big_bang() {
+    // Panics internally if the `big-bang.yml` is invalid.
+    let _bbb = BigBang::default();
 }
 
 #[test]
 fn big_bang_block_yml_matches_generated() {
-    assert_eq!(
-        essential_node_types::DEFAULT_BIG_BANG_BLOCK,
-        gen_big_bang_block_yml(),
-    );
+    assert_eq!(essential_node_types::DEFAULT_BIG_BANG, gen_big_bang_yml());
 }

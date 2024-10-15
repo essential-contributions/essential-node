@@ -222,6 +222,14 @@ impl ConnectionPool {
         self.acquire_then(|h| db::get_validation_progress(h)).await
     }
 
+    /// Update the validation progress to point to the block with the given CA.
+    pub async fn update_validation_progress(
+        &self,
+        block_ca: ContentAddress,
+    ) -> Result<(), AcquireThenRusqliteError> {
+        self.acquire_then(move |h| db::update_validation_progress(h, &block_ca)).await
+    }
+
     /// Lists all blocks in the given range.
     pub async fn list_blocks(
         &self,

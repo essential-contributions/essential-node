@@ -10,8 +10,11 @@
 //! - Performs validation.
 
 use db::ConnectionPool;
-use error::{ConnPoolNewError, CriticalError};
+use error::{BigBangError, ConnPoolNewError, CriticalError};
+use essential_node_db as node_db;
+use essential_node_types::BigBang;
 use essential_relayer::Relayer;
+use essential_types::ContentAddress;
 pub use handles::node::Handle;
 use state_derivation::state_derivation_stream;
 pub use validate::validate;
@@ -71,7 +74,6 @@ pub struct RunConfig {
 /// }
 /// # }
 /// ```
-
 pub fn db(conf: &db::Config) -> Result<ConnectionPool, ConnPoolNewError> {
     // Initialize the connection pool.
     let db = db::ConnectionPool::new(conf)?;
@@ -84,6 +86,54 @@ pub fn db(conf: &db::Config) -> Result<ConnectionPool, ConnPoolNewError> {
     db::with_tx(&mut conn, |tx| essential_node_db::create_tables(tx))?;
 
     Ok(db)
+}
+
+/// Ensures that a big bang block exists in the DB for the given `BigBang` configuration.
+///
+/// If no block exists with `block_number` `0`, this inserts the big bang block.
+///
+/// If a block already exists with `block_number` `0`, this validates that its [`ContentAddress`]
+/// matches the `ContentAddress` of the `Block` returned from [`BigBang::block`].
+///
+/// If validation has not yet begun, this initializes progress to begin from the big bang `Block`.
+///
+/// Returns the `ContentAddress` of the big bang `Block`.
+pub async fn ensure_big_bang_block(
+    conn_pool: &ConnectionPool,
+    big_bang: &BigBang,
+) -> Result<ContentAddress, BigBangError> {
+    let bb_block = big_bang.block();
+    let bb_block_ca = essential_hash::content_addr(&bb_block);
+
+    // List out the first block.
+    match conn_pool.list_blocks(0..1).await?.into_iter().next() {
+        // If no block at block `0` exists, insert and "finalize" the big bang block.
+        None => {
+            let bbb_ca = bb_block_ca.clone();
+            conn_pool.acquire_then(|conn| db::with_tx(conn, move |tx| {
+                node_db::insert_block(tx, &bb_block)?;
+                node_db::finalize_block(tx, &bbb_ca)?;
+                Ok::<_, rusqlite::Error>(())
+            })).await?;
+        },
+        // If a block already exists, ensure its the big bang block we expect.
+        Some(block) => {
+            let ca = essential_hash::content_addr(&block);
+            if ca != bb_block_ca {
+                return Err(BigBangError::UnexpectedBlock {
+                    expected: bb_block_ca,
+                    found: ca,
+                });
+            }
+        }
+    }
+
+    // If validation has not yet begun, ensure it begins from the big bang block.
+    if conn_pool.get_validation_progress().await?.is_none() {
+        conn_pool.update_validation_progress(bb_block_ca.clone()).await?;
+    }
+
+    Ok(bb_block_ca)
 }
 
 /// Optionally run the relayer and state derivation and validation streams.
