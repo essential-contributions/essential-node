@@ -14,6 +14,8 @@ use error::{ConnPoolNewError, CriticalError};
 use essential_relayer::Relayer;
 pub use handles::node::Handle;
 use state_derivation::state_derivation_stream;
+pub use validate::validate;
+pub use validate::validate_solution;
 use validation::validation_stream;
 
 pub mod db;
