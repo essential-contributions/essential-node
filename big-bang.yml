@@ -1,7 +1,7 @@
 # Generated via the `gen_big_bang_block_yml()` fn in `crates/node-types/tests/big-bang.rs`.
 # Run `cargo test` with `-- --nocapture` to see the expected format.
-block_state_address: 54259280C974F0C07328B6F4EE42D71B588A9C25CA5A424A708D3831B51D0241
-contract_registry_address: 476B3BE93CB5A20C2998FF91BAA2FD11EC55640743E1FC914BD54A2C7162A73B
+block_state: 54259280C974F0C07328B6F4EE42D71B588A9C25CA5A424A708D3831B51D0241
+contract_registry: 476B3BE93CB5A20C2998FF91BAA2FD11EC55640743E1FC914BD54A2C7162A73B
 solution:
   data:
   - predicate_to_solve:

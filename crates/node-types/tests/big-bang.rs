@@ -81,8 +81,8 @@ fn default_big_bang() -> BigBang {
     };
 
     BigBang {
-        block_state_address,
-        contract_registry_address,
+        block_state: block_state_address,
+        contract_registry: contract_registry_address,
         solution,
     }
 }

@@ -57,7 +57,9 @@ struct Args {
     /// This specifies the genesis configuration, which includes items like the contract registry
     /// address, block state address and associated big-bang state.
     ///
-    /// If no configuration is specified, defaults to the [`BigBang::default()`] implementation.
+    /// If no configuration is specified, defaults to the `BigBang::default()` implementation.
+    ///
+    /// To learn more, see the API docs for the `essential_node_types::BigBang` type.
     #[arg(long)]
     big_bang: Option<std::path::PathBuf>,
 }
@@ -209,7 +211,7 @@ async fn run(args: Args) -> anyhow::Result<()> {
         run_state_derivation: !disable_state_derivation,
         run_validation: !disable_validation,
     };
-    let node_handle = node::run(db.clone(), run_conf, block_tx)?;
+    let node_handle = node::run(db.clone(), run_conf, big_bang.contract_registry, block_tx)?;
     let node_future = async move {
         if relayer_source_endpoint.is_none() && disable_state_derivation && disable_validation {
             node_handle.join().await

@@ -146,6 +146,7 @@ pub async fn ensure_big_bang_block(
 pub fn run(
     conn_pool: ConnectionPool,
     conf: RunConfig,
+    contract_registry: ContentAddress,
     block_notify: BlockTx,
 ) -> Result<Handle, CriticalError> {
     let RunConfig {
