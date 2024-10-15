@@ -9,10 +9,7 @@ use axum::{
     Json,
 };
 use essential_node::{db, BlockRx};
-use essential_types::{
-    contract::Contract, convert::word_from_bytes, predicate::Predicate, Block, ContentAddress,
-    Value, Word,
-};
+use essential_types::{convert::word_from_bytes, Block, ContentAddress, Value, Word};
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
 use thiserror::Error;
@@ -85,38 +82,6 @@ pub mod health_check {
     pub async fn handler() {}
 }
 
-/// The `get-predicate` get endpoint.
-///
-/// Takes a contract content address (encoded as hex) as a path parameter.
-pub mod get_contract {
-    use super::*;
-    pub const PATH: &str = "/get-contract/:contract-ca";
-    pub async fn handler(
-        State(state): State<crate::State>,
-        Path(contract_ca): Path<String>,
-    ) -> Result<Json<Option<Contract>>, Error> {
-        let ca: ContentAddress = contract_ca.parse()?;
-        let contract = state.conn_pool.get_contract(ca).await?;
-        Ok(Json(contract))
-    }
-}
-
-/// The `get-predicate` get endpoint.
-///
-/// Takes a predicate content address (encoded as hex) as a path parameter.
-pub mod get_predicate {
-    use super::*;
-    pub const PATH: &str = "/get-predicate/:predicate-ca";
-    pub async fn handler(
-        State(state): State<crate::State>,
-        Path(predicate_ca): Path<String>,
-    ) -> Result<Json<Option<Predicate>>, Error> {
-        let ca = predicate_ca.parse()?;
-        let predicate = state.conn_pool.get_predicate(ca).await?;
-        Ok(Json(predicate))
-    }
-}
-
 /// The `list-blocks` get endpoint.
 ///
 /// Takes a range of L2 blocks as a parameter.
@@ -132,24 +97,6 @@ pub mod list_blocks {
             .list_blocks(block_range.start..block_range.end)
             .await?;
         Ok(Json(blocks))
-    }
-}
-
-/// The `list-contracts` get endpoint.
-///
-/// Takes a range of L2 blocks as a parameter.
-pub mod list_contracts {
-    use super::*;
-    pub const PATH: &str = "/list-contracts";
-    pub async fn handler(
-        State(state): State<crate::State>,
-        Query(block_range): Query<BlockRange>,
-    ) -> Result<Json<Vec<(Word, Vec<Contract>)>>, Error> {
-        let contracts = state
-            .conn_pool
-            .list_contracts(block_range.start..block_range.end)
-            .await?;
-        Ok(Json(contracts))
     }
 }
 

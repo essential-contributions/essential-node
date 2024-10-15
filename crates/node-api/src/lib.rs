@@ -181,10 +181,7 @@ pub fn with_endpoints(router: Router<State>) -> Router<State> {
     use endpoint::*;
     router
         .route(health_check::PATH, get(health_check::handler))
-        .route(get_contract::PATH, get(get_contract::handler))
-        .route(get_predicate::PATH, get(get_predicate::handler))
         .route(list_blocks::PATH, get(list_blocks::handler))
-        .route(list_contracts::PATH, get(list_contracts::handler))
         .route(query_state::PATH, get(query_state::handler))
         .route(subscribe_blocks::PATH, get(subscribe_blocks::handler))
 }
