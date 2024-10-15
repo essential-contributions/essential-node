@@ -1,4 +1,4 @@
-use essential_node_types::{register_contract_mutations, BigBang};
+use essential_node_types::{register_contract_solution, BigBang};
 use essential_types::{
     contract::Contract,
     predicate::Predicate,
@@ -48,19 +48,11 @@ fn default_big_bang() -> BigBang {
     let solution = Solution {
         data: vec![
             // A solution that adds the contract registry to itself.
-            SolutionData {
-                predicate_to_solve: register_contract_predicate_address.clone(),
-                decision_variables: vec![],
-                transient_data: vec![],
-                state_mutations: register_contract_mutations(&contract_registry),
-            },
+            register_contract_solution(register_contract_predicate_address.clone(), &contract_registry)
+                .expect("big bang contract must be valid"),
             // A solution that registers the block state contract.
-            SolutionData {
-                predicate_to_solve: register_contract_predicate_address,
-                decision_variables: vec![],
-                transient_data: vec![],
-                state_mutations: register_contract_mutations(&block_state),
-            },
+            register_contract_solution(register_contract_predicate_address.clone(), &block_state)
+                .expect("big bang contract must be valid"),
             // A solution that sets the block state block number to 0, timestamp to 0.
             SolutionData {
                 predicate_to_solve: block_state_predicate_address,

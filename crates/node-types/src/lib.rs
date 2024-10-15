@@ -4,10 +4,7 @@
 #![deny(missing_docs)]
 
 use essential_types::{
-    contract::Contract,
-    convert::{word_4_from_u8_32, word_from_bytes_slice},
-    solution::{Mutation, Solution},
-    Block, ContentAddress, Word,
+    contract::Contract, convert::{word_4_from_u8_32, word_from_bytes_slice}, predicate::header::PredicateError, solution::{Mutation, Solution, SolutionData}, Block, ContentAddress, PredicateAddress, Word
 };
 use serde::{Deserialize, Serialize};
 
@@ -84,11 +81,24 @@ impl Default for BigBang {
     }
 }
 
+/// Create a solution for registering the given contract at the given
+pub fn register_contract_solution(
+    registry_predicate: PredicateAddress,
+    contract: &Contract,
+) -> Result<SolutionData, PredicateError> {
+    Ok(SolutionData {
+        predicate_to_solve: registry_predicate,
+        transient_data: vec![],
+        decision_variables: vec![],
+        state_mutations: register_contract_mutations(contract)?,
+    })
+}
+
 /// Generate the mutations required to register a given contract within the big bang's "contract
 /// registry" contract. This is useful for constructing contract deployment `Solution`s.
 ///
 /// Learn more about the layout of state within the contract registry
-pub fn register_contract_mutations(contract: &Contract) -> Vec<Mutation> {
+pub fn register_contract_mutations(contract: &Contract) -> Result<Vec<Mutation>, PredicateError> {
     const CONTRACTS_PREFIX: Word = 0;
     const PREDICATES_PREFIX: Word = 1;
 
@@ -125,12 +135,9 @@ pub fn register_contract_mutations(contract: &Contract) -> Vec<Mutation> {
             .into_iter()
             .chain(pred_ca_w)
             .collect();
-        let pred_bytes: Vec<u8> = pred
-            .encode()
-            .expect("statically known predicate must be valid")
-            .collect();
+        let pred_bytes: Vec<u8> = pred.encode()?.collect();
         let len_bytes = pred_bytes.len();
-        let len_bytes_w = Word::try_from(len_bytes).expect("static contract must be in size range");
+        let len_bytes_w = Word::try_from(len_bytes).expect("checked during `encode`");
 
         // Add the `len` mutation.
         muts.push(Mutation {
@@ -145,7 +152,7 @@ pub fn register_contract_mutations(contract: &Contract) -> Vec<Mutation> {
         });
     }
 
-    muts
+    Ok(muts)
 }
 
 fn padded_words_from_bytes(bytes: &[u8]) -> impl '_ + Iterator<Item = Word> {
