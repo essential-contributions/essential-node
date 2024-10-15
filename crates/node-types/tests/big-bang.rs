@@ -35,27 +35,25 @@ fn default_big_bang() -> BigBang {
 
     let block_state = block_state_contract();
     let contract_registry = contract_registry_contract();
-    let block_state_address = essential_hash::content_addr(&block_state);
-    let contract_registry_address = essential_hash::content_addr(&contract_registry);
-    let register_contract_predicate_address = PredicateAddress {
-        contract: contract_registry_address.clone(),
-        predicate: essential_hash::content_addr(&contract_registry.predicates[0]),
-    };
-    let block_state_predicate_address = PredicateAddress {
-        contract: block_state_address.clone(),
+    let block_state_address = PredicateAddress {
+        contract: essential_hash::content_addr(&block_state),
         predicate: essential_hash::content_addr(&block_state.predicates[0]),
+    };
+    let contract_registry_address = PredicateAddress {
+        contract: essential_hash::content_addr(&contract_registry),
+        predicate: essential_hash::content_addr(&contract_registry.predicates[0]),
     };
     let solution = Solution {
         data: vec![
             // A solution that adds the contract registry to itself.
-            register_contract_solution(register_contract_predicate_address.clone(), &contract_registry)
+            register_contract_solution(contract_registry_address.clone(), &contract_registry)
                 .expect("big bang contract must be valid"),
             // A solution that registers the block state contract.
-            register_contract_solution(register_contract_predicate_address.clone(), &block_state)
+            register_contract_solution(contract_registry_address.clone(), &block_state)
                 .expect("big bang contract must be valid"),
             // A solution that sets the block state block number to 0, timestamp to 0.
             SolutionData {
-                predicate_to_solve: block_state_predicate_address,
+                predicate_to_solve: block_state_address.clone(),
                 decision_variables: vec![],
                 transient_data: vec![],
                 state_mutations: vec![

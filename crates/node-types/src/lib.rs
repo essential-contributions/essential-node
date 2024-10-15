@@ -4,7 +4,11 @@
 #![deny(missing_docs)]
 
 use essential_types::{
-    contract::Contract, convert::{word_4_from_u8_32, word_from_bytes_slice}, predicate::header::PredicateError, solution::{Mutation, Solution, SolutionData}, Block, ContentAddress, PredicateAddress, Word
+    contract::Contract,
+    convert::{word_4_from_u8_32, word_from_bytes_slice},
+    predicate::header::PredicateError,
+    solution::{Mutation, Solution, SolutionData},
+    Block, PredicateAddress, Word,
 };
 use serde::{Deserialize, Serialize};
 
@@ -21,7 +25,7 @@ pub struct BigBang {
     /// - `[0]` is the key for the block number, which is a `i64`.
     /// - `[1]` is the key for the block timestamp, which is a `i64` for seconds since
     ///   `UNIX_EPOCH`.
-    pub block_state: ContentAddress,
+    pub block_state: PredicateAddress,
     /// The address of the contract used to register contracts and their associated predicates.
     ///
     /// There are two primary regions of storage for the contract registry. The layout can be
@@ -52,7 +56,7 @@ pub struct BigBang {
     ///
     /// - `[1, <predicate-ca>, 0]` to get the length bytes as `int`.
     /// - `[1, <predicate-ca>, 1]` gets the padded encoded data as `int[]`.
-    pub contract_registry: ContentAddress,
+    pub contract_registry: PredicateAddress,
     /// The `Solution` used to initialize arbitrary state for the big bang block.
     ///
     /// The primary purpose is setting the initial block state and registering the big bang
