@@ -10,6 +10,7 @@
 //! - Performs validation.
 
 use db::ConnectionPool;
+use error::RunConfigError;
 use error::{ConnPoolNewError, CriticalError};
 use essential_relayer::Relayer;
 pub use handles::node::Handle;
@@ -40,6 +41,15 @@ pub struct BlockTx(tokio::sync::watch::Sender<()>);
 /// This is used by [`db::subscribe_blocks`] stream.
 #[derive(Clone)]
 pub struct BlockRx(tokio::sync::watch::Receiver<()>);
+
+/// Options for running the node.
+pub struct RunConfig {
+    run_relayer: bool,
+    run_state_derivation: bool,
+    run_validation: bool,
+    block_notify: BlockTx,
+    node_endpoint: Option<String>,
+}
 
 /// Create a new `ConnectionPool` from the given configuration.
 ///
@@ -74,29 +84,55 @@ pub fn db(conf: &db::Config) -> Result<ConnectionPool, ConnPoolNewError> {
     Ok(db)
 }
 
-/// Run the relayer and state derivation and validation streams.
+/// Optionally run the relayer and state derivation and validation streams.
 ///
 /// Relayer will sync blocks from the node API blocks stream to node database
 /// and notify state derivation stream of new blocks via the shared watch channel.
 ///
-/// Returns a [`Handle`] that can be used to close the two streams.
+/// Returns a [`Handle`] that can be used to close the streams.
 /// The streams will continue to run until the handle is dropped.
-pub fn run(
-    conn_pool: ConnectionPool,
-    block_notify: BlockTx,
-    node_endpoint: String,
-) -> Result<Handle, CriticalError> {
+pub fn run(conn_pool: ConnectionPool, conf: RunConfig) -> Result<Handle, CriticalError> {
+    let RunConfig {
+        run_relayer,
+        run_state_derivation,
+        run_validation,
+        block_notify,
+        node_endpoint,
+    } = conf;
+
     // Run relayer.
-    let relayer = Relayer::new(node_endpoint.as_str())?;
-    let relayer_handle = relayer.run(conn_pool.0.clone(), block_notify.0.clone())?;
+    let relayer_handle = if run_relayer {
+        let relayer = Relayer::new(node_endpoint.expect("run config is sane").as_str())?;
+        Some(relayer.run(conn_pool.0.clone(), block_notify.0.clone())?)
+    } else {
+        None
+    };
 
     // Run state derivation stream.
-    let state_handle = state_derivation_stream(conn_pool.clone(), block_notify.new_listener().0)?;
+    let state_handle = if run_state_derivation {
+        Some(state_derivation_stream(
+            conn_pool.clone(),
+            block_notify.new_listener().0,
+        )?)
+    } else {
+        None
+    };
 
     // Run validation stream.
-    let validation_handle = validation_stream(conn_pool.clone(), block_notify.new_listener().0)?;
+    let validation_handle = if run_validation {
+        Some(validation_stream(
+            conn_pool.clone(),
+            block_notify.new_listener().0,
+        )?)
+    } else {
+        None
+    };
 
-    Ok(Handle::new(relayer_handle, state_handle, validation_handle))
+    Ok(Handle::new(
+        relayer_handle,
+        state_handle,
+        validation_handle,
+    )?)
 }
 
 impl BlockTx {
@@ -123,5 +159,31 @@ impl BlockRx {
     /// Waits for a change notification.
     pub async fn changed(&mut self) -> Result<(), tokio::sync::watch::error::RecvError> {
         self.0.changed().await
+    }
+}
+
+impl RunConfig {
+    /// Create a new [`RunConfig`] with the given configuration.
+    /// Checks that configuration is sane.
+    pub fn new(
+        run_relayer: bool,
+        run_state_derivation: bool,
+        run_validation: bool,
+        node_endpoint: Option<String>,
+        block_notify: BlockTx,
+    ) -> Result<Self, RunConfigError> {
+        if !(run_relayer || run_state_derivation || run_validation) {
+            return Err(RunConfigError::NoStreamsToRun);
+        }
+        if node_endpoint.is_none() && run_relayer {
+            return Err(RunConfigError::RelayerWithoutNodeEndpoint);
+        }
+        Ok(Self {
+            run_relayer,
+            run_state_derivation,
+            run_validation,
+            node_endpoint,
+            block_notify,
+        })
     }
 }

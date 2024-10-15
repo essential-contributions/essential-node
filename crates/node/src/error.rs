@@ -8,6 +8,20 @@ use thiserror::Error;
 pub struct ConnPoolNewError(#[from] pub rusqlite::Error);
 
 #[derive(Debug, Error)]
+pub enum RunConfigError {
+    #[error("cannot run node without any features enabled")]
+    NoStreamsToRun,
+    #[error("cannot run relayer without a node endpoint")]
+    RelayerWithoutNodeEndpoint,
+}
+
+#[derive(Debug, Error)]
+pub enum NewHandleError {
+    #[error("cannot create node run handle without any underlying handles")]
+    NoHandles,
+}
+
+#[derive(Debug, Error)]
 pub(super) enum InternalError {
     #[error(transparent)]
     Recoverable(#[from] RecoverableError),
@@ -61,6 +75,8 @@ pub enum CriticalError {
     DbPoolClosed(#[from] tokio::sync::AcquireError),
     #[error(transparent)]
     Relayer(#[from] essential_relayer::Error),
+    #[error(transparent)]
+    NewHandle(#[from] NewHandleError),
 }
 
 #[derive(Debug, Error)]
