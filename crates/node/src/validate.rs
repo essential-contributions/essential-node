@@ -10,7 +10,9 @@ use essential_node_db::{
     finalized::{query_state_exclusive_solution, query_state_inclusive_solution},
     get_predicate,
 };
-use essential_types::{predicate::Predicate, Block, ContentAddress, Key, PredicateAddress, Word};
+use essential_types::{
+    predicate::Predicate, solution::Solution, Block, ContentAddress, Key, PredicateAddress, Word,
+};
 use futures::FutureExt;
 use std::{
     collections::{HashMap, HashSet},
@@ -58,6 +60,33 @@ pub enum ValidateFailure {
     #[allow(dead_code)]
     PredicatesError(PredicatesError<StateReadError>),
     GasOverflow,
+}
+
+/// Validates a solution.
+/// Creates a block at the next block number and current timestamp with the given solution
+/// and validates it.
+///
+/// Returns a `ValidationResult` if no `ValidationError` occurred that prevented the solution from being validated.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+pub async fn validate_solution(
+    conn_pool: &ConnectionPool,
+    solution: Solution,
+) -> Result<ValidateOutcome, ValidationError> {
+    let mut conn = conn_pool.acquire().await?;
+    let tx = conn.transaction()?;
+    let number = match essential_node_db::get_latest_finalized_block_address(&tx)? {
+        Some(address) => essential_node_db::get_block_number(&tx, &address)?.unwrap_or(1),
+        None => 1,
+    };
+    let block = Block {
+        number,
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time must be valid"),
+        solutions: vec![solution],
+    };
+    drop(tx);
+    validate(conn_pool, &block).await
 }
 
 /// Validates a block.
