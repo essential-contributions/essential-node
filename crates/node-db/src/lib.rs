@@ -15,10 +15,7 @@ pub use error::{DecodeError, QueryError};
 use essential_hash::content_addr;
 #[doc(inline)]
 pub use essential_node_db_sql as sql;
-use essential_types::{
-    contract::Contract, predicate::Predicate, solution::Solution, Block, ContentAddress, Hash, Key,
-    Value, Word,
-};
+use essential_types::{solution::Solution, Block, ContentAddress, Hash, Key, Value, Word};
 use futures::Stream;
 use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
@@ -194,83 +191,6 @@ pub fn insert_failed_block(
     Ok(())
 }
 
-/// For the given contract:
-///
-/// 1. Insert it into the `contract` table.
-/// 2. For each predicate, add entries to the `predicate` and `contract_predicate` tables.
-///
-/// The `l2_block_number` is the block containing the contract's DA proof.
-pub fn insert_contract(
-    tx: &Transaction,
-    contract: &Contract,
-    l2_block_number: Word,
-) -> rusqlite::Result<()> {
-    // Collect the predicate content addresses.
-    let predicate_cas: Vec<_> = contract.predicates.iter().map(content_addr).collect();
-
-    // Determine the contract's content address.
-    let contract_ca = essential_hash::contract_addr::from_predicate_addrs(
-        predicate_cas.iter().cloned(),
-        &contract.salt,
-    );
-
-    // Encode the data into blobs.
-    let contract_ca_blob = encode(&contract_ca);
-    let salt_blob = encode(&contract.salt);
-    tx.execute(
-        sql::insert::CONTRACT,
-        named_params! {
-            ":content_hash": contract_ca_blob,
-            ":salt": salt_blob,
-            ":l2_block_number": l2_block_number,
-        },
-    )?;
-
-    // Insert the predicates and their pairings.
-    let mut stmt_predicate = tx.prepare(sql::insert::PREDICATE)?;
-    let mut stmt_contract_predicate = tx.prepare(sql::insert::CONTRACT_PREDICATE)?;
-    for (pred, pred_ca) in contract.predicates.iter().zip(&predicate_cas) {
-        let pred_blob = encode(pred);
-
-        // Insert the predicate.
-        let pred_ca_blob = encode(pred_ca);
-        stmt_predicate.execute(named_params! {
-            ":content_hash": &pred_ca_blob,
-            ":predicate": pred_blob,
-        })?;
-
-        // Insert the pairing.
-        stmt_contract_predicate.execute(named_params! {
-            ":contract_hash": &contract_ca_blob,
-            ":predicate_hash": &pred_ca_blob,
-        })?;
-    }
-
-    Ok(())
-}
-
-/// Inserts the new progress for syncing contracts.
-///
-/// Note even though this is an insert,
-/// it will overwrite the previous progress.
-/// This is because we need to initialize the first progress.
-pub fn insert_contract_progress(
-    conn: &Connection,
-    l2_block_number: Word,
-    contract_ca: &ContentAddress,
-) -> rusqlite::Result<()> {
-    let contract_ca_blob = encode(contract_ca);
-
-    conn.execute(
-        sql::insert::CONTRACT_PROGRESS,
-        named_params! {
-            ":l2_block_number": l2_block_number,
-            ":content_hash": contract_ca_blob,
-        },
-    )?;
-    Ok(())
-}
-
 /// Updates the state for a given contract content address and key.
 pub fn update_state(
     conn: &Connection,
@@ -284,7 +204,7 @@ pub fn update_state(
     conn.execute(
         sql::update::STATE,
         named_params! {
-            ":contract_hash": contract_ca_blob,
+            ":contract_ca": contract_ca_blob,
             ":key": key_blob,
             ":value": value_blob,
         },
@@ -331,104 +251,11 @@ pub fn delete_state(
     conn.execute(
         sql::update::DELETE_STATE,
         named_params! {
-            ":contract_hash": contract_ca_blob,
+            ":contract_ca": contract_ca_blob,
             ":key": key_blob,
         },
     )?;
     Ok(())
-}
-
-/// Fetches the salt of the contract with the given content address.
-pub fn get_contract_salt(
-    conn: &Connection,
-    ca: &ContentAddress,
-) -> Result<Option<Hash>, QueryError> {
-    let ca_blob = encode(ca);
-    get_contract_salt_by_ca_blob(conn, &ca_blob)
-}
-
-fn get_contract_salt_by_ca_blob(
-    conn: &Connection,
-    ca_blob: &[u8],
-) -> Result<Option<Hash>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::GET_CONTRACT_SALT)?;
-    let salt_blob: Option<Vec<u8>> = stmt
-        .query_row([ca_blob], |row| row.get("salt"))
-        .optional()?;
-    Ok(salt_blob.as_deref().map(decode).transpose()?)
-}
-
-/// Fetches the predicates of the contract with the given content address.
-pub fn get_contract_predicates(
-    conn: &Connection,
-    ca: &ContentAddress,
-) -> Result<Option<Vec<Predicate>>, QueryError> {
-    let ca_blob = encode(ca);
-    get_contract_predicates_by_ca_blob(conn, &ca_blob)
-}
-
-fn get_contract_predicates_by_ca_blob(
-    conn: &Connection,
-    ca_blob: &[u8],
-) -> Result<Option<Vec<Predicate>>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::GET_CONTRACT_PREDICATES)?;
-    let pred_blobs = stmt.query_map([ca_blob], |row| row.get::<_, Vec<u8>>("predicate"))?;
-    let mut predicates: Vec<Predicate> = vec![];
-    for pred_blob in pred_blobs {
-        predicates.push(decode(&pred_blob?)?);
-    }
-    Ok(Some(predicates))
-}
-
-/// Fetches a contract by its content address.
-pub fn get_contract(
-    conn: &Connection,
-    ca: &ContentAddress,
-) -> Result<Option<Contract>, QueryError> {
-    let ca_blob = encode(ca);
-    let Some(salt) = get_contract_salt_by_ca_blob(conn, &ca_blob)? else {
-        return Ok(None);
-    };
-    let Some(predicates) = get_contract_predicates_by_ca_blob(conn, &ca_blob)? else {
-        return Ok(None);
-    };
-    Ok(Some(Contract { salt, predicates }))
-}
-
-/// Fetches the contract progress.
-pub fn get_contract_progress(
-    conn: &Connection,
-) -> Result<Option<(Word, ContentAddress)>, QueryError> {
-    let Some((l2_block_number, content_hash)) = conn
-        .query_row(sql::query::GET_CONTRACT_PROGRESS, [], |row| {
-            let l2_block_number: Word = row.get("l2_block_number")?;
-            let content_hash: Vec<u8> = row.get("content_hash")?;
-            Ok((l2_block_number, content_hash))
-        })
-        .optional()?
-    else {
-        return Ok(None);
-    };
-    let content_hash = decode(&content_hash)?;
-    Ok(Some((l2_block_number, content_hash)))
-}
-
-/// Fetches a predicate by its predicate content address.
-pub fn get_predicate(
-    conn: &Connection,
-    predicate_ca: &ContentAddress,
-) -> Result<Option<Predicate>, QueryError> {
-    let predicate_ca_blob = encode(predicate_ca);
-    let mut stmt = conn.prepare(sql::query::GET_PREDICATE)?;
-    let pred_blob: Option<Vec<u8>> = stmt
-        .query_row(
-            named_params! {
-                ":predicate_hash": predicate_ca_blob,
-            },
-            |row| row.get("predicate"),
-        )
-        .optional()?;
-    Ok(pred_blob.as_deref().map(decode).transpose()?)
 }
 
 /// Fetches a solution by its content address.
@@ -615,68 +442,6 @@ pub fn list_blocks_by_time(
         let solution: Solution = decode(&solution_blob)?;
         block.solutions.push(solution);
     }
-    Ok(blocks)
-}
-
-/// Lists contracts and their predicates within a given DA block range.
-///
-/// Returns each non-empty L2 block number in the range alongside a
-/// `Vec<Contract>` containing the contracts appearing in the DA proof for that
-/// block.
-pub fn list_contracts(
-    conn: &Connection,
-    block_range: Range<Word>,
-) -> Result<Vec<(Word, Vec<Contract>)>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::LIST_CONTRACTS)?;
-    let rows = stmt.query_map(
-        named_params! {
-            ":start_block": block_range.start,
-            ":end_block": block_range.end,
-        },
-        |row| {
-            let block_num: Word = row.get("l2_block_number")?;
-            let salt_blob: Vec<u8> = row.get("salt")?;
-            let contract_ca_blob: Vec<u8> = row.get("content_hash")?;
-            let pred_blob: Vec<u8> = row.get("predicate")?;
-            Ok((block_num, contract_ca_blob, salt_blob, pred_blob))
-        },
-    )?;
-
-    // Query yields in order of block number and predicate ID.
-    let mut blocks: Vec<(Word, Vec<Contract>)> = vec![];
-    let mut last_block_num: Option<Word> = None;
-    let mut last_contract_ca = None;
-    for res in rows {
-        let (l2_block_num, ca_blob, salt_blob, pred_blob): (Word, Vec<u8>, Vec<u8>, Vec<u8>) = res?;
-        let contract_ca: ContentAddress = decode(&ca_blob)?;
-        let salt: Hash = decode(&salt_blob)?;
-
-        // Fetch the block entry associated with the given block number or insert if new.
-        let block = match last_block_num {
-            Some(n) if n == l2_block_num => blocks.last_mut().expect("block entry must exist"),
-            _ => {
-                last_block_num = Some(l2_block_num);
-                last_contract_ca = None;
-                blocks.push((l2_block_num, vec![]));
-                blocks.last_mut().expect("block entry must exist")
-            }
-        };
-
-        // Fetch the contract associated with the CA or insert if new.
-        let contract = match last_contract_ca {
-            Some(ref ca) if ca == &contract_ca => block.1.last_mut().expect("entry must exist"),
-            _ => {
-                last_contract_ca = Some(contract_ca);
-                let predicates = vec![];
-                block.1.push(Contract { salt, predicates });
-                block.1.last_mut().expect("entry must exist")
-            }
-        };
-
-        let pred: Predicate = decode(&pred_blob)?;
-        contract.predicates.push(pred);
-    }
-
     Ok(blocks)
 }
 
