@@ -1,7 +1,8 @@
 use crate::db::{AcquireThenQueryError, AcquireThenRusqliteError};
 use essential_node_db::QueryError;
-use essential_types::{ContentAddress, PredicateAddress};
+use essential_types::{predicate, ContentAddress, PredicateAddress};
 use thiserror::Error;
+use tokio::sync::AcquireError;
 
 #[derive(Debug, Error)]
 #[error("Connection pool creation failed: {0}")]
@@ -25,6 +26,8 @@ pub enum RecoverableError {
     ReadState(AcquireThenQueryError),
     #[error(transparent)]
     Query(#[from] QueryError),
+    #[error("failed to query predicate with address `{0:?}`: {1}")]
+    QueryPredicate(PredicateAddress, QueryPredicateError),
     #[error("failed to join handle")]
     Join(#[from] tokio::task::JoinError),
     #[error("failed to get last block")]
@@ -37,8 +40,8 @@ pub enum RecoverableError {
 
 #[derive(Debug, Error)]
 pub enum ValidationError {
-    #[error("predicate not in database: {0:?}")]
-    PredicateNotFound(PredicateAddress),
+    #[error(transparent)]
+    SolutionPredicates(#[from] SolutionPredicatesError),
     #[error(transparent)]
     Query(#[from] QueryError),
     #[error("database connection pool closed")]
@@ -77,6 +80,28 @@ pub enum StateReadError {
     KeyRangeError,
 }
 
+#[derive(Debug, Error)]
+pub enum SolutionPredicatesError {
+    #[error("failed to acquire a connection from the pool: {0}")]
+    Acquire(#[from] AcquireError),
+    #[error("failed to query predicate with address `{0:?}`: {1}")]
+    QueryPredicate(PredicateAddress, QueryPredicateError),
+    #[error("solution attempts to solve an unregistered predicate with address {0:?}")]
+    MissingPredicate(PredicateAddress),
+}
+
+#[derive(Debug, Error)]
+pub enum QueryPredicateError {
+    #[error(transparent)]
+    Query(#[from] QueryError),
+    #[error("the queried predicate is missing the word that encodes its length")]
+    MissingLenBytes,
+    #[error("the queried predicate length was invalid")]
+    InvalidLenBytes,
+    #[error("failed to decode the queried predicate: {0}")]
+    Decode(#[from] predicate::header::DecodeError),
+}
+
 /// An error occurred while inserting of checking the big bang block.
 #[derive(Debug, Error)]
 pub enum BigBangError {
@@ -99,12 +124,26 @@ pub enum BigBangError {
     },
 }
 
+impl From<SolutionPredicatesError> for InternalError {
+    fn from(e: SolutionPredicatesError) -> Self {
+        match e {
+            SolutionPredicatesError::Acquire(err) => {
+                InternalError::Critical(CriticalError::DbPoolClosed(err))
+            }
+            SolutionPredicatesError::MissingPredicate(addr) => {
+                InternalError::Recoverable(RecoverableError::PredicateNotFound(addr))
+            }
+            SolutionPredicatesError::QueryPredicate(addr, err) => {
+                InternalError::Recoverable(RecoverableError::QueryPredicate(addr, err))
+            }
+        }
+    }
+}
+
 impl From<ValidationError> for InternalError {
     fn from(e: ValidationError) -> Self {
         match e {
-            ValidationError::PredicateNotFound(addr) => {
-                InternalError::Recoverable(RecoverableError::PredicateNotFound(addr))
-            }
+            ValidationError::SolutionPredicates(err) => err.into(),
             ValidationError::Query(err) => InternalError::Recoverable(RecoverableError::Query(err)),
             ValidationError::DbPoolClosed(err) => {
                 InternalError::Critical(CriticalError::DbPoolClosed(err))

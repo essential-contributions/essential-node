@@ -11,6 +11,7 @@ use essential_node::{
     },
     BlockTx, RunConfig,
 };
+use essential_node_types::BigBang;
 use essential_types::Block;
 use rusqlite::Connection;
 use std::sync::Arc;
@@ -37,7 +38,14 @@ async fn test_run() {
         run_state_derivation: true,
         run_validation: true,
     };
-    let _handle = node::run(db.clone(), run_conf, block_tx).unwrap();
+    let big_bang = BigBang::default();
+    let _handle = node::run(
+        db.clone(),
+        run_conf,
+        big_bang.contract_registry,
+        block_tx,
+    )
+    .unwrap();
 
     // Create test blocks
     let test_blocks_count = 4;

@@ -27,6 +27,7 @@ mod tests;
 /// Critical errors will cause the stream to end.
 pub fn validation_stream(
     conn_pool: ConnectionPool,
+    contract_registry: ContentAddress,
     block_rx: watch::Receiver<()>,
 ) -> Result<Handle<CriticalError>, CriticalError> {
     let (shutdown, stream_close) = watch::channel(());
@@ -49,7 +50,9 @@ pub fn validation_stream(
             let r = rx
                 .take_until(close)
                 .map(Ok)
-                .try_for_each(|_| validate_next_block(conn_pool.clone(), self_notify.clone()))
+                .try_for_each(|_| {
+                    validate_next_block(conn_pool.clone(), &contract_registry, self_notify.clone())
+                })
                 .await;
 
             match r {
@@ -71,6 +74,7 @@ pub fn validation_stream(
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 async fn validate_next_block(
     conn_pool: ConnectionPool,
+    contract_registry: &ContentAddress,
     self_notify: watch::Sender<()>,
 ) -> Result<(), InternalError> {
     let progress = get_last_progress(&conn_pool).await?;
@@ -85,7 +89,7 @@ async fn validate_next_block(
         block.number
     );
 
-    let res = validate::validate(&conn_pool, &block).await?;
+    let res = validate::validate(&conn_pool, contract_registry, &block).await?;
 
     match res {
         // Validation was successful.
