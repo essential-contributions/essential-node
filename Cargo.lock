@@ -748,7 +748,6 @@ dependencies = [
  "essential-types",
  "serde",
  "serde_yaml",
- "sha2",
 ]
 
 [[package]]

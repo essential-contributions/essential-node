@@ -164,7 +164,6 @@ async fn run(args: Args) -> anyhow::Result<()> {
         ..
     } = args;
 
-    // Run the relayer and state derivation.
     #[cfg(feature = "tracing")]
     tracing::info!(
         "Starting {}{}{}",
