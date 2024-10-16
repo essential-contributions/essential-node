@@ -54,6 +54,10 @@ pub struct InvalidOutcome {
 /// Contains the error that caused the block to be invalid.
 #[derive(Debug)]
 pub enum ValidateFailure {
+    /// A solution specified a predicate that does not exist within the contract registry.
+    MissingPredicate(PredicateAddress),
+    /// A predicate was present in the registry, but failed to decode.
+    InvalidPredicate(PredicateAddress),
     #[allow(dead_code)]
     PredicatesError(PredicatesError<StateReadError>),
     GasOverflow,
@@ -83,7 +87,7 @@ pub async fn validate_solution(
             .expect("time must be valid"),
         solutions: vec![solution],
     };
-    tx.commit()?;
+    drop(tx);
     validate(conn_pool, contract_registry, &block).await
 }
 
@@ -114,9 +118,32 @@ pub async fn validate(
         };
 
         // Create the `predicates` map.
-        let predicates: Arc<HashMap<PredicateAddress, Arc<Predicate>>> = Arc::new(
-            query_solution_predicates(&post_state, contract_registry, &solution.data).await?,
-        );
+        let res = query_solution_predicates(&post_state, contract_registry, &solution.data).await;
+        let predicates = match res {
+            Ok(predicates) => Arc::new(predicates),
+            Err(err) => match err {
+                SolutionPredicatesError::Acquire(err) => {
+                    return Err(ValidationError::DbPoolClosed(err))
+                }
+                SolutionPredicatesError::QueryPredicate(addr, err) => match err {
+                    QueryPredicateError::Query(err) => return Err(ValidationError::Query(err)),
+                    QueryPredicateError::Decode(_)
+                    | QueryPredicateError::MissingLenBytes
+                    | QueryPredicateError::InvalidLenBytes => {
+                        return Ok(ValidateOutcome::Invalid(InvalidOutcome {
+                            failure: ValidateFailure::InvalidPredicate(addr),
+                            solution_index,
+                        }));
+                    }
+                },
+                SolutionPredicatesError::MissingPredicate(addr) => {
+                    return Ok(ValidateOutcome::Invalid(InvalidOutcome {
+                        failure: ValidateFailure::MissingPredicate(addr),
+                        solution_index,
+                    }));
+                }
+            },
+        };
 
         let get_predicate = move |addr: &PredicateAddress| {
             predicates
@@ -235,7 +262,6 @@ async fn query_solution_predicates(
             &pred_addr,
             state.block_number,
             state.solution_index,
-            state.pre_state,
         )
         .map_err(|e| SolutionPredicatesError::QueryPredicate(pred_addr.clone(), e))?
         else {
@@ -247,8 +273,9 @@ async fn query_solution_predicates(
 }
 
 /// Query for the predicate with the given address within state.
+///
+/// Note that `query_predicate` will always query *inclusive* of the given solution index.
 // TODO: Take a connection pool and perform these queries in parallel.
-// #[cfg_attr(feature = "tracing", tracing::instrument())]
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, err))]
 fn query_predicate(
     conn: &rusqlite::Connection,
@@ -256,9 +283,9 @@ fn query_predicate(
     pred_addr: &PredicateAddress,
     block_number: Word,
     solution_ix: u64,
-    pre_state: bool,
 ) -> Result<Option<Predicate>, QueryPredicateError> {
     use essential_node_types::contract_registry;
+    let pre_state = false;
 
     #[cfg(feature = "tracing")]
     tracing::trace!("{}:{}", pred_addr.contract, pred_addr.predicate);

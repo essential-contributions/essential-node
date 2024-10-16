@@ -1,6 +1,5 @@
 use crate::{
     db::with_tx,
-    error::{SolutionPredicatesError, ValidationError},
     test_utils::{
         test_block_with_contracts, test_conn_pool, test_conn_pool_with_big_bang,
         test_contract_registry, test_invalid_block, test_invalid_block_with_contract,
@@ -119,12 +118,12 @@ async fn predicate_not_found() {
     let contract_registry = test_contract_registry().contract;
     let res = validate::validate(&conn_pool, &contract_registry, &block).await;
     match res {
-        Err(ValidationError::SolutionPredicates(SolutionPredicatesError::MissingPredicate(
-            addr,
-        ))) => {
+        Ok(ValidateOutcome::Invalid(InvalidOutcome {
+            failure: ValidateFailure::MissingPredicate(addr),
+            solution_index: 0,
+        })) => {
             assert_eq!(addr, block.solutions[0].data[0].predicate_to_solve)
         }
-
         _ => panic!(
             "expected ValidationError::PredicateNotFound, found {:?}",
             res

@@ -22,8 +22,8 @@ pub struct BigBang {
     ///
     /// This contract includes special keys for the block number and block timestamp. E.g.
     ///
-    /// - `[0]` is the key for the block number, which is a `i64`.
-    /// - `[1]` is the key for the block timestamp, which is a `i64` for seconds since
+    /// - `[0]` is the key for the block number, which is a `Word`.
+    /// - `[1]` is the key for the block timestamp, which is a `Word` for seconds since
     ///   `UNIX_EPOCH`.
     pub block_state: PredicateAddress,
     /// The address of the contract used to register contracts and their associated predicates.
@@ -51,10 +51,10 @@ pub struct BigBang {
     ///
     /// ## Predicates
     ///
-    /// Predicate entries contain their length in bytes as an `int` and their fully byte-encoded
+    /// Predicate entries contain their length in bytes as a `Word` and their fully byte-encoded
     /// form within a `int[]` with padding in the final word if necessary. E.g.
     ///
-    /// - `[1, <predicate-ca>]` to get the length bytes as `int` followed by the fully encoded
+    /// - `[1, <predicate-ca>]` to get the length bytes as `Word` followed by the fully encoded
     ///   word-padded data as `int[]`.
     pub contract_registry: PredicateAddress,
     /// The `Solution` used to initialize arbitrary state for the big bang block.
@@ -93,10 +93,9 @@ pub mod contract_registry {
     const CONTRACTS_PREFIX: Word = 0;
     const PREDICATES_PREFIX: Word = 1;
 
-    /// A key that may be used to test if the predicate exists within the contract specified in the
-    /// `PredicateAddress`.
+    /// A key that may be used to refer to a contract's `salt` in state.
     ///
-    /// The returned key is formatted as: `[0, <contract-ca>, <predicate-ca>]`
+    /// The returned key is formatted as: `[0, <contract-ca>, 0]`
     pub fn contract_salt_key(contract_ca: &ContentAddress) -> Key {
         Some(CONTRACTS_PREFIX)
             .into_iter()
@@ -121,6 +120,8 @@ pub mod contract_registry {
     ///
     /// When queried, the `Predicate` data will be preceded by a single word that describes the
     /// length of the predicate in bytes.
+    ///
+    /// The returned key is formatted as: `[1, <predicate-ca>]`
     pub fn predicate_key(pred_ca: &ContentAddress) -> Key {
         Some(PREDICATES_PREFIX)
             .into_iter()
