@@ -135,48 +135,39 @@ async fn run(args: Args) -> anyhow::Result<()> {
     #[cfg(feature = "tracing")]
     tracing::info!(
         "Starting {}{}{}",
-        format!(
-            "{}",
-            if disable_state_derivation {
-                ""
-            } else {
-                "state derivation"
-            }
-        ),
-        format!(
-            "{}",
-            if disable_validation {
-                "".to_string()
-            } else {
-                format!(
-                    "{}{}",
-                    if disable_state_derivation {
-                        ""
-                    } else if relayer_source_endpoint.is_some() {
-                        ", "
-                    } else {
-                        " and "
-                    },
-                    "validation"
-                )
-            }
-        ),
-        format!(
-            "{}",
-            if let Some(node_endpoint) = relayer_source_endpoint.as_ref() {
-                format!(
-                    "{}relayer (relaying from {:?})",
-                    if disable_state_derivation && disable_validation {
-                        ""
-                    } else {
-                        " and "
-                    },
-                    node_endpoint,
-                )
-            } else {
-                "".to_string()
-            }
-        ),
+        if disable_state_derivation {
+            ""
+        } else {
+            "state derivation"
+        },
+        if disable_validation {
+            "".to_string()
+        } else {
+            format!(
+                "{}{}",
+                if disable_state_derivation {
+                    ""
+                } else if relayer_source_endpoint.is_some() {
+                    ", "
+                } else {
+                    " and "
+                },
+                "validation"
+            )
+        },
+        if let Some(node_endpoint) = relayer_source_endpoint.as_ref() {
+            format!(
+                "{}relayer (relaying from {:?})",
+                if disable_state_derivation && disable_validation {
+                    ""
+                } else {
+                    " and "
+                },
+                node_endpoint,
+            )
+        } else {
+            "".to_string()
+        }
     );
 
     let block_tx = node::BlockTx::new();
