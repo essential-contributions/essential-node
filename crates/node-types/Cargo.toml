@@ -13,5 +13,3 @@ essential-hash = { workspace = true }
 essential-types = { workspace = true }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
-# TODO: Remove this in favour of `essential_hash::hash_bytes` after version update.
-sha2 = { workspace = true }

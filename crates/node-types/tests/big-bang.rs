@@ -1,9 +1,6 @@
-use essential_node_types::{register_contract_solution, BigBang};
+use essential_node_types::{block_state_solution, register_contract_solution, BigBang};
 use essential_types::{
-    contract::Contract,
-    predicate::Predicate,
-    solution::{Mutation, Solution, SolutionData},
-    PredicateAddress,
+    contract::Contract, predicate::Predicate, solution::Solution, PredicateAddress,
 };
 
 // This function generates the default [`BigBang`].
@@ -52,21 +49,7 @@ fn default_big_bang() -> BigBang {
             register_contract_solution(contract_registry_address.clone(), &block_state)
                 .expect("big bang contract must be valid"),
             // A solution that sets the block state block number to 0, timestamp to 0.
-            SolutionData {
-                predicate_to_solve: block_state_address.clone(),
-                decision_variables: vec![],
-                transient_data: vec![],
-                state_mutations: vec![
-                    Mutation {
-                        key: vec![0],
-                        value: vec![0],
-                    },
-                    Mutation {
-                        key: vec![1],
-                        value: vec![0],
-                    },
-                ],
-            },
+            block_state_solution(block_state_address.clone(), 0, 0),
         ],
     };
 

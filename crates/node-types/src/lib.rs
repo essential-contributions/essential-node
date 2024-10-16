@@ -85,7 +85,7 @@ impl Default for BigBang {
     }
 }
 
-/// Functions or constructing keys into the "contract registry" contract state.
+/// Functions for constructing keys into the "contract registry" contract state.
 pub mod contract_registry {
     use crate::padded_words_from_bytes;
     use essential_types::{ContentAddress, Key, PredicateAddress, Word};
@@ -131,11 +131,11 @@ pub mod contract_registry {
 
 /// Create a solution for registering the given contract at the given
 pub fn register_contract_solution(
-    registry_predicate: PredicateAddress,
+    contract_registry: PredicateAddress,
     contract: &Contract,
 ) -> Result<SolutionData, PredicateError> {
     Ok(SolutionData {
-        predicate_to_solve: registry_predicate,
+        predicate_to_solve: contract_registry,
         transient_data: vec![],
         decision_variables: vec![],
         state_mutations: register_contract_mutations(contract)?,
@@ -191,6 +191,35 @@ pub fn register_contract_mutations(contract: &Contract) -> Result<Vec<Mutation>,
     }
 
     Ok(muts)
+}
+
+/// Generate a solution that sets the block state to the given block number and timestamp.
+pub fn block_state_solution(
+    block_state: PredicateAddress,
+    block_number: Word,
+    block_timestamp_secs: Word,
+) -> SolutionData {
+    SolutionData {
+        predicate_to_solve: block_state,
+        transient_data: vec![],
+        decision_variables: vec![],
+        state_mutations: block_state_mutations(block_number, block_timestamp_secs),
+    }
+}
+
+/// Generate the mutations required for a solution that sets the block state to the given block
+/// nubmer and timesatmp.
+pub fn block_state_mutations(block_number: Word, block_timestamp_secs: Word) -> Vec<Mutation> {
+    vec![
+        Mutation {
+            key: vec![0],
+            value: vec![block_number],
+        },
+        Mutation {
+            key: vec![1],
+            value: vec![block_timestamp_secs],
+        },
+    ]
 }
 
 fn padded_words_from_bytes(bytes: &[u8]) -> impl '_ + Iterator<Item = Word> {
