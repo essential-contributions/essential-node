@@ -2,17 +2,17 @@ use crate::error::CriticalError;
 
 /// Handle for closing or joining the relayer, state derivation and validation streams.
 pub struct Handle {
-    relayer: essential_relayer::Handle,
-    state: crate::handles::state::Handle<CriticalError>,
-    validation: crate::handles::validation::Handle<CriticalError>,
+    relayer: Option<essential_relayer::Handle>,
+    state: Option<crate::handles::state::Handle<CriticalError>>,
+    validation: Option<crate::handles::validation::Handle<CriticalError>>,
 }
 
 impl Handle {
     /// Create a new handle.
     pub(crate) fn new(
-        relayer: essential_relayer::Handle,
-        state: crate::handles::state::Handle<CriticalError>,
-        validation: crate::handles::validation::Handle<CriticalError>,
+        relayer: Option<essential_relayer::Handle>,
+        state: Option<crate::handles::state::Handle<CriticalError>>,
+        validation: Option<crate::handles::validation::Handle<CriticalError>>,
     ) -> Self {
         Self {
             relayer,
@@ -29,11 +29,16 @@ impl Handle {
             relayer,
             state,
             validation,
-            ..
         } = self;
-        state.close().await?;
-        relayer.close().await?;
-        validation.close().await?;
+        if let Some(state) = state {
+            state.close().await?;
+        }
+        if let Some(relayer) = relayer {
+            relayer.close().await?;
+        }
+        if let Some(validation) = validation {
+            validation.close().await?;
+        }
         Ok(())
     }
 
@@ -48,16 +53,32 @@ impl Handle {
             relayer,
             state,
             validation,
-            ..
         } = self;
-
-        let relayer_future = relayer.join();
+        let relayer_future = async move {
+            if let Some(relayer) = relayer {
+                relayer.join().await
+            } else {
+                Ok(())
+            }
+        };
         tokio::pin!(relayer_future);
 
-        let state_future = state.join();
+        let state_future = async move {
+            if let Some(state) = state {
+                state.join().await
+            } else {
+                Ok(())
+            }
+        };
         tokio::pin!(state_future);
 
-        let validation_future = validation.join();
+        let validation_future = async move {
+            if let Some(validation) = validation {
+                validation.join().await
+            } else {
+                Ok(())
+            }
+        };
         tokio::pin!(validation_future);
 
         tokio::select! {

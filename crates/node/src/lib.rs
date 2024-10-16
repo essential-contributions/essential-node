@@ -41,6 +41,18 @@ pub struct BlockTx(tokio::sync::watch::Sender<()>);
 #[derive(Clone)]
 pub struct BlockRx(tokio::sync::watch::Receiver<()>);
 
+/// Options for running the node.
+#[derive(Clone, Debug)]
+pub struct RunConfig {
+    /// Node endpoint to sync blocks from.
+    /// If `None` then the relayer stream will not run.
+    pub relayer_source_endpoint: Option<String>,
+    /// If `false` then the state derivation stream will not run.
+    pub run_state_derivation: bool,
+    /// If `false` then the validation stream will not run.
+    pub run_validation: bool,
+}
+
 /// Create a new `ConnectionPool` from the given configuration.
 ///
 /// Upon construction, the node's database tables are created if they have
@@ -74,27 +86,51 @@ pub fn db(conf: &db::Config) -> Result<ConnectionPool, ConnPoolNewError> {
     Ok(db)
 }
 
-/// Run the relayer and state derivation and validation streams.
+/// Optionally run the relayer and state derivation and validation streams.
 ///
 /// Relayer will sync blocks from the node API blocks stream to node database
 /// and notify state derivation stream of new blocks via the shared watch channel.
 ///
-/// Returns a [`Handle`] that can be used to close the two streams.
+/// Returns a [`Handle`] that can be used to close the streams.
 /// The streams will continue to run until the handle is dropped.
 pub fn run(
     conn_pool: ConnectionPool,
+    conf: RunConfig,
     block_notify: BlockTx,
-    node_endpoint: String,
 ) -> Result<Handle, CriticalError> {
+    let RunConfig {
+        run_state_derivation,
+        run_validation,
+        relayer_source_endpoint,
+    } = conf;
+
     // Run relayer.
-    let relayer = Relayer::new(node_endpoint.as_str())?;
-    let relayer_handle = relayer.run(conn_pool.0.clone(), block_notify.0.clone())?;
+    let relayer_handle = if let Some(relayer_source_endpoint) = relayer_source_endpoint {
+        let relayer = Relayer::new(relayer_source_endpoint.as_str())?;
+        Some(relayer.run(conn_pool.0.clone(), block_notify.0.clone())?)
+    } else {
+        None
+    };
 
     // Run state derivation stream.
-    let state_handle = state_derivation_stream(conn_pool.clone(), block_notify.new_listener().0)?;
+    let state_handle = if run_state_derivation {
+        Some(state_derivation_stream(
+            conn_pool.clone(),
+            block_notify.new_listener().0,
+        )?)
+    } else {
+        None
+    };
 
     // Run validation stream.
-    let validation_handle = validation_stream(conn_pool.clone(), block_notify.new_listener().0)?;
+    let validation_handle = if run_validation {
+        Some(validation_stream(
+            conn_pool.clone(),
+            block_notify.new_listener().0,
+        )?)
+    } else {
+        None
+    };
 
     Ok(Handle::new(relayer_handle, state_handle, validation_handle))
 }

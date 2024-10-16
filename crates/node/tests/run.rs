@@ -9,7 +9,7 @@ use essential_node::{
         assert_state_progress_is_some, assert_validation_progress_is_none,
         assert_validation_progress_is_some, test_blocks, test_db_conf,
     },
-    BlockTx,
+    BlockTx, RunConfig,
 };
 use essential_types::Block;
 use rusqlite::Connection;
@@ -32,7 +32,12 @@ async fn test_run() {
 
     // Run node
     let block_tx = BlockTx::new();
-    let _handle = node::run(db.clone(), block_tx, node_server.address).unwrap();
+    let run_conf = RunConfig {
+        relayer_source_endpoint: Some(node_server.address),
+        run_state_derivation: true,
+        run_validation: true,
+    };
+    let _handle = node::run(db.clone(), run_conf, block_tx).unwrap();
 
     // Create test blocks
     let test_blocks_count = 4;
