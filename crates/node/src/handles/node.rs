@@ -1,4 +1,4 @@
-use crate::error::{CriticalError, NewHandleError};
+use crate::error::CriticalError;
 
 /// Handle for closing or joining the relayer, state derivation and validation streams.
 pub struct Handle {
@@ -13,15 +13,12 @@ impl Handle {
         relayer: Option<essential_relayer::Handle>,
         state: Option<crate::handles::state::Handle<CriticalError>>,
         validation: Option<crate::handles::validation::Handle<CriticalError>>,
-    ) -> Result<Self, NewHandleError> {
-        if relayer.is_none() && state.is_none() && validation.is_none() {
-            return Err(NewHandleError::NoHandles);
-        }
-        Ok(Self {
+    ) -> Self {
+        Self {
             relayer,
             state,
             validation,
-        })
+        }
     }
 
     /// Close the relayer, state derivation and validation streams.

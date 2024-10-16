@@ -20,12 +20,12 @@ struct Args {
     /// Note: This will likely be replaced with an L1 RPC URL flag upon switching to
     /// use of Ethereum (or Ethereum test-net) as an L1.
     #[arg(long)]
-    source_node_endpoint: Option<String>,
+    relayer_source_endpoint: Option<String>,
     /// Disable the state derivation stream.
-    #[arg(long, default_value_t = false)]
+    #[arg(long)]
     disable_state_derivation: bool,
     /// Disable the validation stream.
-    #[arg(long, default_value_t = false)]
+    #[arg(long)]
     disable_validation: bool,
     /// The type of DB storage to use.
     ///
@@ -45,7 +45,7 @@ struct Args {
     #[arg(long, default_value_t = Config::default_conn_limit())]
     db_conn_limit: usize,
     /// Disable the tracing subscriber.
-    #[arg(long, default_value_t = false)]
+    #[arg(long)]
     disable_tracing: bool,
     /// The maximum number of TCP streams to be served simultaneously.
     #[arg(long, default_value_t = node_api::DEFAULT_CONNECTION_LIMIT)]
@@ -126,20 +126,11 @@ async fn run(args: Args) -> anyhow::Result<()> {
 
     // Run the node with specified config.
     let Args {
-        source_node_endpoint,
+        relayer_source_endpoint,
         disable_state_derivation,
         disable_validation,
         ..
     } = args;
-
-    let block_tx = node::BlockTx::new();
-    let block_rx = block_tx.new_listener();
-    let run_conf = RunConfig::new(
-        source_node_endpoint.clone(),
-        block_tx,
-        !args.disable_state_derivation,
-        !args.disable_validation,
-    )?;
 
     #[cfg(feature = "tracing")]
     tracing::info!(
@@ -161,7 +152,7 @@ async fn run(args: Args) -> anyhow::Result<()> {
                     "{}{}",
                     if disable_state_derivation {
                         ""
-                    } else if source_node_endpoint.is_some() {
+                    } else if relayer_source_endpoint.is_some() {
                         ", "
                     } else {
                         " and "
@@ -172,7 +163,7 @@ async fn run(args: Args) -> anyhow::Result<()> {
         ),
         format!(
             "{}",
-            if let Some(node_endpoint) = source_node_endpoint {
+            if let Some(node_endpoint) = relayer_source_endpoint.as_ref() {
                 format!(
                     "{}relayer (relaying from {:?})",
                     if disable_state_derivation && disable_validation {
@@ -188,7 +179,22 @@ async fn run(args: Args) -> anyhow::Result<()> {
         ),
     );
 
-    let node_handle = node::run(db.clone(), run_conf)?;
+    let block_tx = node::BlockTx::new();
+    let block_rx = block_tx.new_listener();
+
+    let run_conf = RunConfig {
+        relayer_source_endpoint: relayer_source_endpoint.clone(),
+        run_state_derivation: !disable_state_derivation,
+        run_validation: !disable_validation,
+    };
+    let node_handle = node::run(db.clone(), run_conf, block_tx)?;
+    let node_future = async move {
+        if relayer_source_endpoint.is_none() && disable_state_derivation && disable_validation {
+            node_handle.join().await
+        } else {
+            std::future::pending().await
+        }
+    };
 
     // Run the API.
     let api_state = node_api::State {
@@ -207,7 +213,7 @@ async fn run(args: Args) -> anyhow::Result<()> {
     tokio::select! {
         _ = api => {},
         _ = ctrl_c => {},
-        r = node_handle.join() => {
+        r = node_future => {
             if let Err(e) = r {
                 #[cfg(feature = "tracing")]
                 tracing::error!("Critical error on relayer, state derivation or validation streams: {e}")

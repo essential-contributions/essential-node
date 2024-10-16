@@ -32,8 +32,12 @@ async fn test_run() {
 
     // Run node
     let block_tx = BlockTx::new();
-    let run_conf = RunConfig::new(Some(node_server.address), block_tx, true, true).unwrap();
-    let _handle = node::run(db.clone(), run_conf).unwrap();
+    let run_conf = RunConfig {
+        relayer_source_endpoint: Some(node_server.address),
+        run_state_derivation: true,
+        run_validation: true,
+    };
+    let _handle = node::run(db.clone(), run_conf, block_tx).unwrap();
 
     // Create test blocks
     let test_blocks_count = 4;
