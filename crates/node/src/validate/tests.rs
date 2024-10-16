@@ -1,10 +1,11 @@
 use crate::{
-    db::with_tx, error::{SolutionPredicatesError, ValidationError}, test_utils::{
+    db::with_tx,
+    error::{SolutionPredicatesError, ValidationError},
+    test_utils::{
         test_block_with_contracts, test_conn_pool, test_conn_pool_with_big_bang,
         test_contract_registry, test_invalid_block, test_invalid_block_with_contract,
-    }, validate::{
-        self, InvalidOutcome, ValidOutcome, ValidateFailure, ValidateOutcome,
-    }
+    },
+    validate::{self, InvalidOutcome, ValidOutcome, ValidateFailure, ValidateOutcome},
 };
 use essential_check::{
     constraint_vm::error::CheckError,
@@ -21,8 +22,8 @@ async fn valid_block() {
     // Insert a valid block with contracts.
     let block = test_block_with_contracts(1, Duration::from_secs(1));
     with_tx(&mut conn, |tx| {
-        let block_ca = insert_block(&tx, &block).unwrap();
-        finalize_block(&tx, &block_ca)
+        let block_ca = insert_block(tx, &block).unwrap();
+        finalize_block(tx, &block_ca)
     })
     .unwrap();
 
@@ -52,8 +53,8 @@ async fn invalid_block() {
     // Insert an invalid block.
     let block = test_invalid_block_with_contract(1, Duration::from_secs(1));
     with_tx(&mut conn, |tx| {
-        let block_ca = insert_block(&tx, &block).unwrap();
-        finalize_block(&tx, &block_ca)
+        let block_ca = insert_block(tx, &block).unwrap();
+        finalize_block(tx, &block_ca)
     })
     .unwrap();
 
@@ -118,7 +119,9 @@ async fn predicate_not_found() {
     let contract_registry = test_contract_registry().contract;
     let res = validate::validate(&conn_pool, &contract_registry, &block).await;
     match res {
-        Err(ValidationError::SolutionPredicates(SolutionPredicatesError::MissingPredicate(addr))) => {
+        Err(ValidationError::SolutionPredicates(SolutionPredicatesError::MissingPredicate(
+            addr,
+        ))) => {
             assert_eq!(addr, block.solutions[0].data[0].predicate_to_solve)
         }
 
