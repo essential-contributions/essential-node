@@ -6,14 +6,14 @@ use essential_node::{
     db::{Config, ConnectionPool, Source},
     test_utils::{
         assert_multiple_block_mutations, assert_state_progress_is_none,
-        assert_state_progress_is_some, assert_validation_progress_is_none,
-        assert_validation_progress_is_some, test_blocks, test_db_conf,
+        assert_state_progress_is_some, assert_validation_progress_is_some,
+        test_blocks_with_contracts, test_db_conf,
     },
     BlockTx, RunConfig,
 };
+use essential_node_types::BigBang;
 use essential_types::Block;
 use rusqlite::Connection;
-use std::sync::Arc;
 
 const LOCALHOST: &str = "127.0.0.1";
 
@@ -29,6 +29,8 @@ async fn test_run() {
     // Setup node
     let conf = test_db_conf();
     let db = node::db(&conf).unwrap();
+    let big_bang = BigBang::default();
+    node::ensure_big_bang_block(&db, &big_bang).await.unwrap();
 
     // Run node
     let block_tx = BlockTx::new();
@@ -37,23 +39,24 @@ async fn test_run() {
         run_state_derivation: true,
         run_validation: true,
     };
-    let _handle = node::run(db.clone(), run_conf, block_tx).unwrap();
+    let big_bang = BigBang::default();
+    let _handle = node::run(
+        db.clone(),
+        run_conf,
+        big_bang.contract_registry.contract.clone(),
+        block_tx,
+    )
+    .unwrap();
 
     // Create test blocks
     let test_blocks_count = 4;
-    let (test_blocks, test_contracts) = test_blocks(test_blocks_count);
-
-    // Insert contracts to database
-    for contract in &test_contracts {
-        db.insert_contract(Arc::new(contract.clone()), 0)
-            .await
-            .unwrap();
-    }
+    let test_blocks = test_blocks_with_contracts(1, test_blocks_count + 1);
     let conn = db.acquire().await.unwrap();
 
     // Initially, the state progress and validation progress are none
     assert_state_progress_is_none(&conn);
-    assert_validation_progress_is_none(&conn);
+    let bbb_ca = essential_hash::content_addr(&big_bang.block());
+    assert_validation_progress_is_some(&conn, &bbb_ca);
 
     // Insert block 0 to database and send notification
     node_server
@@ -140,6 +143,8 @@ async fn test_node() -> (NodeServer, BlockTx) {
         ..Default::default()
     };
     let db = node::db(&conf).unwrap();
+    let big_bang = BigBang::default();
+    node::ensure_big_bang_block(&db, &big_bang).await.unwrap();
     let source_block_tx = BlockTx::new();
     let source_block_rx = source_block_tx.new_listener();
     let state = essential_node_api::State {

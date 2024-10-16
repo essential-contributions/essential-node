@@ -1,8 +1,9 @@
-use essential_node::{self as node, BlockTx};
+use std::time::Duration;
+
+use essential_node::{self as node, test_utils::register_contracts_block, BlockTx};
 use essential_node_api as node_api;
-use essential_types::{
-    contract::Contract, convert::bytes_from_word, predicate::Predicate, Block, Value, Word,
-};
+use essential_node_types::BigBang;
+use essential_types::{convert::bytes_from_word, Block, Value};
 use futures::{StreamExt, TryStreamExt};
 use tokio_util::{
     bytes::{self, Buf},
@@ -30,86 +31,6 @@ async fn test_health_check() {
 }
 
 #[tokio::test]
-async fn test_get_contract() {
-    #[cfg(feature = "tracing")]
-    init_tracing_subscriber();
-
-    let db = test_conn_pool();
-    // The test contract.
-    let seed = 42;
-    let da_block = 100;
-    let contract = std::sync::Arc::new(node::test_utils::test_contract(seed));
-    let contract_ca = essential_hash::content_addr(contract.as_ref());
-
-    // Insert the contract.
-    let clone = contract.clone();
-    db.insert_contract(clone, da_block).await.unwrap();
-
-    // Request the contract from the server.
-    let response_contract = with_test_server(state_db_only(db), |port| async move {
-        let response = reqwest_get(port, &format!("/get-contract/{contract_ca}")).await;
-        assert!(response.status().is_success());
-        response.json::<Contract>().await.unwrap()
-    })
-    .await;
-
-    assert_eq!(&*contract, &response_contract);
-}
-
-#[tokio::test]
-async fn test_get_contract_invalid_ca() {
-    #[cfg(feature = "tracing")]
-    init_tracing_subscriber();
-
-    let db = test_conn_pool();
-
-    // The test contract.
-    let seed = 78;
-    let da_block = 100;
-    let contract = std::sync::Arc::new(node::test_utils::test_contract(seed));
-
-    // Insert the contract.
-    let clone = contract.clone();
-    db.insert_contract(clone, da_block).await.unwrap();
-
-    // Request the contract from the server.
-    with_test_server(state_db_only(db), |port| async move {
-        let response = reqwest_get(port, "/get-contract/INVALID_CA").await;
-        assert!(response.status().is_client_error());
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn test_get_predicate() {
-    #[cfg(feature = "tracing")]
-    init_tracing_subscriber();
-
-    let db = test_conn_pool();
-
-    // The test contract.
-    let seed = 97;
-    let da_block = 100;
-    let contract = std::sync::Arc::new(node::test_utils::test_contract(seed));
-
-    // Insert the contract.
-    let clone = contract.clone();
-    db.insert_contract(clone, da_block).await.unwrap();
-
-    // Check that we can request each predicate individually.
-    with_test_server(state_db_only(db), |port| async move {
-        for predicate in &contract.predicates {
-            let predicate_ca = essential_hash::content_addr(predicate);
-            let response = reqwest_get(port, &format!("/get-predicate/{predicate_ca}")).await;
-            assert!(response.status().is_success());
-            let response_predicate = response.json::<Predicate>().await.unwrap();
-            assert_eq!(predicate, &response_predicate);
-        }
-    })
-    .await;
-}
-
-#[tokio::test]
 async fn test_query_state() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
@@ -118,8 +39,9 @@ async fn test_query_state() {
 
     // The test state.
     let seed = 11;
-    let da_block = 100;
-    let contract = std::sync::Arc::new(node::test_utils::test_contract(seed));
+    let block_n = 100;
+    let block_ts = Duration::from_secs(block_n as _);
+    let contract = node::test_utils::test_contract(seed);
 
     // Make some randomish keys and values.
     let mut keys = vec![];
@@ -132,10 +54,12 @@ async fn test_query_state() {
     }
 
     // Insert a contract to own the state.
-    db.insert_contract(contract.clone(), da_block)
-        .await
-        .unwrap();
-    let contract_ca = essential_hash::content_addr(contract.as_ref());
+    let registry = BigBang::default().contract_registry;
+    let block = register_contracts_block(registry, Some(&contract), block_n, block_ts).unwrap();
+    let block_ca = db.insert_block(block.into()).await.unwrap();
+    db.finalize_block(block_ca).await.unwrap();
+
+    let contract_ca = essential_hash::content_addr(&contract);
 
     // Insert the state entries.
     for (k, v) in keys.iter().zip(&values) {
@@ -192,65 +116,6 @@ async fn test_list_blocks() {
     .await;
 
     assert_eq!(blocks, fetched_blocks);
-}
-
-#[tokio::test]
-async fn test_list_contracts() {
-    #[cfg(feature = "tracing")]
-    init_tracing_subscriber();
-
-    let db = test_conn_pool();
-
-    // The contract seeds for each block.
-    let block_contract_seeds: &[&[Word]] = &[&[1], &[42, 69], &[1337, 7357, 9000], &[4]];
-
-    // The list of contracts per block.
-    let block_contracts: Vec<Vec<Contract>> = block_contract_seeds
-        .iter()
-        .map(|seeds| {
-            seeds
-                .iter()
-                .copied()
-                .map(node::test_utils::test_contract)
-                .collect::<Vec<_>>()
-        })
-        .collect();
-
-    // Create the necessary tables and insert contracts.
-    for (ix, contracts) in block_contracts.iter().enumerate() {
-        let block_n = ix as Word;
-        for contract in contracts {
-            let contract = std::sync::Arc::new(contract.clone());
-            db.insert_contract(contract, block_n).await.unwrap();
-        }
-    }
-
-    // Query the second and third blocks.
-    let start: Word = 1;
-    let end: Word = 3;
-
-    // Fetch the blocks.
-    let fetched_contracts = with_test_server(state_db_only(db), |port| async move {
-        let response = client()
-            .get(get_url(
-                port,
-                &format!("/list-contracts?start={}&end={}", start, end),
-            ))
-            .send()
-            .await
-            .unwrap();
-        assert!(response.status().is_success());
-        response.json::<Vec<(Word, Vec<Contract>)>>().await.unwrap()
-    })
-    .await;
-
-    // Check the fetched contracts match the expected range.
-    let expected = &block_contracts[start as usize..end as usize];
-    for ((ix, expected), (block, contracts)) in expected.iter().enumerate().zip(&fetched_contracts)
-    {
-        assert_eq!(ix as Word + start, *block);
-        assert_eq!(expected, contracts);
-    }
 }
 
 #[tokio::test]

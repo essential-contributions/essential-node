@@ -10,7 +10,6 @@ mod util;
 fn test_state_value() {
     // The test state.
     let seed = 72;
-    let da_block = 10;
     let contract = util::test_contract(seed);
     let key = Key::from([0xAB; 32]);
     let value = Value::from([0xCD; 32]);
@@ -19,7 +18,6 @@ fn test_state_value() {
     let mut conn = test_conn();
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
-    node_db::insert_contract(&tx, &contract, da_block).unwrap();
 
     // Write some state.
     let contract_ca = essential_hash::content_addr(&contract);
@@ -38,7 +36,6 @@ fn test_state_value() {
 fn test_state_values_with_deletion() {
     // The test state.
     let seed = 36;
-    let da_block = 100;
     let contract = util::test_contract(seed);
 
     // Make some randomish keys and values.
@@ -57,7 +54,6 @@ fn test_state_values_with_deletion() {
 
     // Create tables, contract, insert values.
     node_db::create_tables(&tx).unwrap();
-    node_db::insert_contract(&tx, &contract, da_block).unwrap();
     let contract_ca = essential_hash::content_addr(&contract);
     for (k, v) in keys.iter().zip(&values) {
         node_db::update_state(&tx, &contract_ca, k, v).unwrap();

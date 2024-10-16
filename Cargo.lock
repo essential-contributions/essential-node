@@ -648,13 +648,14 @@ dependencies = [
 
 [[package]]
 name = "essential-node"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "essential-check",
  "essential-constraint-asm",
  "essential-hash",
  "essential-node-api",
  "essential-node-db",
+ "essential-node-types",
  "essential-relayer",
  "essential-sign",
  "essential-state-asm",
@@ -676,12 +677,13 @@ dependencies = [
 
 [[package]]
 name = "essential-node-api"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "axum",
  "essential-hash",
  "essential-node",
  "essential-node-api",
+ "essential-node-types",
  "essential-types",
  "futures",
  "hex",
@@ -703,13 +705,15 @@ dependencies = [
 
 [[package]]
 name = "essential-node-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
  "dirs",
  "essential-node",
  "essential-node-api",
+ "essential-node-types",
+ "serde_yaml",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -717,7 +721,7 @@ dependencies = [
 
 [[package]]
 name = "essential-node-db"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "essential-hash",
  "essential-node-db-sql",
@@ -733,7 +737,17 @@ dependencies = [
 
 [[package]]
 name = "essential-node-db-sql"
-version = "0.2.0"
+version = "0.3.0"
+
+[[package]]
+name = "essential-node-types"
+version = "0.1.0"
+dependencies = [
+ "essential-hash",
+ "essential-types",
+ "serde",
+ "serde_yaml",
+]
 
 [[package]]
 name = "essential-relayer"

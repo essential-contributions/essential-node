@@ -2,7 +2,7 @@
 
 use essential_hash::content_addr;
 use essential_node_db::{self as node_db, decode};
-use essential_types::{predicate::Predicate, ContentAddress, Hash, Key, Value, Word};
+use essential_types::{Hash, Key, Value, Word};
 use rusqlite::params;
 use std::time::Duration;
 use util::{test_blocks, test_blocks_with_vars, test_conn};
@@ -56,9 +56,9 @@ fn test_insert_block() {
                 // Verify contract to mutation mappings were inserted correctly
                 for (mutation_ix, mutation) in data.state_mutations.iter().enumerate() {
                     // Query deployed contract
-                    let query = "SELECT mutation.key FROM mutation 
+                    let query = "SELECT mutation.key FROM mutation
                     JOIN solution ON mutation.solution_id = solution.id
-                    WHERE solution.content_hash = ? AND mutation.mutation_index = ? AND mutation.data_index = ? 
+                    WHERE solution.content_hash = ? AND mutation.mutation_index = ? AND mutation.data_index = ?
                     ORDER BY mutation.mutation_index ASC";
                     let mut stmt = conn.prepare(query).unwrap();
                     let mut result = stmt
@@ -75,8 +75,8 @@ fn test_insert_block() {
                 // Verify dec vars were inserted correctly
                 for (dvi, dec_var) in data.decision_variables.iter().enumerate() {
                     // Query dec vars
-                    let query = "SELECT dec_var.value 
-                        FROM dec_var JOIN solution ON dec_var.solution_id = solution.id 
+                    let query = "SELECT dec_var.value
+                        FROM dec_var JOIN solution ON dec_var.solution_id = solution.id
                         WHERE dec_var.data_index = ? AND dec_var.dec_var_index = ? AND solution.content_hash = ?";
                     let mut stmt = conn.prepare(query).unwrap();
                     let mut dec_var_result = stmt
@@ -91,10 +91,10 @@ fn test_insert_block() {
                 }
 
                 // Query pub vars
-                let query = "SELECT pub_var.key, pub_var.value 
-                FROM pub_var 
+                let query = "SELECT pub_var.key, pub_var.value
+                FROM pub_var
                 JOIN block_solution ON block_solution.solution_id = pub_var.solution_id
-                JOIN solution ON block_solution.solution_id = solution.id 
+                JOIN solution ON block_solution.solution_id = solution.id
                 JOIN block ON block.id = block_solution.block_id
                 WHERE pub_var.data_index = ? AND solution.content_hash = ? AND block_solution.solution_index = ? AND block.number = ?
                 ORDER BY pub_var.key ASC";
@@ -302,114 +302,6 @@ fn test_fork_block() {
         assert_eq!(r[1], fork_b);
         assert_eq!(r[2], fork_a);
     }
-}
-
-#[test]
-fn test_insert_contract() {
-    // The test contract that we'll insert.
-    let seed = 42;
-    let contract = util::test_contract(seed);
-    let block_n = 69;
-
-    // Create an in-memory SQLite database.
-    let mut conn = test_conn();
-
-    // Create the necessary tables and insert the contract.
-    let tx = conn.transaction().unwrap();
-    node_db::create_tables(&tx).unwrap();
-    node_db::insert_contract(&tx, &contract, block_n).expect("Failed to insert contract");
-    tx.commit().unwrap();
-
-    // Verify the contract was inserted correctly.
-    let mut stmt = conn
-        .prepare("SELECT content_hash, salt, l2_block_number FROM contract")
-        .unwrap();
-    let (contract_ca_blob, salt_blob, l2_block_number) = stmt
-        .query_row((), |row| {
-            Ok((
-                row.get::<_, Vec<u8>>(0)?,
-                row.get::<_, Vec<u8>>(1)?,
-                row.get::<_, Word>(2)?,
-            ))
-        })
-        .unwrap();
-    let expected_contract_ca = essential_hash::content_addr(&contract);
-    assert_eq!(
-        expected_contract_ca,
-        node_db::decode(&contract_ca_blob).unwrap()
-    );
-
-    // Check the block number.
-    assert_eq!(block_n, l2_block_number);
-
-    // Check the salt.
-    let salt: [u8; 32] = node_db::decode(&salt_blob).unwrap();
-    assert_eq!(contract.salt, salt);
-
-    // Verify the predicates were inserted correctly.
-    let mut stmt = conn
-        .prepare("SELECT predicate FROM predicate ORDER BY id")
-        .unwrap();
-    let rows = stmt.query_map((), |row| row.get::<_, Vec<u8>>(0)).unwrap();
-    for (row, expected_pred) in rows.into_iter().zip(&contract.predicates) {
-        let pred_blob = row.unwrap();
-        let pred: Predicate = node_db::decode(&pred_blob).unwrap();
-        assert_eq!(&pred, expected_pred);
-    }
-}
-
-#[test]
-fn test_insert_contract_progress() {
-    let mut conn = test_conn();
-    let tx = conn.transaction().unwrap();
-    node_db::create_tables(&tx).unwrap();
-    node_db::insert_contract_progress(&tx, 0, &ContentAddress([0; 32]))
-        .expect("Failed to insert contract progress");
-    tx.commit().unwrap();
-
-    let mut stmt = conn
-        .prepare("SELECT id, l2_block_number, content_hash FROM contract_progress")
-        .unwrap();
-    let mut result = stmt
-        .query_map((), |row| {
-            Ok((
-                row.get::<_, u64>("id")?,
-                row.get::<_, Word>("l2_block_number")?,
-                row.get::<_, Vec<u8>>("content_hash")?,
-            ))
-        })
-        .unwrap();
-    let (id, l2_block_number, content_hash) = result.next().unwrap().unwrap();
-    assert_eq!(id, 1);
-    assert_eq!(l2_block_number, 0);
-    assert_eq!(
-        node_db::decode::<ContentAddress>(&content_hash).unwrap(),
-        ContentAddress([0; 32])
-    );
-    assert!(result.next().is_none());
-
-    node_db::insert_contract_progress(&conn, Word::MAX, &ContentAddress([1; 32]))
-        .expect("Failed to insert contract progress");
-
-    drop(result);
-
-    let result = node_db::get_contract_progress(&conn).unwrap().unwrap();
-    assert_eq!(result.0, Word::MAX);
-    assert_eq!(result.1, ContentAddress([1; 32]));
-
-    // Id should always be 1 because we only inserted one row.
-    let mut result = stmt.query_map((), |row| row.get::<_, u64>("id")).unwrap();
-    let id = result.next().unwrap().unwrap();
-    assert_eq!(id, 1);
-    drop(result);
-
-    // Check the db only has one row.
-    let num_rows = conn
-        .query_row("SELECT COUNT(id) FROM contract_progress", (), |row| {
-            row.get::<_, i64>("COUNT(id)")
-        })
-        .unwrap();
-    assert_eq!(num_rows, 1);
 }
 
 #[test]

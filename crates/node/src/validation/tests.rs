@@ -1,10 +1,11 @@
 use super::*;
 use crate::test_utils::{
-    assert_validation_progress_is_none, assert_validation_progress_is_some, test_blocks,
-    test_conn_pool, test_invalid_block,
+    assert_validation_progress_is_some, test_blocks_with_contracts, test_conn_pool_with_big_bang,
+    test_contract_registry, test_invalid_block_with_contract,
 };
-use essential_node_db::{insert_block, insert_contract};
-use essential_types::{contract::Contract, Block, Word};
+use essential_node_db::{finalize_block, insert_block};
+use essential_node_types::BigBang;
+use essential_types::{Block, Word};
 use rusqlite::Connection;
 use std::time::Duration;
 
@@ -15,17 +16,10 @@ fn insert_block_and_send_notification(
     state_rx: &tokio::sync::watch::Sender<()>,
 ) {
     let tx = conn.transaction().unwrap();
-    insert_block(&tx, block).unwrap();
+    let block_ca = insert_block(&tx, block).unwrap();
+    finalize_block(&tx, &block_ca).unwrap();
     tx.commit().unwrap();
     state_rx.send(()).unwrap();
-}
-
-fn insert_contracts_to_db(conn: &mut Connection, contracts: Vec<Contract>) {
-    let tx = conn.transaction().unwrap();
-    for contract in contracts {
-        insert_contract(&tx, &contract, 0).unwrap();
-    }
-    tx.commit().unwrap();
 }
 
 #[tokio::test]
@@ -33,22 +27,21 @@ async fn can_validate() {
     #[cfg(feature = "tracing")]
     let _ = tracing_subscriber::fmt::try_init();
 
-    let conn_pool = test_conn_pool();
+    let conn_pool = test_conn_pool_with_big_bang().await;
     let mut conn = conn_pool.acquire().await.unwrap();
 
     const NUM_TEST_BLOCKS: Word = 4;
-    let (test_blocks, contracts) = test_blocks(NUM_TEST_BLOCKS);
-    insert_contracts_to_db(&mut conn, contracts);
-
-    let blocks = test_blocks;
+    let blocks = test_blocks_with_contracts(1, 1 + NUM_TEST_BLOCKS);
     let hashes = blocks.iter().map(content_addr).collect::<Vec<_>>();
 
     let (block_tx, block_rx) = tokio::sync::watch::channel(());
 
-    let handle = validation_stream(conn_pool.clone(), block_rx).unwrap();
+    let contract_registry = test_contract_registry().contract;
+    let handle = validation_stream(conn_pool.clone(), contract_registry, block_rx).unwrap();
 
-    // Initially, the validation progress is none
-    assert_validation_progress_is_none(&conn);
+    // Initially, the validation progress is the big bang block.
+    let bbb_ca = essential_hash::content_addr(&BigBang::default().block());
+    assert_validation_progress_is_some(&conn, &bbb_ca);
 
     // Process block 0
     insert_block_and_send_notification(&mut conn, &blocks[0], &block_tx);
@@ -76,24 +69,25 @@ async fn can_validate() {
 
 #[tokio::test]
 async fn test_invalid_block_validation() {
-    let conn_pool = test_conn_pool();
+    let conn_pool = test_conn_pool_with_big_bang().await;
     let mut conn = conn_pool.acquire().await.unwrap();
 
-    let (block, contract) = test_invalid_block(0, Duration::from_secs(0));
-    insert_contracts_to_db(&mut conn, vec![contract]);
+    let block = test_invalid_block_with_contract(1, Duration::from_secs(1));
 
     let (block_tx, block_rx) = tokio::sync::watch::channel(());
 
-    let handle = validation_stream(conn_pool.clone(), block_rx).unwrap();
+    let contract_registry = test_contract_registry().contract;
+    let handle = validation_stream(conn_pool.clone(), contract_registry, block_rx).unwrap();
 
-    // Initially, the validation progress is none
-    assert_validation_progress_is_none(&conn);
+    // Initially, the validation progress starts from the big bang block.
+    let bbb_ca = essential_hash::content_addr(&BigBang::default().block());
+    assert_validation_progress_is_some(&conn, &bbb_ca);
 
     // Process invalid block
     insert_block_and_send_notification(&mut conn, &block, &block_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
-    // Assert validation progress is still none
-    assert_validation_progress_is_none(&conn);
+    // Assert validation progress is still BBB.
+    assert_validation_progress_is_some(&conn, &bbb_ca);
     // Assert block is in failed blocks table
     let fetched_failed_blocks = essential_node_db::list_failed_blocks(&conn, 0..10).unwrap();
     assert_eq!(fetched_failed_blocks.len(), 1);
@@ -106,30 +100,33 @@ async fn test_invalid_block_validation() {
     handle.close().await.unwrap();
 }
 
+// NOTE: Temporarily ignore until issue `#100` is resolved as
+//       this test requires the ability to query non-finalized blocks.
+#[ignore]
 #[tokio::test]
 async fn can_process_valid_and_invalid_blocks() {
     #[cfg(feature = "tracing")]
     let _ = tracing_subscriber::fmt::try_init();
 
-    let conn_pool = test_conn_pool();
+    let conn_pool = test_conn_pool_with_big_bang().await;
     let mut conn = conn_pool.acquire().await.unwrap();
 
-    // Two valid blocks with number 0 and 1
-    let (test_blocks, mut contracts) = test_blocks(2);
-    // One invalid block with number 1
-    let (invalid_block, contract) = test_invalid_block(1, Duration::from_secs(1));
-    contracts.push(contract);
-    insert_contracts_to_db(&mut conn, contracts);
+    // Two valid blocks with number 1 and 2
+    let test_blocks = test_blocks_with_contracts(1, 3);
+    // One invalid block with number 2
+    let invalid_block = test_invalid_block_with_contract(2, Duration::from_secs(2));
 
     let blocks = test_blocks;
     let hashes = blocks.iter().map(content_addr).collect::<Vec<_>>();
 
     let (block_tx, block_rx) = tokio::sync::watch::channel(());
 
-    let handle = validation_stream(conn_pool.clone(), block_rx).unwrap();
+    let contract_registry = test_contract_registry().contract;
+    let handle = validation_stream(conn_pool.clone(), contract_registry, block_rx).unwrap();
 
     // Initially, the validation progress is none
-    assert_validation_progress_is_none(&conn);
+    let bbb_ca = essential_hash::content_addr(&BigBang::default().block());
+    assert_validation_progress_is_some(&conn, &bbb_ca);
 
     // Process block 0
     insert_block_and_send_notification(&mut conn, &blocks[0], &block_tx);

@@ -1,9 +1,11 @@
+use anyhow::Context;
 use clap::{Parser, ValueEnum};
 use essential_node::{self as node, db::Config, RunConfig};
 use essential_node_api as node_api;
+use essential_node_types::BigBang;
 use std::{
     net::{SocketAddr, SocketAddrV4},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 /// The Essential Node CLI.
@@ -50,6 +52,16 @@ struct Args {
     /// The maximum number of TCP streams to be served simultaneously.
     #[arg(long, default_value_t = node_api::DEFAULT_CONNECTION_LIMIT)]
     tcp_conn_limit: usize,
+    /// Specify a path to the `big-bang.yml` configuration.
+    ///
+    /// This specifies the genesis configuration, which includes items like the contract registry
+    /// address, block state address and associated big-bang state.
+    ///
+    /// If no configuration is specified, defaults to the `BigBang::default()` implementation.
+    ///
+    /// To learn more, see the API docs for the `essential_node_types::BigBang` type.
+    #[arg(long)]
+    big_bang: Option<std::path::PathBuf>,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
@@ -98,12 +110,26 @@ fn init_tracing_subscriber() {
         .try_init();
 }
 
+/// Load the big bang configuration from the yml file at the given path, or produce the default if
+/// no path is given.
+fn load_big_bang_or_default(path: Option<&Path>) -> anyhow::Result<BigBang> {
+    match path {
+        None => Ok(BigBang::default()),
+        Some(path) => {
+            let big_bang_str = std::fs::read_to_string(path)
+                .context("failed to read big bang configuration from path")?;
+            serde_yaml::from_str(&big_bang_str)
+                .context("failed to deserialize big bang configuration from YAML string")
+        }
+    }
+}
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     let args = Args::parse();
     if let Err(_err) = run(args).await {
         #[cfg(feature = "tracing")]
-        tracing::error!("{_err}");
+        tracing::error!("{_err:?}");
     }
 }
 
@@ -123,6 +149,12 @@ async fn run(args: Args) -> anyhow::Result<()> {
         tracing::info!("Starting node");
     }
     let db = node::db(&conf)?;
+
+    // Load the big bang configuration, and ensure the big bang block exists.
+    let big_bang = load_big_bang_or_default(args.big_bang.as_deref())?;
+    node::ensure_big_bang_block(&db, &big_bang)
+        .await
+        .context("failed to ensure big bang block")?;
 
     // Run the node with specified config.
     let Args {
@@ -178,7 +210,12 @@ async fn run(args: Args) -> anyhow::Result<()> {
         run_state_derivation: !disable_state_derivation,
         run_validation: !disable_validation,
     };
-    let node_handle = node::run(db.clone(), run_conf, block_tx)?;
+    let node_handle = node::run(
+        db.clone(),
+        run_conf,
+        big_bang.contract_registry.contract,
+        block_tx,
+    )?;
     let node_future = async move {
         if relayer_source_endpoint.is_none() && disable_state_derivation && disable_validation {
             node_handle.join().await

@@ -3,9 +3,9 @@
 use essential_node::{
     self as node,
     db::{Config, Source},
-    test_utils,
+    test_utils::{self, register_contracts_block, test_contract_registry},
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tempfile::TempDir;
 
 #[test]
@@ -133,17 +133,20 @@ async fn test_contract() {
 
     // The test contract.
     let seed = 42;
-    let da_block = 100;
-    let contract = Arc::new(test_utils::test_contract(seed));
+    let contract = test_utils::test_contract(seed);
 
     // Insert the contract.
-    let clone = contract.clone();
-    db.insert_contract(clone, da_block).await.unwrap();
+    let registry = test_contract_registry();
+    let block =
+        register_contracts_block(registry, Some(&contract), 42, Duration::from_secs(42)).unwrap();
+    db.insert_block(block.into()).await.unwrap();
 
     // Get the contract.
-    let ca = essential_hash::content_addr(contract.as_ref());
-    let fetched = db.get_contract(ca).await.unwrap().unwrap();
-    assert_eq!(&*contract, &fetched);
+    let _ca = essential_hash::content_addr(&contract);
+
+    // TODO: Re-add this upon deciding how to retrieve contracts from DB.
+    // let fetched = db.get_contract(ca).await.unwrap().unwrap();
+    // assert_eq!(&*contract, &fetched);
 
     db.close().unwrap();
 }
@@ -155,8 +158,8 @@ async fn test_state() {
 
     // The test state.
     let seed = 36;
-    let da_block = 100;
-    let contract = Arc::new(test_utils::test_contract(seed));
+    let number = 100;
+    let contract = test_utils::test_contract(seed);
 
     // Make some randomish keys and values.
     let mut keys = vec![];
@@ -169,10 +172,11 @@ async fn test_state() {
     }
 
     // Insert a contract to own the state.
-    db.insert_contract(contract.clone(), da_block)
-        .await
-        .unwrap();
-    let contract_ca = essential_hash::content_addr(contract.as_ref());
+    let registry = test_contract_registry();
+    let timestamp = Duration::from_secs(42);
+    let block = register_contracts_block(registry, Some(&contract), number, timestamp).unwrap();
+    db.insert_block(block.into()).await.unwrap();
+    let contract_ca = essential_hash::content_addr(&contract);
 
     // Spawn a task for every insertion.
     let mut handles = vec![];

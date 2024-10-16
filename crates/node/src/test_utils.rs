@@ -1,10 +1,14 @@
 #![allow(dead_code)]
 
-use crate::db::{Config, ConnectionPool, Source};
+use crate::{
+    db::{Config, ConnectionPool, Source},
+    ensure_big_bang_block,
+};
 use essential_node_db::{get_state_progress, get_validation_progress, query_state};
+use essential_node_types::{register_contract_solution, BigBang};
 use essential_types::{
     contract::Contract,
-    predicate::Predicate,
+    predicate::{header::PredicateError, Predicate},
     solution::{Mutation, Solution, SolutionData},
     Block, ConstraintBytecode, ContentAddress, PredicateAddress, StateReadBytecode, Word,
 };
@@ -16,6 +20,14 @@ pub fn test_conn_pool() -> ConnectionPool {
     crate::db(&conf).unwrap()
 }
 
+pub async fn test_conn_pool_with_big_bang() -> ConnectionPool {
+    let conn_pool = test_conn_pool();
+    ensure_big_bang_block(&conn_pool, &BigBang::default())
+        .await
+        .unwrap();
+    conn_pool
+}
+
 pub fn test_db_conf() -> Config {
     Config {
         source: Source::Memory(uuid::Uuid::new_v4().into()),
@@ -23,11 +35,34 @@ pub fn test_db_conf() -> Config {
     }
 }
 
+pub fn test_contract_registry() -> PredicateAddress {
+    BigBang::default().contract_registry
+}
+
+/// The same as test_blocks, but includes solutions for deploying the contracts in their associated
+/// blocks.
+pub fn test_blocks_with_contracts(start: Word, end: Word) -> Vec<Block> {
+    (start..end)
+        .map(|i| test_block_with_contracts(i, Duration::from_secs(i as _)))
+        .collect()
+}
+
 pub fn test_blocks(n: Word) -> (Vec<Block>, Vec<Contract>) {
     let (blocks, contracts) = (0..n)
         .map(|i| test_block(i, Duration::from_secs(i as _)))
         .unzip::<_, _, Vec<_>, Vec<_>>();
     (blocks, contracts.into_iter().flatten().collect())
+}
+
+pub fn test_block_with_contracts(number: Word, timestamp: Duration) -> Block {
+    let (mut block, contracts) = test_block(number, timestamp);
+    let contract_registry = test_contract_registry();
+    let solution = register_contracts_solution(contract_registry, contracts.iter()).unwrap();
+    match block.solutions.get_mut(0) {
+        Some(first) => first.data.extend(solution.data),
+        None => block.solutions.push(solution),
+    }
+    block
 }
 
 pub fn test_block(number: Word, timestamp: Duration) -> (Block, Vec<Contract>) {
@@ -44,6 +79,17 @@ pub fn test_block(number: Word, timestamp: Duration) -> (Block, Vec<Contract>) {
         },
         contracts,
     )
+}
+
+pub fn test_invalid_block_with_contract(number: Word, timestamp: Duration) -> Block {
+    let (mut block, contract) = test_invalid_block(number, timestamp);
+    let contract_registry = test_contract_registry();
+    let solution = register_contracts_solution(contract_registry, Some(&contract)).unwrap();
+    match block.solutions.get_mut(0) {
+        Some(first) => first.data.extend(solution.data),
+        None => block.solutions.push(solution),
+    }
+    block
 }
 
 pub fn test_invalid_block(number: Word, timestamp: Duration) -> (Block, Contract) {
@@ -199,4 +245,31 @@ pub fn assert_multiple_block_mutations(conn: &Connection, blocks: &[&Block]) {
             }
         }
     }
+}
+
+/// A helper for constructing a solution that registers the given set of contracts.
+pub fn register_contracts_solution<'a>(
+    contract_registry: PredicateAddress,
+    contracts: impl IntoIterator<Item = &'a Contract>,
+) -> Result<Solution, PredicateError> {
+    let data = contracts
+        .into_iter()
+        .map(|contract| register_contract_solution(contract_registry.clone(), contract))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Solution { data })
+}
+
+/// A helper for constructing a block that solely registers the given set of contracts.
+pub fn register_contracts_block<'a>(
+    contract_registry: PredicateAddress,
+    contracts: impl IntoIterator<Item = &'a Contract>,
+    block_number: Word,
+    block_timestamp: Duration,
+) -> Result<Block, PredicateError> {
+    let solution = register_contracts_solution(contract_registry, contracts)?;
+    Ok(Block {
+        solutions: vec![solution],
+        number: block_number,
+        timestamp: block_timestamp,
+    })
 }

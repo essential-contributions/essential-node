@@ -6,10 +6,7 @@
 use core::ops::Range;
 use essential_node_db as db;
 pub use essential_node_db::{AwaitNewBlock, QueryError};
-use essential_types::{
-    contract::Contract, predicate::Predicate, solution::Solution, Block, ContentAddress, Key,
-    Value, Word,
-};
+use essential_types::{solution::Solution, Block, ContentAddress, Key, Value, Word};
 use futures::Stream;
 use rusqlite::Transaction;
 use rusqlite_pool::tokio::{AsyncConnectionHandle, AsyncConnectionPool};
@@ -133,23 +130,22 @@ impl ConnectionPool {
 
     /// Insert the given block into the `block` table and for each of its
     /// solutions, add a row into the `solution` and `block_solution` tables.
-    pub async fn insert_block(&self, block: Arc<Block>) -> Result<(), AcquireThenRusqliteError> {
+    pub async fn insert_block(
+        &self,
+        block: Arc<Block>,
+    ) -> Result<ContentAddress, AcquireThenRusqliteError> {
         self.acquire_then(move |h| with_tx(h, |tx| db::insert_block(tx, &block)))
             .await
     }
 
-    /// Insert the given contract into the `contract` table and for each of its
-    /// predicates add entries to the `predicate` and `contract_predicate` tables.
-    /// The `l2_block_num` is the L2 block containing the contract's DA proof.
-    pub async fn insert_contract(
+    /// Finalizes the block with the given hash.
+    /// This sets the block to be the only block at a particular block number.
+    pub async fn finalize_block(
         &self,
-        contract: Arc<Contract>,
-        l2_block_num: Word,
+        block_ca: ContentAddress,
     ) -> Result<(), AcquireThenRusqliteError> {
-        self.acquire_then(move |h| {
-            with_tx(h, |tx| db::insert_contract(tx, &contract, l2_block_num))
-        })
-        .await
+        self.acquire_then(move |h| db::finalize_block(h, &block_ca))
+            .await
     }
 
     /// Updates the state for a given contract content address and key.
@@ -170,23 +166,6 @@ impl ConnectionPool {
         key: Key,
     ) -> Result<(), AcquireThenRusqliteError> {
         self.acquire_then(move |h| db::delete_state(h, &contract_ca, &key))
-            .await
-    }
-
-    /// Fetches a contract by its content address.
-    pub async fn get_contract(
-        &self,
-        ca: ContentAddress,
-    ) -> Result<Option<Contract>, AcquireThenQueryError> {
-        self.acquire_then(move |h| db::get_contract(h, &ca)).await
-    }
-
-    /// Fetches a predicate by its predicate content address.
-    pub async fn get_predicate(
-        &self,
-        predicate_ca: ContentAddress,
-    ) -> Result<Option<Predicate>, AcquireThenQueryError> {
-        self.acquire_then(move |h| db::get_predicate(h, &predicate_ca))
             .await
     }
 
@@ -222,6 +201,15 @@ impl ConnectionPool {
         self.acquire_then(|h| db::get_validation_progress(h)).await
     }
 
+    /// Update the validation progress to point to the block with the given CA.
+    pub async fn update_validation_progress(
+        &self,
+        block_ca: ContentAddress,
+    ) -> Result<(), AcquireThenRusqliteError> {
+        self.acquire_then(move |h| db::update_validation_progress(h, &block_ca))
+            .await
+    }
+
     /// Lists all blocks in the given range.
     pub async fn list_blocks(
         &self,
@@ -239,18 +227,6 @@ impl ConnectionPool {
         page_number: i64,
     ) -> Result<Vec<Block>, AcquireThenQueryError> {
         self.acquire_then(move |h| db::list_blocks_by_time(h, range, page_size, page_number))
-            .await
-    }
-
-    /// Lists contracts and their predicates within a given DA block range.
-    ///
-    /// Returns each non-empty DA block number in the range alongside a
-    /// `Vec<Contract>` containing the contracts appearing in that block.
-    pub async fn list_contracts(
-        &self,
-        block_range: Range<Word>,
-    ) -> Result<Vec<(Word, Vec<Contract>)>, AcquireThenQueryError> {
-        self.acquire_then(move |h| db::list_contracts(h, block_range))
             .await
     }
 
