@@ -1,35 +1,35 @@
 use crate::{
-    test_utils::{test_block, test_conn_pool, test_invalid_block},
-    validate::{
-        self, InvalidOutcome, ValidOutcome, ValidateFailure, ValidateOutcome, ValidationError,
-    },
+    db::with_tx, error::{SolutionPredicatesError, ValidationError}, test_utils::{
+        test_block_with_contracts, test_conn_pool, test_conn_pool_with_big_bang,
+        test_contract_registry, test_invalid_block, test_invalid_block_with_contract,
+    }, validate::{
+        self, InvalidOutcome, ValidOutcome, ValidateFailure, ValidateOutcome,
+    }
 };
 use essential_check::{
     constraint_vm::error::CheckError,
     solution::{PredicateConstraintsError, PredicateError, PredicatesError},
 };
-use essential_node_db::insert_contract;
-use essential_types::contract::Contract;
-use rusqlite::Connection;
+use essential_node_db::{finalize_block, insert_block};
 use std::time::Duration;
-
-fn insert_contracts_to_db(conn: &mut Connection, contracts: Vec<Contract>) {
-    let tx = conn.transaction().unwrap();
-    for contract in contracts {
-        insert_contract(&tx, &contract, 0).unwrap();
-    }
-    tx.commit().unwrap();
-}
 
 #[tokio::test]
 async fn valid_block() {
-    let conn_pool = test_conn_pool();
+    let conn_pool = test_conn_pool_with_big_bang().await;
     let mut conn = conn_pool.acquire().await.unwrap();
 
-    let (block, contracts) = test_block(0, Duration::from_secs(0));
-    insert_contracts_to_db(&mut conn, contracts);
+    // Insert a valid block with contracts.
+    let block = test_block_with_contracts(1, Duration::from_secs(1));
+    with_tx(&mut conn, |tx| {
+        let block_ca = insert_block(&tx, &block).unwrap();
+        finalize_block(&tx, &block_ca)
+    })
+    .unwrap();
 
-    let outcome = validate::validate(&conn_pool, &block).await.unwrap();
+    let contract_registry = test_contract_registry().contract;
+    let outcome = validate::validate(&conn_pool, &contract_registry, &block)
+        .await
+        .unwrap();
 
     match outcome {
         ValidateOutcome::Valid(ValidOutcome { total_gas }) => {
@@ -43,13 +43,24 @@ async fn valid_block() {
 
 #[tokio::test]
 async fn invalid_block() {
-    let conn_pool = test_conn_pool();
+    #[cfg(feature = "tracing")]
+    let _ = tracing_subscriber::fmt::try_init();
+
+    let conn_pool = test_conn_pool_with_big_bang().await;
     let mut conn = conn_pool.acquire().await.unwrap();
 
-    let (block, contract) = test_invalid_block(0, Duration::from_secs(0));
-    insert_contracts_to_db(&mut conn, vec![contract]);
+    // Insert an invalid block.
+    let block = test_invalid_block_with_contract(1, Duration::from_secs(1));
+    with_tx(&mut conn, |tx| {
+        let block_ca = insert_block(&tx, &block).unwrap();
+        finalize_block(&tx, &block_ca)
+    })
+    .unwrap();
 
-    let outcome = validate::validate(&conn_pool, &block).await.unwrap();
+    let contract_registry = test_contract_registry().contract;
+    let outcome = validate::validate(&conn_pool, &contract_registry, &block)
+        .await
+        .unwrap();
 
     match outcome {
         ValidateOutcome::Invalid(InvalidOutcome {
@@ -103,14 +114,14 @@ async fn invalid_block() {
 #[tokio::test]
 async fn predicate_not_found() {
     let conn_pool = test_conn_pool();
-
     let (block, _) = test_invalid_block(0, Duration::from_secs(0));
-    let res = validate::validate(&conn_pool, &block).await;
-
+    let contract_registry = test_contract_registry().contract;
+    let res = validate::validate(&conn_pool, &contract_registry, &block).await;
     match res {
-        Err(ValidationError::PredicateNotFound(addr)) => {
+        Err(ValidationError::SolutionPredicates(SolutionPredicatesError::MissingPredicate(addr))) => {
             assert_eq!(addr, block.solutions[0].data[0].predicate_to_solve)
         }
+
         _ => panic!(
             "expected ValidationError::PredicateNotFound, found {:?}",
             res

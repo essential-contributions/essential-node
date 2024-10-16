@@ -248,6 +248,8 @@ async fn query_solution_predicates(
 
 /// Query for the predicate with the given address within state.
 // TODO: Take a connection pool and perform these queries in parallel.
+// #[cfg_attr(feature = "tracing", tracing::instrument())]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all, err))]
 fn query_predicate(
     conn: &rusqlite::Connection,
     contract_registry: &ContentAddress,
@@ -257,6 +259,9 @@ fn query_predicate(
     pre_state: bool,
 ) -> Result<Option<Predicate>, QueryPredicateError> {
     use essential_node_types::contract_registry;
+
+    #[cfg(feature = "tracing")]
+    tracing::trace!("{}:{}", pred_addr.contract, pred_addr.predicate);
 
     // Check whether the predicate is registered within the associated contract.
     let contract_predicate_key = contract_registry::contract_predicate_key(pred_addr);

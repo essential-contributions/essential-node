@@ -130,8 +130,21 @@ impl ConnectionPool {
 
     /// Insert the given block into the `block` table and for each of its
     /// solutions, add a row into the `solution` and `block_solution` tables.
-    pub async fn insert_block(&self, block: Arc<Block>) -> Result<(), AcquireThenRusqliteError> {
+    pub async fn insert_block(
+        &self,
+        block: Arc<Block>,
+    ) -> Result<ContentAddress, AcquireThenRusqliteError> {
         self.acquire_then(move |h| with_tx(h, |tx| db::insert_block(tx, &block)))
+            .await
+    }
+
+    /// Finalizes the block with the given hash.
+    /// This sets the block to be the only block at a particular block number.
+    pub async fn finalize_block(
+        &self,
+        block_ca: ContentAddress,
+    ) -> Result<(), AcquireThenRusqliteError> {
+        self.acquire_then(move |h| db::finalize_block(h, &block_ca))
             .await
     }
 

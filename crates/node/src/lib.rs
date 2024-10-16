@@ -98,6 +98,7 @@ pub fn db(conf: &db::Config) -> Result<ConnectionPool, ConnPoolNewError> {
 /// If validation has not yet begun, this initializes progress to begin from the big bang `Block`.
 ///
 /// Returns the `ContentAddress` of the big bang `Block`.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 pub async fn ensure_big_bang_block(
     conn_pool: &ConnectionPool,
     big_bang: &BigBang,
@@ -105,10 +106,15 @@ pub async fn ensure_big_bang_block(
     let bb_block = big_bang.block();
     let bb_block_ca = essential_hash::content_addr(&bb_block);
 
+    #[cfg(feature = "tracing")]
+    tracing::debug!("Big Bang Block CA: {bb_block_ca}");
+
     // List out the first block.
     match conn_pool.list_blocks(0..1).await?.into_iter().next() {
         // If no block at block `0` exists, insert and "finalize" the big bang block.
         None => {
+            #[cfg(feature = "tracing")]
+            tracing::debug!("Big Bang Block not found - inserting into DB");
             let bbb_ca = bb_block_ca.clone();
             conn_pool
                 .acquire_then(|conn| {
@@ -129,11 +135,15 @@ pub async fn ensure_big_bang_block(
                     found: ca,
                 });
             }
+            #[cfg(feature = "tracing")]
+            tracing::debug!("Big Bang Block already exists");
         }
     }
 
     // If validation has not yet begun, ensure it begins from the big bang block.
     if conn_pool.get_validation_progress().await?.is_none() {
+        #[cfg(feature = "tracing")]
+        tracing::debug!("Starting validation progress at Big Bang Block CA");
         conn_pool
             .update_validation_progress(bb_block_ca.clone())
             .await?;

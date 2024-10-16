@@ -80,7 +80,9 @@ pub fn create_tables(tx: &Transaction) -> rusqlite::Result<()> {
 ///
 /// 1. Insert an entry into the `block` table.
 /// 2. Insert each of its solutions into the `solution` and `block_solution` tables.
-pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
+///
+/// Returns the `ContentAddress` of the inserted block.
+pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<ContentAddress> {
     // Insert the header.
     let secs = block.timestamp.as_secs();
     let nanos = block.timestamp.subsec_nanos() as u64;
@@ -160,7 +162,7 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<()> {
     stmt_dec_var.finalize()?;
     stmt_pub_var.finalize()?;
 
-    Ok(())
+    Ok(block_address)
 }
 
 /// Finalizes the block with the given hash.

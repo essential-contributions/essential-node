@@ -167,11 +167,10 @@ pub fn register_contract_mutations(contract: &Contract) -> Result<Vec<Mutation>,
             predicate: pred_ca,
         };
 
+
         // Add to the contract `[0, <contract-addr>, <pred-addr>]`
-        muts.push(Mutation {
-            key: contract_registry::contract_predicate_key(&pred_addr),
-            value: vec![1],
-        });
+        let key = contract_registry::contract_predicate_key(&pred_addr);
+        muts.push(Mutation { key, value: vec![1] });
 
         // Encode the predicate so that it may be registered.
         let pred_bytes: Vec<u8> = pred.encode()?.collect();
@@ -179,8 +178,9 @@ pub fn register_contract_mutations(contract: &Contract) -> Result<Vec<Mutation>,
         let len_bytes_w = Word::try_from(len_bytes).expect("checked during `encode`");
 
         // Add the encoded predicate.
+        let key = contract_registry::predicate_key(&pred_addr.predicate);
         muts.push(Mutation {
-            key: contract_registry::predicate_key(&pred_addr.predicate),
+            key,
             value: Some(len_bytes_w)
                 .into_iter()
                 .chain(padded_words_from_bytes(&pred_bytes))

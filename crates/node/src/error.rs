@@ -26,7 +26,7 @@ pub enum RecoverableError {
     ReadState(AcquireThenQueryError),
     #[error(transparent)]
     Query(#[from] QueryError),
-    #[error("failed to query predicate with address `{0:?}`: {1}")]
+    #[error("failed to query predicate with address `{}`: {1}", fmt_pred_addr(.0))]
     QueryPredicate(PredicateAddress, QueryPredicateError),
     #[error("failed to join handle")]
     Join(#[from] tokio::task::JoinError),
@@ -34,7 +34,7 @@ pub enum RecoverableError {
     LastProgress,
     #[error("A recoverable database error occurred: {0}")]
     Rusqlite(rusqlite::Error),
-    #[error("predicate not in database: {0:?}")]
+    #[error("predicate not in database: {}", fmt_pred_addr(.0))]
     PredicateNotFound(PredicateAddress),
 }
 
@@ -84,9 +84,9 @@ pub enum StateReadError {
 pub enum SolutionPredicatesError {
     #[error("failed to acquire a connection from the pool: {0}")]
     Acquire(#[from] AcquireError),
-    #[error("failed to query predicate with address `{0:?}`: {1}")]
+    #[error("failed to query predicate with address `{}`: {1}", fmt_pred_addr(.0))]
     QueryPredicate(PredicateAddress, QueryPredicateError),
-    #[error("solution attempts to solve an unregistered predicate with address {0:?}")]
+    #[error("solution attempts to solve an unregistered predicate {}", fmt_pred_addr(.0))]
     MissingPredicate(PredicateAddress),
 }
 
@@ -154,4 +154,11 @@ impl From<ValidationError> for InternalError {
             ValidationError::Join(err) => InternalError::Recoverable(RecoverableError::Join(err)),
         }
     }
+}
+
+fn fmt_pred_addr(addr: &PredicateAddress) -> String {
+    format!(
+        "(contract: {}, predicate: {})",
+        addr.contract, addr.predicate
+    )
 }

@@ -3,8 +3,8 @@ use crate::test_utils::{
     self, assert_multiple_block_mutations, assert_state_progress_is_none,
     assert_state_progress_is_some, test_conn_pool,
 };
-use essential_node_db::{insert_block, insert_contract};
-use essential_types::{contract::Contract, Block};
+use essential_node_db::insert_block;
+use essential_types::Block;
 use rusqlite::Connection;
 use std::time::Duration;
 
@@ -20,14 +20,6 @@ fn insert_block_and_send_notification(
     state_tx.send(()).unwrap();
 }
 
-fn insert_contracts_to_db(conn: &mut Connection, contracts: Vec<Contract>) {
-    let tx = conn.transaction().unwrap();
-    for contract in contracts {
-        insert_contract(&tx, &contract, 0).unwrap();
-    }
-    tx.commit().unwrap();
-}
-
 #[tokio::test]
 async fn can_derive_state() {
     #[cfg(feature = "tracing")]
@@ -37,8 +29,7 @@ async fn can_derive_state() {
     let mut conn = conn_pool.acquire().await.unwrap();
 
     let test_blocks_count = 4;
-    let (test_blocks, contracts) = test_utils::test_blocks(test_blocks_count);
-    insert_contracts_to_db(&mut conn, contracts);
+    let test_blocks = test_utils::test_blocks_with_contracts(0, test_blocks_count);
 
     let blocks = test_blocks;
     let hashes = blocks.iter().map(content_addr).collect::<Vec<_>>();
