@@ -1,5 +1,5 @@
 use clap::{Parser, ValueEnum};
-use essential_node::{self as node, db::Config};
+use essential_node::{self as node, db::Config, RunConfig};
 use essential_node_api as node_api;
 use std::{
     net::{SocketAddr, SocketAddrV4},
@@ -15,10 +15,18 @@ struct Args {
     bind_address: SocketAddr,
     /// The endpoint of the node that will act as the layer-1.
     ///
+    /// If this is `None`, then the relayer stream will not run.
+    ///
     /// Note: This will likely be replaced with an L1 RPC URL flag upon switching to
     /// use of Ethereum (or Ethereum test-net) as an L1.
     #[arg(long)]
-    source_node_endpoint: String,
+    source_node_endpoint: Option<String>,
+    /// Disable the state derivation stream.
+    #[arg(long, default_value_t = false)]
+    disable_state_derivation: bool,
+    /// Disable the validation stream.
+    #[arg(long, default_value_t = false)]
+    disable_validation: bool,
     /// The type of DB storage to use.
     ///
     /// In the case that "persistent" is specified, assumes the default path.
@@ -116,15 +124,71 @@ async fn run(args: Args) -> anyhow::Result<()> {
     }
     let db = node::db(&conf)?;
 
-    // Run the relayer and state derivation.
-    #[cfg(feature = "tracing")]
-    tracing::info!(
-        "Starting relayer, state derivation and validation (relaying from {:?})",
-        args.source_node_endpoint
-    );
+    // Run the node with specified config.
+    let Args {
+        source_node_endpoint,
+        disable_state_derivation,
+        disable_validation,
+        ..
+    } = args;
+
     let block_tx = node::BlockTx::new();
     let block_rx = block_tx.new_listener();
-    let node_handle = node::run(db.clone(), block_tx, args.source_node_endpoint)?;
+    let run_conf = RunConfig::new(
+        source_node_endpoint.clone(),
+        block_tx,
+        !args.disable_state_derivation,
+        !args.disable_validation,
+    )?;
+
+    #[cfg(feature = "tracing")]
+    tracing::info!(
+        "Starting {}{}{}",
+        format!(
+            "{}",
+            if disable_state_derivation {
+                ""
+            } else {
+                "state derivation"
+            }
+        ),
+        format!(
+            "{}",
+            if disable_validation {
+                "".to_string()
+            } else {
+                format!(
+                    "{}{}",
+                    if disable_state_derivation {
+                        ""
+                    } else if source_node_endpoint.is_some() {
+                        ", "
+                    } else {
+                        " and "
+                    },
+                    "validation"
+                )
+            }
+        ),
+        format!(
+            "{}",
+            if let Some(node_endpoint) = source_node_endpoint {
+                format!(
+                    "{}relayer (relaying from {:?})",
+                    if disable_state_derivation && disable_validation {
+                        ""
+                    } else {
+                        " and "
+                    },
+                    node_endpoint,
+                )
+            } else {
+                "".to_string()
+            }
+        ),
+    );
+
+    let node_handle = node::run(db.clone(), run_conf)?;
 
     // Run the API.
     let api_state = node_api::State {

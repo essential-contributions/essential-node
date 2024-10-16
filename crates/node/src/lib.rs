@@ -44,11 +44,18 @@ pub struct BlockRx(tokio::sync::watch::Receiver<()>);
 
 /// Options for running the node.
 pub struct RunConfig {
-    run_relayer: bool,
-    run_state_derivation: bool,
-    run_validation: bool,
-    block_notify: BlockTx,
+    /// Node endpoint to sync blocks from.
+    /// If `None` then the relayer stream will not run.
     node_endpoint: Option<String>,
+    /// Channel to notify of new blocks.
+    ///
+    /// The sender end of this channel is used by the relayer when it syncs new blocks.
+    /// The receiver end is used by the state derivation and validation streams to listen to new blocks.
+    block_notify: BlockTx,
+    /// If `false` then the state derivation stream will not run.
+    run_state_derivation: bool,
+    /// If `false` then the validation stream will not run.
+    run_validation: bool,
 }
 
 /// Create a new `ConnectionPool` from the given configuration.
@@ -93,7 +100,6 @@ pub fn db(conf: &db::Config) -> Result<ConnectionPool, ConnPoolNewError> {
 /// The streams will continue to run until the handle is dropped.
 pub fn run(conn_pool: ConnectionPool, conf: RunConfig) -> Result<Handle, CriticalError> {
     let RunConfig {
-        run_relayer,
         run_state_derivation,
         run_validation,
         block_notify,
@@ -101,7 +107,7 @@ pub fn run(conn_pool: ConnectionPool, conf: RunConfig) -> Result<Handle, Critica
     } = conf;
 
     // Run relayer.
-    let relayer_handle = if run_relayer {
+    let relayer_handle = if node_endpoint.is_some() {
         let relayer = Relayer::new(node_endpoint.expect("run config is sane").as_str())?;
         Some(relayer.run(conn_pool.0.clone(), block_notify.0.clone())?)
     } else {
@@ -166,24 +172,19 @@ impl RunConfig {
     /// Create a new [`RunConfig`] with the given configuration.
     /// Checks that configuration is sane.
     pub fn new(
-        run_relayer: bool,
-        run_state_derivation: bool,
-        run_validation: bool,
         node_endpoint: Option<String>,
         block_notify: BlockTx,
+        run_state_derivation: bool,
+        run_validation: bool,
     ) -> Result<Self, RunConfigError> {
-        if !(run_relayer || run_state_derivation || run_validation) {
-            return Err(RunConfigError::NoStreamsToRun);
-        }
-        if node_endpoint.is_none() && run_relayer {
-            return Err(RunConfigError::RelayerWithoutNodeEndpoint);
+        if !(node_endpoint.is_some() || run_state_derivation || run_validation) {
+            return Err(RunConfigError::NoFeaturesEnabled);
         }
         Ok(Self {
-            run_relayer,
-            run_state_derivation,
-            run_validation,
             node_endpoint,
             block_notify,
+            run_state_derivation,
+            run_validation,
         })
     }
 }

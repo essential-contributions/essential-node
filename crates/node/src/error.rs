@@ -9,10 +9,8 @@ pub struct ConnPoolNewError(#[from] pub rusqlite::Error);
 
 #[derive(Debug, Error)]
 pub enum RunConfigError {
-    #[error("cannot run node without any features enabled")]
-    NoStreamsToRun,
-    #[error("cannot run relayer without a node endpoint")]
-    RelayerWithoutNodeEndpoint,
+    #[error("at least one of relayer, state derivation or validation need to be enabled")]
+    NoFeaturesEnabled,
 }
 
 #[derive(Debug, Error)]

@@ -32,7 +32,7 @@ async fn test_run() {
 
     // Run node
     let block_tx = BlockTx::new();
-    let run_conf = RunConfig::new(true, true, true, Some(node_server.address), block_tx).unwrap();
+    let run_conf = RunConfig::new(Some(node_server.address), block_tx, true, true).unwrap();
     let _handle = node::run(db.clone(), run_conf).unwrap();
 
     // Create test blocks
