@@ -32,6 +32,7 @@ essential-node-api = { path = "../node-api" }
 essential-sign = { workspace = true }
 essential-state-asm = { workspace = true }
 reqwest = { workspace = true }
+rusqlite = { workspace = true, features = ["hooks"] }
 secp256k1 = { workspace = true }
 tempfile = { workspace = true }
 tracing-subscriber = { workspace = true }

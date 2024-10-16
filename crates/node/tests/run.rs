@@ -7,7 +7,7 @@ use essential_node::{
     test_utils::{
         assert_multiple_block_mutations, assert_state_progress_is_none,
         assert_state_progress_is_some, assert_validation_progress_is_none,
-        assert_validation_progress_is_some, test_blocks, test_db_conf,
+        assert_validation_progress_is_some, test_blocks, test_conn_pool_with_hook,
     },
     BlockTx, RunConfig,
 };
@@ -22,13 +22,25 @@ struct NodeServer {
     conn_pool: ConnectionPool,
 }
 
+async fn insert_block_and_notify(
+    conn_pool: &ConnectionPool,
+    block: Arc<Block>,
+    source_block_tx: &BlockTx,
+    rx: &mut tokio::sync::mpsc::Receiver<()>,
+) {
+    conn_pool.insert_block(block).await.unwrap();
+    source_block_tx.notify();
+    for _ in 0..3 {
+        rx.recv().await.unwrap();
+    }
+}
+
 #[tokio::test]
 async fn test_run() {
     let (node_server, source_block_tx) = test_node().await;
 
     // Setup node
-    let conf = test_db_conf();
-    let db = node::db(&conf).unwrap();
+    let (conn_pool, mut rx) = test_conn_pool_with_hook();
 
     // Run node
     let block_tx = BlockTx::new();
@@ -37,7 +49,8 @@ async fn test_run() {
         run_state_derivation: true,
         run_validation: true,
     };
-    let _handle = node::run(db.clone(), run_conf, block_tx).unwrap();
+
+    let _handle = node::run(conn_pool.clone(), run_conf, block_tx).unwrap();
 
     // Create test blocks
     let test_blocks_count = 4;
@@ -45,59 +58,60 @@ async fn test_run() {
 
     // Insert contracts to database
     for contract in &test_contracts {
-        db.insert_contract(Arc::new(contract.clone()), 0)
+        conn_pool
+            .insert_contract(Arc::new(contract.clone()), 0)
             .await
             .unwrap();
     }
-    let conn = db.acquire().await.unwrap();
+    let conn = conn_pool.acquire().await.unwrap();
 
     // Initially, the state progress and validation progress are none
     assert_state_progress_is_none(&conn);
     assert_validation_progress_is_none(&conn);
 
+    while rx.try_recv().is_ok() {}
+
     // Insert block 0 to database and send notification
-    node_server
-        .conn_pool
-        .insert_block(test_blocks[0].clone().into())
-        .await
-        .unwrap();
-    source_block_tx.notify();
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    insert_block_and_notify(
+        &node_server.conn_pool,
+        test_blocks[0].clone().into(),
+        &source_block_tx,
+        &mut rx,
+    )
+    .await;
 
     // Check block, state and state progress
-    let conn = db.acquire().await.unwrap();
     assert_submit_solutions_effects(&conn, vec![test_blocks[0].clone()]);
 
     // Insert block 1 and 2 to database and send notification
-    node_server
-        .conn_pool
-        .insert_block(test_blocks[1].clone().into())
-        .await
-        .unwrap();
-    source_block_tx.notify();
-    node_server
-        .conn_pool
-        .insert_block(test_blocks[2].clone().into())
-        .await
-        .unwrap();
-    source_block_tx.notify();
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    insert_block_and_notify(
+        &node_server.conn_pool,
+        test_blocks[1].clone().into(),
+        &source_block_tx,
+        &mut rx,
+    )
+    .await;
+    insert_block_and_notify(
+        &node_server.conn_pool,
+        test_blocks[2].clone().into(),
+        &source_block_tx,
+        &mut rx,
+    )
+    .await;
 
     // Check block, state and state progress
-    let conn = db.acquire().await.unwrap();
     assert_submit_solutions_effects(&conn, vec![test_blocks[1].clone(), test_blocks[2].clone()]);
 
     // Insert block 3 to database and send notification
-    node_server
-        .conn_pool
-        .insert_block(test_blocks[3].clone().into())
-        .await
-        .unwrap();
-    source_block_tx.notify();
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    insert_block_and_notify(
+        &node_server.conn_pool,
+        test_blocks[3].clone().into(),
+        &source_block_tx,
+        &mut rx,
+    )
+    .await;
 
     // Check block, state and state progress
-    let conn = db.acquire().await.unwrap();
     assert_submit_solutions_effects(&conn, vec![test_blocks[3].clone()]);
 }
 

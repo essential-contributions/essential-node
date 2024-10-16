@@ -24,7 +24,20 @@ pub fn test_db_conf() -> Config {
     }
 }
 
-pub fn test_mem_conn_pool_modify(
+pub fn test_conn_pool_with_hook() -> (ConnectionPool, tokio::sync::mpsc::Receiver<()>) {
+    let (tx, rx) = tokio::sync::mpsc::channel(100);
+    let conn_pool = test_mem_conn_pool_modify(4, |conn| {
+        let tx = tx.clone();
+        conn.commit_hook(Some(move || {
+            tx.try_send(()).unwrap();
+            false
+        }));
+        conn
+    });
+    (conn_pool, rx)
+}
+
+fn test_mem_conn_pool_modify(
     conn_limit: usize,
     modify: impl Fn(Connection) -> Connection,
 ) -> ConnectionPool {
