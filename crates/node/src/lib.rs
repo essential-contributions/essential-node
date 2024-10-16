@@ -32,7 +32,7 @@ mod validation;
 ///
 /// This is used by `essential-builder` to notify `essential-relayer`
 /// and by `essential-relayer` to notify [`state_derivation`] and [`validation`] streams.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct BlockTx(tokio::sync::watch::Sender<()>);
 
 /// Wrapper around `watch::Receiver` to listen to new blocks.
