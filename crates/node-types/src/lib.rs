@@ -13,7 +13,7 @@ use essential_types::{
 use serde::{Deserialize, Serialize};
 
 /// The default big-bang configuration.
-pub const DEFAULT_BIG_BANG: &str = include_str!("../../../big-bang.yml");
+pub const DEFAULT_BIG_BANG: &str = include_str!("../big-bang.yml");
 
 /// Describes how to construct the big-bang (aka "genesis") block.
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Hash, Ord, Serialize, Deserialize)]
