@@ -648,7 +648,7 @@ dependencies = [
 
 [[package]]
 name = "essential-node"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "essential-check",
  "essential-constraint-asm",
@@ -677,7 +677,7 @@ dependencies = [
 
 [[package]]
 name = "essential-node-api"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "axum",
  "essential-hash",
@@ -705,7 +705,7 @@ dependencies = [
 
 [[package]]
 name = "essential-node-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -721,7 +721,7 @@ dependencies = [
 
 [[package]]
 name = "essential-node-db"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "essential-hash",
  "essential-node-db-sql",
@@ -737,7 +737,7 @@ dependencies = [
 
 [[package]]
 name = "essential-node-db-sql"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "essential-node-types"
