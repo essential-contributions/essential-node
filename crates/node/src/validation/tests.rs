@@ -1,7 +1,7 @@
 use super::*;
 use crate::test_utils::{
     assert_validation_progress_is_none, assert_validation_progress_is_some, test_blocks,
-    test_conn_pool, test_invalid_block,
+    test_conn_pool_with_hook, test_invalid_block,
 };
 use essential_node_db::{insert_block, insert_contract};
 use essential_types::{contract::Contract, Block, Word};
@@ -9,15 +9,19 @@ use rusqlite::Connection;
 use std::time::Duration;
 
 // Insert a block to the database and send a notification to the stream
-fn insert_block_and_send_notification(
+async fn insert_block_and_send_notification(
     conn: &mut Connection,
     block: &Block,
     state_rx: &tokio::sync::watch::Sender<()>,
+    rx: &mut tokio::sync::mpsc::Receiver<()>,
 ) {
     let tx = conn.transaction().unwrap();
     insert_block(&tx, block).unwrap();
     tx.commit().unwrap();
     state_rx.send(()).unwrap();
+    for _ in 0..2 {
+        rx.recv().await.unwrap();
+    }
 }
 
 fn insert_contracts_to_db(conn: &mut Connection, contracts: Vec<Contract>) {
@@ -33,7 +37,7 @@ async fn can_validate() {
     #[cfg(feature = "tracing")]
     let _ = tracing_subscriber::fmt::try_init();
 
-    let conn_pool = test_conn_pool();
+    let (conn_pool, mut rx) = test_conn_pool_with_hook();
     let mut conn = conn_pool.acquire().await.unwrap();
 
     const NUM_TEST_BLOCKS: Word = 4;
@@ -50,24 +54,22 @@ async fn can_validate() {
     // Initially, the validation progress is none
     assert_validation_progress_is_none(&conn);
 
+    while rx.try_recv().is_ok() {}
+
     // Process block 0
-    insert_block_and_send_notification(&mut conn, &blocks[0], &block_tx);
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    insert_block_and_send_notification(&mut conn, &blocks[0], &block_tx, &mut rx).await;
     // Assert validation progress is block 0
     assert_validation_progress_is_some(&conn, &hashes[0]);
 
     // Process block 1
-    insert_block_and_send_notification(&mut conn, &blocks[1], &block_tx);
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    insert_block_and_send_notification(&mut conn, &blocks[1], &block_tx, &mut rx).await;
     // Process block 2
-    insert_block_and_send_notification(&mut conn, &blocks[2], &block_tx);
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    insert_block_and_send_notification(&mut conn, &blocks[2], &block_tx, &mut rx).await;
     // Assert validation progress is block 2
     assert_validation_progress_is_some(&conn, &hashes[2]);
 
     // Process block 3
-    insert_block_and_send_notification(&mut conn, &blocks[3], &block_tx);
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    insert_block_and_send_notification(&mut conn, &blocks[3], &block_tx, &mut rx).await;
     // Assert validation progress is block 3
     assert_validation_progress_is_some(&conn, &hashes[3]);
 
@@ -76,7 +78,7 @@ async fn can_validate() {
 
 #[tokio::test]
 async fn test_invalid_block_validation() {
-    let conn_pool = test_conn_pool();
+    let (conn_pool, mut rx) = test_conn_pool_with_hook();
     let mut conn = conn_pool.acquire().await.unwrap();
 
     let (block, contract) = test_invalid_block(0, Duration::from_secs(0));
@@ -89,9 +91,10 @@ async fn test_invalid_block_validation() {
     // Initially, the validation progress is none
     assert_validation_progress_is_none(&conn);
 
+    while rx.try_recv().is_ok() {}
+
     // Process invalid block
-    insert_block_and_send_notification(&mut conn, &block, &block_tx);
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    insert_block_and_send_notification(&mut conn, &block, &block_tx, &mut rx).await;
     // Assert validation progress is still none
     assert_validation_progress_is_none(&conn);
     // Assert block is in failed blocks table
@@ -111,7 +114,7 @@ async fn can_process_valid_and_invalid_blocks() {
     #[cfg(feature = "tracing")]
     let _ = tracing_subscriber::fmt::try_init();
 
-    let conn_pool = test_conn_pool();
+    let (conn_pool, mut rx) = test_conn_pool_with_hook();
     let mut conn = conn_pool.acquire().await.unwrap();
 
     // Two valid blocks with number 0 and 1
@@ -131,15 +134,15 @@ async fn can_process_valid_and_invalid_blocks() {
     // Initially, the validation progress is none
     assert_validation_progress_is_none(&conn);
 
+    while rx.try_recv().is_ok() {}
+
     // Process block 0
-    insert_block_and_send_notification(&mut conn, &blocks[0], &block_tx);
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    insert_block_and_send_notification(&mut conn, &blocks[0], &block_tx, &mut rx).await;
     // Assert validation progress is block 0
     assert_validation_progress_is_some(&conn, &hashes[0]);
 
     // Process invalid block
-    insert_block_and_send_notification(&mut conn, &invalid_block, &block_tx);
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    insert_block_and_send_notification(&mut conn, &invalid_block, &block_tx, &mut rx).await;
     // Assert validation progress is still block 0
     assert_validation_progress_is_some(&conn, &hashes[0]);
     // Assert block is in failed blocks table
@@ -152,8 +155,7 @@ async fn can_process_valid_and_invalid_blocks() {
     );
 
     // Process block 1
-    insert_block_and_send_notification(&mut conn, &blocks[1], &block_tx);
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    insert_block_and_send_notification(&mut conn, &blocks[1], &block_tx, &mut rx).await;
     // Assert validation progress is block 1
     assert_validation_progress_is_some(&conn, &hashes[1]);
 
