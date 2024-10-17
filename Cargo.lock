@@ -600,12 +600,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77ea16fb763ee2162d788decdbd6b2bc2465e2b78a74082b1e42f612763c6455"
 dependencies = [
  "essential-constraint-vm",
+ "essential-hash",
  "essential-sign",
  "essential-state-read-vm",
  "essential-types",
  "rayon",
  "thiserror",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -632,6 +634,7 @@ dependencies = [
  "secp256k1",
  "sha2",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
@@ -648,7 +651,7 @@ dependencies = [
 
 [[package]]
 name = "essential-node"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "essential-check",
  "essential-constraint-asm",
@@ -677,7 +680,7 @@ dependencies = [
 
 [[package]]
 name = "essential-node-api"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "axum",
  "essential-hash",
@@ -705,7 +708,7 @@ dependencies = [
 
 [[package]]
 name = "essential-node-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -806,6 +809,7 @@ dependencies = [
  "essential-state-asm",
  "essential-types",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
