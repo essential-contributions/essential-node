@@ -28,7 +28,7 @@ mod state_derivation;
 #[cfg(any(feature = "test-utils", test))]
 #[allow(missing_docs)]
 pub mod test_utils;
-mod validate;
+pub mod validate;
 mod validation;
 
 /// Wrapper around `watch::Sender` to notify of new blocks.

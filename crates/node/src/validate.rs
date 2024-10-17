@@ -1,3 +1,5 @@
+//! # Validation
+//! Functions for validating blocks and solutions.
 use crate::{
     db::{self, ConnectionPool},
     error::{QueryPredicateError, SolutionPredicatesError, StateReadError, ValidationError},
@@ -31,7 +33,9 @@ struct State {
 /// Result of validating a block.
 #[derive(Debug)]
 pub enum ValidateOutcome {
+    /// The block is valid.
     Valid(ValidOutcome),
+    /// The block is invalid.
     Invalid(InvalidOutcome),
 }
 
@@ -39,6 +43,7 @@ pub enum ValidateOutcome {
 /// Cumulative gas and utilities of all solutions in the block.
 #[derive(Debug)]
 pub struct ValidOutcome {
+    /// Total gas consumed by all solutions in the block.
     pub total_gas: Gas,
 }
 
@@ -46,7 +51,9 @@ pub struct ValidOutcome {
 /// Contains the failure reason and the index of the solution that caused the failure.
 #[derive(Debug)]
 pub struct InvalidOutcome {
+    /// The reason for the block to be invalid.
     pub failure: ValidateFailure,
+    /// The index of the solution that caused the failure.
     pub solution_index: usize,
 }
 
@@ -59,7 +66,9 @@ pub enum ValidateFailure {
     /// A predicate was present in the registry, but failed to decode.
     InvalidPredicate(PredicateAddress),
     #[allow(dead_code)]
+    /// A predicate failed to validate.
     PredicatesError(PredicatesError<StateReadError>),
+    /// The total gas consumed by all solutions in the block exceeds the maximum gas limit.
     GasOverflow,
 }
 

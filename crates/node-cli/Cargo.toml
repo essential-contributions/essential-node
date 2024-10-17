@@ -1,6 +1,6 @@
 [package]
 name = "essential-node-cli"
-version = "0.3.0"
+version = "0.4.0"
 description = "The Essential node CLI"
 authors.workspace = true
 edition.workspace = true
