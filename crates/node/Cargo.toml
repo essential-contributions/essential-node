@@ -39,5 +39,5 @@ tracing-subscriber = { workspace = true }
 
 [features]
 default = []
-tracing = ["dep:tracing", "essential-relayer/tracing"]
+tracing = ["dep:tracing", "essential-relayer/tracing", "essential-check/tracing"]
 test-utils = ["dep:essential-constraint-asm", "dep:essential-state-asm", "dep:uuid"]
