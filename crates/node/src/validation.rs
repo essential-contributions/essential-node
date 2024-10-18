@@ -9,9 +9,7 @@ use essential_node_db::{
     get_block_number, get_latest_finalized_block_address, update_validation_progress,
 };
 use essential_types::{Block, ContentAddress};
-use futures::stream::{StreamExt, TryStreamExt};
 use tokio::sync::watch;
-use tokio_stream::wrappers::WatchStream;
 
 #[cfg(test)]
 mod tests;
@@ -33,52 +31,46 @@ pub fn validation_stream(
     let (shutdown, stream_close) = watch::channel(());
 
     let jh = tokio::spawn(async move {
-        let mut missing_block = false;
+        let mut stream_close = stream_close.clone();
         loop {
-            let (self_notify, self_notify_rx) = watch::channel(());
-            let b = block_rx.clone();
-            block_rx.mark_unchanged();
-            let rx = if missing_block {
-                WatchStream::from_changes(b)
-            } else {
-                WatchStream::new(b)
-            };
-            let rx = futures::stream::select(rx, WatchStream::from_changes(self_notify_rx));
-            let mut stream_close = stream_close.clone();
-            let close = async move {
-                let _ = stream_close.changed().await;
-            };
-
-            let r = rx
-                .take_until(close)
-                .map(Ok)
-                .try_for_each(|_| {
-                    validate_next_block(conn_pool.clone(), &contract_registry, self_notify.clone())
-                })
-                .await;
-
-            match r {
-                // Stream has ended, return from the task
-                Ok(_) => return Ok(()),
-                Err(e) => {
-                    missing_block = check_missing_block(&e);
-                    // Return error if it's critical or
-                    // continue if it's recoverable
-                    handle_error(e)?;
+            let err = 'wait_next_block: loop {
+                // Await a block notification or stream close.
+                tokio::select! {
+                    _ = stream_close.changed() => return Ok(()),
+                    _ = block_rx.changed() => (),
                 }
-            }
+
+                loop {
+                    match validate_next_block(conn_pool.clone(), &contract_registry).await {
+                        Err(err) => break 'wait_next_block err,
+                        Ok(more_blocks_left) => {
+                            if more_blocks_left {
+                                continue;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                }
+            };
+
+            // Return error if it's critical or
+            // continue if it's recoverable
+            handle_error(err)?;
         }
     });
 
     Ok(Handle::new(jh, shutdown))
 }
 
+/// Validate the next block and return whether or not there are more blocks available in the DB to
+/// validate.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 async fn validate_next_block(
     conn_pool: ConnectionPool,
     contract_registry: &ContentAddress,
-    self_notify: watch::Sender<()>,
-) -> Result<(), InternalError> {
+    // self_notify: std::sync::Arc<watch::Sender<()>>,
+) -> Result<bool, InternalError> {
     let progress = get_last_progress(&conn_pool).await?;
 
     let block = get_next_block(&conn_pool, progress).await?;
@@ -93,13 +85,13 @@ async fn validate_next_block(
 
     let res = validate::validate(&conn_pool, contract_registry, &block).await?;
 
-    match res {
+    let more_blocks_available = match res {
         // Validation was successful.
         ValidateOutcome::Valid(ValidOutcome {
             total_gas: _total_gas,
         }) => {
             let mut conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
-            let r: Result<(), InternalError> = tokio::task::spawn_blocking(move || {
+            let r: Result<bool, InternalError> = tokio::task::spawn_blocking(move || {
                 // Update validation progress.
                 update_validation_progress(&conn, &block_address).map_err(ValidationError::from)?;
                 let tx = conn.transaction();
@@ -112,10 +104,10 @@ async fn validate_next_block(
                 });
                 if let Ok(Some(latest_block_number)) = latest_finalized_block_number {
                     if latest_block_number > block.number {
-                        let _ = self_notify.send(());
+                        return Ok(true);
                     }
                 }
-                Ok(())
+                Ok(false)
             })
             .await
             .map_err(RecoverableError::Join)?;
@@ -138,14 +130,14 @@ async fn validate_next_block(
                 essential_node_db::insert_failed_block(&conn, &block_address, &failed_solution)
                     .map_err(ValidationError::from)?;
 
-                Ok(())
+                Ok(false)
             })
             .await
             .map_err(RecoverableError::Join)?
         }
     }?;
 
-    Ok(())
+    Ok(more_blocks_available)
 }
 
 async fn get_last_progress(
@@ -208,14 +200,6 @@ async fn get_next_block(
     Ok(block)
 }
 
-fn check_missing_block(e: &InternalError) -> bool {
-    matches!(
-        e,
-        InternalError::Recoverable(RecoverableError::FirstBlockNotFound)
-            | InternalError::Recoverable(RecoverableError::BlockNotFound(_))
-    )
-}
-
 /// Exit on critical errors, log recoverable errors.
 fn handle_error(e: InternalError) -> Result<(), CriticalError> {
     let e = map_recoverable_errors(e);
@@ -227,6 +211,11 @@ fn handle_error(e: InternalError) -> Result<(), CriticalError> {
                 e
             );
             Err(e)
+        }
+        #[cfg(feature = "tracing")]
+        InternalError::Recoverable(RecoverableError::NextBlockNotFound(e)) => {
+            tracing::debug!("{}", e);
+            Ok(())
         }
         #[cfg(feature = "tracing")]
         InternalError::Recoverable(e) => {
