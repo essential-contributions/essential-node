@@ -8,9 +8,7 @@ use essential_node_db::{
     get_block_number, get_latest_finalized_block_address, update_state, update_state_progress,
 };
 use essential_types::{solution::Mutation, Block, ContentAddress, Word};
-use futures::stream::{StreamExt, TryStreamExt};
 use tokio::sync::watch;
-use tokio_stream::wrappers::WatchStream;
 
 #[cfg(test)]
 mod tests;
@@ -35,53 +33,41 @@ where
 /// Critical errors will cause the stream to end.
 pub fn state_derivation_stream(
     conn_pool: ConnectionPool,
-    block_rx: watch::Receiver<()>,
+    mut block_rx: watch::Receiver<()>,
 ) -> Result<Handle<CriticalError>, CriticalError> {
     let (shutdown, stream_close) = watch::channel(());
 
     let jh = tokio::spawn(async move {
-        let mut missing_block = false;
+        let mut stream_close = stream_close.clone();
         loop {
-            let (self_notify, self_notify_rx) = watch::channel(());
-            let rx = if missing_block {
-                WatchStream::from_changes(block_rx.clone())
-            } else {
-                WatchStream::new(block_rx.clone())
-            };
-            let rx = futures::stream::select(rx, WatchStream::from_changes(self_notify_rx));
-            let mut stream_close = stream_close.clone();
-            let close = async move {
-                let _ = stream_close.changed().await;
-            };
-
-            let r = rx
-                .take_until(close)
-                .map(Ok)
-                .try_for_each(|_| derive_next_block_state(conn_pool.clone(), self_notify.clone()))
-                .await;
-
-            match r {
-                // Stream has ended, return from the task
-                Ok(_) => return Ok(()),
-                Err(e) => {
-                    missing_block = check_missing_block(&e);
-                    // Return error if it's critical or
-                    // continue if it's recoverable
-                    handle_error(e)?;
+            let err = 'wait_next_block: loop {
+                // Await a block notification or stream close.
+                tokio::select! {
+                    _ = stream_close.changed() => return Ok(()),
+                    _ = block_rx.changed() => (),
                 }
-            }
+
+                loop {
+                    match derive_next_block_state(conn_pool.clone()).await {
+                        Err(err) => break 'wait_next_block err,
+                        Ok(more_blocks_left) => {
+                            if more_blocks_left {
+                                continue;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                }
+            };
+
+            // Return error if it's critical or
+            // continue if it's recoverable
+            handle_error(err)?;
         }
     });
 
     Ok(Handle::new(jh, shutdown))
-}
-
-fn check_missing_block(e: &InternalError) -> bool {
-    matches!(
-        e,
-        InternalError::Recoverable(RecoverableError::FirstBlockNotFound)
-            | InternalError::Recoverable(RecoverableError::BlockNotFound(_)),
-    )
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
@@ -89,10 +75,9 @@ fn check_missing_block(e: &InternalError) -> bool {
 ///
 /// Read the last progress on state updates.
 /// Get the next block to process and apply its state mutations.
-async fn derive_next_block_state(
-    conn_pool: ConnectionPool,
-    self_notify: watch::Sender<()>,
-) -> Result<(), InternalError> {
+///
+/// Returns whether or not there are more blocks available in the DB to be derived.
+async fn derive_next_block_state(conn_pool: ConnectionPool) -> Result<bool, InternalError> {
     let progress = get_last_progress(&conn_pool).await?;
 
     let block = get_next_block(&conn_pool, progress).await?;
@@ -110,9 +95,10 @@ async fn derive_next_block_state(
     });
 
     if update_state_in_db(conn_pool, mutations, block.number, block_address).await? {
-        let _ = self_notify.send(());
+        Ok(true)
+    } else {
+        Ok(false)
     }
-    Ok(())
 }
 
 /// Fetch the last processed block from the database in a blocking task.
@@ -162,7 +148,7 @@ async fn get_next_block(
             // Make sure the block is inserted into the database before deriving state
             let current_block = iter
                 .next()
-                .ok_or(RecoverableError::BlockNotFound(hash.clone()))?;
+                .ok_or(RecoverableError::NextBlockNotFound(hash.clone()))?;
             if content_addr(&previous_block) != hash {
                 return Err(CriticalError::Fork.into());
             }
