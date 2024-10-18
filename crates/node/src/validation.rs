@@ -192,7 +192,7 @@ async fn get_next_block(
             // Make sure the block is inserted into the database before validating
             let current_block = iter
                 .next()
-                .ok_or(RecoverableError::BlockNotFound(hash.clone()))?;
+                .ok_or(RecoverableError::NextBlockNotFound(hash.clone()))?;
             if content_addr(&previous_block) != hash {
                 return Err(CriticalError::Fork.into());
             }
