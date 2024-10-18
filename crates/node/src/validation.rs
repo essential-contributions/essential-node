@@ -69,7 +69,6 @@ pub fn validation_stream(
 async fn validate_next_block(
     conn_pool: ConnectionPool,
     contract_registry: &ContentAddress,
-    // self_notify: std::sync::Arc<watch::Sender<()>>,
 ) -> Result<bool, InternalError> {
     let progress = get_last_progress(&conn_pool).await?;
 
