@@ -28,7 +28,7 @@ mod tests;
 pub fn validation_stream(
     conn_pool: ConnectionPool,
     contract_registry: ContentAddress,
-    block_rx: watch::Receiver<()>,
+    mut block_rx: watch::Receiver<()>,
 ) -> Result<Handle<CriticalError>, CriticalError> {
     let (shutdown, stream_close) = watch::channel(());
 
@@ -36,10 +36,12 @@ pub fn validation_stream(
         let mut missing_block = false;
         loop {
             let (self_notify, self_notify_rx) = watch::channel(());
+            let b = block_rx.clone();
+            block_rx.mark_unchanged();
             let rx = if missing_block {
-                WatchStream::from_changes(block_rx.clone())
+                WatchStream::from_changes(b)
             } else {
-                WatchStream::new(block_rx.clone())
+                WatchStream::new(b)
             };
             let rx = futures::stream::select(rx, WatchStream::from_changes(self_notify_rx));
             let mut stream_close = stream_close.clone();
@@ -190,7 +192,7 @@ async fn get_next_block(
             // Make sure the block is inserted into the database before validating
             let current_block = iter
                 .next()
-                .ok_or(RecoverableError::BlockNotFound(hash.clone()))?;
+                .ok_or(RecoverableError::NextBlockNotFound(hash.clone()))?;
             if content_addr(&previous_block) != hash {
                 return Err(CriticalError::Fork.into());
             }

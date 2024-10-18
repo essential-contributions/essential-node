@@ -22,6 +22,8 @@ pub enum RecoverableError {
     FirstBlockNotFound,
     #[error("block {0} not found")]
     BlockNotFound(ContentAddress),
+    #[error("no next block found after block {0}")]
+    NextBlockNotFound(ContentAddress),
     #[error("could not read state")]
     ReadState(AcquireThenQueryError),
     #[error(transparent)]
