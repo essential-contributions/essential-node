@@ -340,6 +340,9 @@ pub(crate) fn new_conn(source: &Source) -> rusqlite::Result<rusqlite::Connection
     let conn = match source {
         Source::Memory(id) => new_mem_conn(id),
         Source::Path(p) => {
+            if let Some(dir) = p.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
             let conn = rusqlite::Connection::open(p)?;
             conn.pragma_update(None, "trusted_schema", false)?;
             conn.pragma_update(None, "synchronous", 1)?;
