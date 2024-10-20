@@ -8,6 +8,20 @@ use tokio::sync::AcquireError;
 #[error("Connection pool creation failed: {0}")]
 pub struct ConnPoolNewError(#[from] pub rusqlite::Error);
 
+/// Errors that can occur when joining the node handle.
+#[derive(Debug, Error)]
+pub enum NodeHandleJoinError {
+    /// The relayer stream joined with an error.
+    #[error("the relayer stream returned with an error: {0}")]
+    Relayer(essential_relayer::Error),
+    /// The state derivation stream joined with an error.
+    #[error("the state derivation stream returned with an error: {0}")]
+    StateDerivation(CriticalError),
+    /// The validation stream joined with an error.
+    #[error("the validation stream returned with an error: {0}")]
+    Validation(CriticalError),
+}
+
 #[derive(Debug, Error)]
 pub(super) enum InternalError {
     #[error(transparent)]
@@ -22,8 +36,6 @@ pub enum RecoverableError {
     FirstBlockNotFound,
     #[error("block {0} not found")]
     BlockNotFound(ContentAddress),
-    #[error("no next block found after block {0}")]
-    NextBlockNotFound(ContentAddress),
     #[error("could not read state")]
     ReadState(AcquireThenQueryError),
     #[error(transparent)]

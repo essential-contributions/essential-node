@@ -23,6 +23,7 @@ mod tests;
 ///
 /// Recoverable errors will be logged and the stream will be restarted.
 /// Critical errors will cause the stream to end.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 pub fn validation_stream(
     conn_pool: ConnectionPool,
     contract_registry: ContentAddress,
@@ -34,12 +35,6 @@ pub fn validation_stream(
         let mut stream_close = stream_close.clone();
         loop {
             let err = 'wait_next_block: loop {
-                // Await a block notification or stream close.
-                tokio::select! {
-                    _ = stream_close.changed() => return Ok(()),
-                    _ = block_rx.changed() => (),
-                }
-
                 loop {
                     match validate_next_block(conn_pool.clone(), &contract_registry).await {
                         Err(err) => break 'wait_next_block err,
@@ -47,10 +42,24 @@ pub fn validation_stream(
                             if more_blocks_left {
                                 continue;
                             } else {
+                                #[cfg(feature = "tracing")]
+                                tracing::debug!(
+                                    "Reached head of chain: Awaiting new block notifications"
+                                );
                                 break;
                             }
                         }
                     }
+                }
+
+                // Await a block notification or stream close.
+                tokio::select! {
+                    _ = stream_close.changed() => return Ok(()),
+                    res = block_rx.changed() => if let Err(_err) = res {
+                        #[cfg(feature = "tracing")]
+                        tracing::debug!("Block notification channel dropped: closing stream");
+                        return Ok(());
+                    },
                 }
             };
 
@@ -72,7 +81,10 @@ async fn validate_next_block(
 ) -> Result<bool, InternalError> {
     let progress = get_last_progress(&conn_pool).await?;
 
-    let block = get_next_block(&conn_pool, progress).await?;
+    // Only validate if there's a block to validate.
+    let Some(block) = get_next_block(&conn_pool, progress).await? else {
+        return Ok(false);
+    };
     let block_address = content_addr(&block);
 
     #[cfg(feature = "tracing")]
@@ -147,10 +159,11 @@ async fn get_last_progress(
         .map_err(|_err| RecoverableError::LastProgress)
 }
 
+/// Get the next block, or return `None` if we've reached the head of the chain.
 async fn get_next_block(
     conn: &ConnectionPool,
     progress: Option<ContentAddress>,
-) -> Result<Block, InternalError> {
+) -> Result<Option<Block>, InternalError> {
     let mut conn = conn.acquire().await.map_err(CriticalError::from)?;
     let blocks = tokio::task::spawn_blocking::<_, Result<_, InternalError>>({
         let progress = progress.clone();
@@ -180,10 +193,10 @@ async fn get_next_block(
         Some(hash) => {
             let mut iter = blocks.into_iter();
             let previous_block = iter.next().ok_or(CriticalError::Fork)?;
-            // Make sure the block is inserted into the database before validating
-            let current_block = iter
-                .next()
-                .ok_or(RecoverableError::NextBlockNotFound(hash.clone()))?;
+            // If there's no next block, we've reached the head of the chain.
+            let Some(current_block) = iter.next() else {
+                return Ok(None);
+            };
             if content_addr(&previous_block) != hash {
                 return Err(CriticalError::Fork.into());
             }
@@ -196,7 +209,7 @@ async fn get_next_block(
             .ok_or(RecoverableError::FirstBlockNotFound)?,
     };
 
-    Ok(block)
+    Ok(Some(block))
 }
 
 /// Exit on critical errors, log recoverable errors.
@@ -210,11 +223,6 @@ fn handle_error(e: InternalError) -> Result<(), CriticalError> {
                 e
             );
             Err(e)
-        }
-        #[cfg(feature = "tracing")]
-        InternalError::Recoverable(RecoverableError::NextBlockNotFound(e)) => {
-            tracing::debug!("{}", e);
-            Ok(())
         }
         #[cfg(feature = "tracing")]
         InternalError::Recoverable(e) => {
