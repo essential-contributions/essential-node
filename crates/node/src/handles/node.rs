@@ -1,4 +1,4 @@
-use crate::error::CriticalError;
+use crate::error::{CriticalError, NodeHandleJoinError};
 
 /// Handle for closing or joining the relayer, state derivation and validation streams.
 pub struct Handle {
@@ -48,15 +48,16 @@ impl Handle {
     /// If any of the streams finish or error then all streams will be closed.
     ///
     /// If this future is dropped then both streams will be closed.
-    pub async fn join(self) -> Result<(), CriticalError> {
+    pub async fn join(self) -> Result<(), NodeHandleJoinError> {
         let Self {
             relayer,
             state,
             validation,
         } = self;
+
         let relayer_future = async move {
             if let Some(relayer) = relayer {
-                relayer.join().await
+                relayer.join().await.map_err(NodeHandleJoinError::Relayer)
             } else {
                 Ok(())
             }
@@ -65,7 +66,10 @@ impl Handle {
 
         let state_future = async move {
             if let Some(state) = state {
-                state.join().await
+                state
+                    .join()
+                    .await
+                    .map_err(NodeHandleJoinError::StateDerivation)
             } else {
                 Ok(())
             }
@@ -74,19 +78,18 @@ impl Handle {
 
         let validation_future = async move {
             if let Some(validation) = validation {
-                validation.join().await
+                validation
+                    .join()
+                    .await
+                    .map_err(NodeHandleJoinError::Validation)
             } else {
                 Ok(())
             }
         };
         tokio::pin!(validation_future);
 
-        tokio::select! {
-            r = relayer_future => {r?},
-            r = state_future => {r?},
-            r = validation_future => {r?},
-        }
-
+        // Wait for all to successfully complete, or return early if one errors.
+        tokio::try_join!(relayer_future, state_future, validation_future)?;
         Ok(())
     }
 }

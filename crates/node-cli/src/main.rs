@@ -218,9 +218,9 @@ async fn run(args: Args) -> anyhow::Result<()> {
     )?;
     let node_future = async move {
         if relayer_source_endpoint.is_none() && disable_state_derivation && disable_validation {
-            node_handle.join().await
-        } else {
             std::future::pending().await
+        } else {
+            node_handle.join().await
         }
     };
 
