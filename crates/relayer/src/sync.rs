@@ -35,7 +35,8 @@ pub async fn get_block_progress(
         else {
             return Ok(None);
         };
-        let Some(block_number) = essential_node_db::get_block_number(&tx, &block_address)? else {
+        let Some((block_number, _ts)) = essential_node_db::get_block_header(&tx, &block_address)?
+        else {
             return Ok(None);
         };
         tx.finish()?;

@@ -288,18 +288,27 @@ pub fn query_state(
     Ok(value_blob.as_deref().map(decode).transpose()?)
 }
 
-/// Fetches the block number for a given block.
-pub fn get_block_number(
+/// Given a block address, returns the header for that block.
+///
+/// Returns the block number and block timestamp in that order.
+pub fn get_block_header(
     conn: &Connection,
     block_address: &ContentAddress,
-) -> Result<Option<Word>, rusqlite::Error> {
+) -> rusqlite::Result<Option<(Word, Duration)>> {
     conn.query_row(
-        sql::query::GET_BLOCK_NUMBER,
+        sql::query::GET_BLOCK_HEADER,
         named_params! {
             ":block_address": block_address.0,
         },
-        |row| row.get::<_, Option<Word>>("number"),
+        |row| {
+            let number: Word = row.get("number")?;
+            let timestamp_secs: u64 = row.get("timestamp_secs")?;
+            let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
+            let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
+            Ok((number, timestamp))
+        },
     )
+    .optional()
 }
 
 /// Fetches the latest finalized block hash.

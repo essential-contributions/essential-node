@@ -6,7 +6,7 @@ use crate::{
 };
 use essential_hash::content_addr;
 use essential_node_db::{
-    get_block_number, get_latest_finalized_block_address, update_validation_progress,
+    get_block_header, get_latest_finalized_block_address, update_validation_progress,
 };
 use essential_types::{Block, ContentAddress};
 use tokio::sync::watch;
@@ -109,8 +109,12 @@ async fn validate_next_block(
                 // Keep validating if there are more blocks awaiting.
                 let latest_finalized_block_number = tx.and_then(|tx| {
                     get_latest_finalized_block_address(&tx).and_then(|hash| {
-                        hash.and_then(|hash| get_block_number(&tx, &hash).transpose())
-                            .transpose()
+                        hash.and_then(|hash| {
+                            get_block_header(&tx, &hash)
+                                .map(|opt| opt.map(|(number, _ts)| number))
+                                .transpose()
+                        })
+                        .transpose()
                     })
                 });
                 if let Ok(Some(latest_block_number)) = latest_finalized_block_number {
@@ -171,8 +175,9 @@ async fn get_next_block(
             let tx = conn.transaction().map_err(RecoverableError::Rusqlite)?;
             let range = match &progress {
                 Some(block_address) => {
-                    let block_number = essential_node_db::get_block_number(&tx, block_address)
+                    let block_number = get_block_header(&tx, block_address)
                         .map_err(RecoverableError::Rusqlite)?
+                        .map(|(number, _ts)| number)
                         .ok_or(RecoverableError::BlockNotFound(block_address.clone()))?;
                     block_number..block_number.saturating_add(2)
                 }
