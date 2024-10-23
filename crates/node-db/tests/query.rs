@@ -123,6 +123,32 @@ fn test_list_blocks_by_time() {
 }
 
 #[test]
+fn get_block_header() {
+    let blocks = util::test_blocks(10);
+    let headers: Vec<_> = blocks.iter().map(|b| (b.number, b.timestamp)).collect();
+
+    // Create an in-memory SQLite database.
+    let mut conn = test_conn();
+
+    // Create the necessary tables and insert blocks.
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    for block in &blocks {
+        node_db::insert_block(&tx, block).unwrap();
+    }
+    tx.commit().unwrap();
+
+    // Fetch the headers and check they match.
+    let fetched_headers: Vec<_> = blocks
+        .iter()
+        .map(essential_hash::content_addr)
+        .map(|ca| node_db::get_block_header(&conn, &ca).unwrap().unwrap())
+        .collect();
+
+    assert_eq!(&headers, &fetched_headers);
+}
+
+#[test]
 fn test_query_at_finalized() {
     // Test block that we'll insert.
     let (contract_addr, blocks) = test_blocks_with_vars(10);

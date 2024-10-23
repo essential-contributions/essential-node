@@ -86,7 +86,9 @@ pub async fn validate_solution(
     let mut conn = conn_pool.acquire().await?;
     let tx = conn.transaction()?;
     let number = match essential_node_db::get_latest_finalized_block_address(&tx)? {
-        Some(address) => essential_node_db::get_block_number(&tx, &address)?.unwrap_or(1),
+        Some(address) => essential_node_db::get_block_header(&tx, &address)?
+            .map(|(number, _ts)| number)
+            .unwrap_or(1),
         None => 1,
     };
     let block = Block {
