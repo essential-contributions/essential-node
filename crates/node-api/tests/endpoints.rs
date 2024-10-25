@@ -1,8 +1,5 @@
-use std::time::Duration;
-
-use essential_node::{self as node, test_utils::register_contracts_block, BlockTx};
+use essential_node::{self as node, BlockTx};
 use essential_node_api as node_api;
-use essential_node_types::BigBang;
 use essential_types::{convert::bytes_from_word, Block, Value};
 use futures::{StreamExt, TryStreamExt};
 use tokio_util::{
@@ -31,52 +28,67 @@ async fn test_health_check() {
 }
 
 #[tokio::test]
-async fn test_query_state() {
+async fn test_query_state_and_query_state_range() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
     let db = test_conn_pool();
 
-    // The test state.
-    let seed = 11;
-    let block_n = 100;
-    let block_ts = Duration::from_secs(block_n as _);
-    let contract = node::test_utils::test_contract(seed);
+    // Create some test blocks with state mutations.
+    let n_blocks = 100;
+    let (blocks, _) = node::test_utils::test_blocks(n_blocks);
 
-    // Make some randomish keys and values.
-    let mut keys = vec![];
-    let mut values = vec![];
-    for i in 0i64..256 {
-        let key = vec![(i + 1) * 5; 1 + (i as usize * 103) % 128];
-        let value = vec![(i + 1) * 7; 1 + (i as usize * 391) % 128];
-        keys.push(key);
-        values.push(value);
+    let mut mutations = vec![];
+    // Insert them into the node's DB.
+    for block in &blocks {
+        let iter = block
+            .solutions
+            .iter()
+            .flat_map(|s| s.data.iter())
+            .flat_map(|d| {
+                d.state_mutations
+                    .iter()
+                    .cloned()
+                    .map(|m| (d.predicate_to_solve.contract.clone(), m))
+            });
+        mutations.extend(iter);
+        let block_ca = db
+            .insert_block(std::sync::Arc::new(block.clone()))
+            .await
+            .unwrap();
+
+        // Make sure to finalize them.
+        db.finalize_block(block_ca).await.unwrap();
     }
 
-    // Insert a contract to own the state.
-    let registry = BigBang::default().contract_registry;
-    let block = register_contracts_block(registry, Some(&contract), block_n, block_ts).unwrap();
-    let block_ca = db.insert_block(block.into()).await.unwrap();
-    db.finalize_block(block_ca).await.unwrap();
-
-    let contract_ca = essential_hash::content_addr(&contract);
-
-    // Insert the state entries.
-    for (k, v) in keys.iter().zip(&values) {
-        let ca = contract_ca.clone();
-        let (key, value) = (k.clone(), v.clone());
-        db.update_state(ca, key, value).await.unwrap();
-    }
-
-    // Query each of the keys and check they match what we expect.
+    // Check state
     with_test_server(state_db_only(db), |port| async move {
-        for (k, v) in keys.iter().zip(&values) {
-            let key_bytes: Vec<_> = k.iter().copied().flat_map(bytes_from_word).collect();
+        for (contract, m) in &mutations {
+            let key_bytes: Vec<_> = m.key.iter().copied().flat_map(bytes_from_word).collect();
             let key = hex::encode(&key_bytes);
-            let response = reqwest_get(port, &format!("/query-state/{contract_ca}/{key}")).await;
+            let response = client()
+                .get(get_url(
+                    port,
+                    &format!(
+                        "/query-state-range/{contract}/{key}?block_inclusive={}",
+                        n_blocks
+                    ),
+                ))
+                .send()
+                .await
+                .unwrap();
+            assert!(
+                response.status().is_success(),
+                "{:?}",
+                response.text().await
+            );
+            let r = response.json::<Option<Value>>().await.unwrap();
+            assert_eq!(Some(&m.value), r.as_ref());
+
+            let response = reqwest_get(port, &format!("/query-state/{contract}/{key}")).await;
             assert!(response.status().is_success());
             let response_value = response.json::<Option<Value>>().await.unwrap();
-            assert_eq!(Some(v), response_value.as_ref());
+            assert_eq!(Some(&m.value), response_value.as_ref());
         }
     })
     .await;

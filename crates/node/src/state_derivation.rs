@@ -300,6 +300,9 @@ fn map_recoverable_errors(e: InternalError) -> InternalError {
             e @ crate::db::AcquireThenError::Inner(essential_node_db::QueryError::Decode(_)) => {
                 CriticalError::from(e).into()
             }
+            crate::db::AcquireThenError::Inner(essential_node_db::QueryError::UnsupportedRange) => {
+                RecoverableError::Query(essential_node_db::QueryError::UnsupportedRange).into()
+            }
         },
         _ => e,
     }

@@ -183,6 +183,7 @@ pub fn with_endpoints(router: Router<State>) -> Router<State> {
         .route(health_check::PATH, get(health_check::handler))
         .route(list_blocks::PATH, get(list_blocks::handler))
         .route(query_state::PATH, get(query_state::handler))
+        .route(query_state_range::PATH, get(query_state_range::handler))
         .route(subscribe_blocks::PATH, get(subscribe_blocks::handler))
 }
 

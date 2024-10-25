@@ -187,6 +187,99 @@ impl ConnectionPool {
             .await
     }
 
+    /// Fetches the state value for the given contract content address and key pair
+    /// within a range of blocks.
+    pub async fn query_latest_finalized_block(
+        &self,
+        contract_ca: ContentAddress,
+        key: Key,
+    ) -> Result<Option<Value>, AcquireThenQueryError> {
+        self.acquire_then(move |h| {
+            let tx = h.transaction()?;
+            let Some(addr) = db::get_latest_finalized_block_address(&tx)? else {
+                return Ok(None);
+            };
+            let Some((number, _)) = db::get_block_header(&tx, &addr)? else {
+                return Ok(None);
+            };
+            let value =
+                db::finalized::query_state_inclusive_block(&tx, &contract_ca, &key, number)?;
+            tx.finish()?;
+            Ok(value)
+        })
+        .await
+    }
+
+    /// Fetches the state value for the given contract content address and key pair
+    /// within a range of blocks inclusive. `..=block`.
+    pub async fn query_state_finalized_inclusive_block(
+        &self,
+        contract_ca: ContentAddress,
+        key: Key,
+        block_number: Word,
+    ) -> Result<Option<Value>, AcquireThenQueryError> {
+        self.acquire_then(move |h| {
+            db::finalized::query_state_inclusive_block(h, &contract_ca, &key, block_number)
+        })
+        .await
+    }
+
+    /// Fetches the state value for the given contract content address and key pair
+    /// within a range of blocks exclusive. `..block`.
+    pub async fn query_state_finalized_exclusive_block(
+        &self,
+        contract_ca: ContentAddress,
+        key: Key,
+        block_number: Word,
+    ) -> Result<Option<Value>, AcquireThenQueryError> {
+        self.acquire_then(move |h| {
+            db::finalized::query_state_exclusive_block(h, &contract_ca, &key, block_number)
+        })
+        .await
+    }
+
+    /// Fetches the state value for the given contract content address and key pair
+    /// within a range of blocks and solutions inclusive. `..block[..=solution]`.
+    pub async fn query_state_finalized_inclusive_solution(
+        &self,
+        contract_ca: ContentAddress,
+        key: Key,
+        block_number: Word,
+        solution_ix: u64,
+    ) -> Result<Option<Value>, AcquireThenQueryError> {
+        self.acquire_then(move |h| {
+            db::finalized::query_state_inclusive_solution(
+                h,
+                &contract_ca,
+                &key,
+                block_number,
+                solution_ix,
+            )
+        })
+        .await
+    }
+
+    /// Fetches the state value for the given contract content address and key pair
+    /// within a range of blocks and solutions exclusive. `..=block[..solution]`.
+    pub async fn query_state_finalized_exclusive_solution(
+        &self,
+        contract_ca: ContentAddress,
+        key: Key,
+        block_number: Word,
+        solution_ix: u64,
+    ) -> Result<Option<Value>, AcquireThenQueryError> {
+        self.acquire_then(move |h| {
+            db::finalized::query_state_exclusive_solution(
+                h,
+                &contract_ca,
+                &key,
+                block_number,
+                solution_ix,
+            )
+        })
+        .await
+    }
+
     /// Get the state progress, returning the last block hash.
     pub async fn get_state_progress(
         &self,

@@ -54,7 +54,7 @@ pub fn query_state_exclusive_block(
 /// solution index (within that block).
 ///
 /// This is inclusive of the solution's state mutations
-/// (..=(block_number, solution_index)).
+/// `..=block_number[..=solution_index]`
 pub fn query_state_inclusive_solution(
     conn: &Connection,
     contract_ca: &ContentAddress,
@@ -83,7 +83,7 @@ pub fn query_state_inclusive_solution(
 /// that was set at or before the given block number and before the
 /// solution index (within that block).
 ///
-/// This is exclusive of the solution's state (..(block_number, solution_index)).
+/// This is exclusive of the solution's state `..=block_number[..solution_index]`.
 pub fn query_state_exclusive_solution(
     conn: &Connection,
     contract_ca: &ContentAddress,
