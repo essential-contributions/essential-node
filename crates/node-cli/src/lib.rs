@@ -1,6 +1,6 @@
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
-use essential_node::{self as node, db::Config, RunConfig};
+use essential_node::{self as node, db::pool::Config, RunConfig};
 use essential_node_api as node_api;
 use essential_node_types::BigBang;
 use std::{
@@ -85,13 +85,13 @@ fn default_db_path() -> Option<PathBuf> {
 /// Construct the node's config from the parsed args.
 fn conf_from_args(args: &Args) -> anyhow::Result<Config> {
     let source = match (&args.db, &args.db_path) {
-        (Db::Memory, None) => node::db::Source::default_memory(),
-        (_, Some(path)) => node::db::Source::Path(path.clone()),
+        (Db::Memory, None) => node::db::pool::Source::default_memory(),
+        (_, Some(path)) => node::db::pool::Source::Path(path.clone()),
         (Db::Persistent, None) => {
             let Some(path) = default_db_path() else {
                 anyhow::bail!("unable to detect user's data directory for default DB path")
             };
-            node::db::Source::Path(path)
+            node::db::pool::Source::Path(path)
         }
     };
     let conn_limit = args.db_conn_limit;
@@ -138,7 +138,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         tracing::debug!("Node config:\n{:#?}", conf);
         tracing::info!("Starting node");
     }
-    let db = node::db(&conf)?;
+    let db = node::db::ConnectionPool::with_tables(&conf)?;
 
     // Load the big bang configuration, and ensure the big bang block exists.
     let big_bang = load_big_bang_or_default(args.big_bang.as_deref())?;

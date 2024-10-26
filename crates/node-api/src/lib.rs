@@ -76,8 +76,8 @@ pub async fn serve(router: &Router, listener: &TcpListener, conn_limit: usize) {
 /// # async fn main() {
 /// # use essential_node::{self as node};
 /// # use essential_node_api as node_api;
-/// let conf = node::db::Config::default();
-/// let db = node::db(&conf).unwrap();
+/// let conf = node::db::pool::Config::default();
+/// let db = node::db::ConnectionPool::with_tables(&conf).unwrap();
 /// let state = node_api::State {
 ///     conn_pool: db,
 ///     new_block: None,

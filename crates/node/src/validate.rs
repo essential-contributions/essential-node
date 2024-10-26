@@ -1,16 +1,17 @@
 //! # Validation
 //! Functions for validating blocks and solutions.
 use crate::{
-    db::{self, ConnectionHandle, ConnectionPool},
+    db::{
+        self,
+        finalized::{query_state_exclusive_solution, query_state_inclusive_solution},
+        pool::ConnectionHandle,
+        ConnectionPool, QueryError,
+    },
     error::{QueryPredicateError, SolutionPredicatesError, StateReadError, ValidationError},
 };
 use essential_check::{
     solution::{check_predicates, CheckPredicateConfig, PredicatesError},
     state_read_vm::{Gas, StateRead},
-};
-use essential_node_db::{
-    finalized::{query_state_exclusive_solution, query_state_inclusive_solution},
-    QueryError,
 };
 use essential_types::{
     convert::bytes_from_word, predicate::Predicate, solution::Solution, solution::SolutionData,
@@ -129,8 +130,8 @@ pub async fn validate_solution_dry_run(
 ) -> Result<ValidateOutcome, ValidationError> {
     let mut conn = conn_pool.acquire().await?;
     let tx = conn.transaction()?;
-    let number = match essential_node_db::get_latest_finalized_block_address(&tx)? {
-        Some(address) => essential_node_db::get_block_header(&tx, &address)?
+    let number = match db::get_latest_finalized_block_address(&tx)? {
+        Some(address) => db::get_block_header(&tx, &address)?
             .map(|(number, _ts)| number)
             .unwrap_or(1),
         None => 1,
@@ -293,9 +294,9 @@ impl Memory {
     fn new(block: &Block) -> Result<Self, rusqlite::Error> {
         // Only need one connection for the memory database
         // as there is no contention.
-        let config = db::Config {
+        let config = db::pool::Config {
             conn_limit: 1,
-            source: db::Source::Memory(uuid::Uuid::new_v4().to_string()),
+            source: db::pool::Source::Memory(uuid::Uuid::new_v4().to_string()),
         };
         let memory = db::ConnectionPool::new(&config)?;
         let mut conn = memory

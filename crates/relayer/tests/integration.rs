@@ -1,6 +1,9 @@
 use essential_node::{
-    self as node,
-    db::{Config, ConnectionPool, Source},
+    db::{
+        self,
+        pool::{Config, Source},
+        ConnectionPool,
+    },
     BlockTx,
 };
 use essential_relayer::{DataSyncError, Relayer};
@@ -32,7 +35,7 @@ async fn test_sync() {
 
     let mut test_conn = relayer_conn.acquire().await.unwrap();
     let tx = test_conn.transaction().unwrap();
-    essential_node_db::create_tables(&tx).unwrap();
+    db::create_tables(&tx).unwrap();
     tx.commit().unwrap();
 
     let (solutions, blocks) = test_structs();
@@ -45,7 +48,7 @@ async fn test_sync() {
     let relayer_handle = relayer.run(relayer_conn.clone(), block_notify).unwrap();
 
     new_block.changed().await.unwrap();
-    let result = essential_node_db::list_blocks(&test_conn, 0..100).unwrap();
+    let result = db::list_blocks(&test_conn, 0..100).unwrap();
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].number, 0);
     assert_eq!(result[0].solutions.len(), 1);
@@ -55,7 +58,7 @@ async fn test_sync() {
     block_tx.notify();
 
     new_block.changed().await.unwrap();
-    let result = essential_node_db::list_blocks(&test_conn, 0..100).unwrap();
+    let result = db::list_blocks(&test_conn, 0..100).unwrap();
     assert_eq!(result.len(), 2);
     assert_eq!(result[1].number, 1);
     assert_eq!(result[1].solutions.len(), 1);
@@ -78,7 +81,7 @@ async fn test_sync() {
         if start.elapsed() > tokio::time::Duration::from_secs(10) {
             panic!("timeout num_solutions: {}, {}", num_solutions, result.len());
         }
-        let Ok(r) = essential_node_db::list_blocks(&test_conn, 0..203) else {
+        let Ok(r) = db::list_blocks(&test_conn, 0..203) else {
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             continue;
         };
@@ -179,7 +182,7 @@ async fn test_node() -> (NodeServer, BlockTx) {
         source: Source::Memory(uuid::Uuid::new_v4().into()),
         ..Default::default()
     };
-    let db = node::db(&conf).unwrap();
+    let db = ConnectionPool::with_tables(&conf).unwrap();
     let source_block_tx = BlockTx::new();
     let source_block_rx = source_block_tx.new_listener();
     let state = essential_node_api::State {

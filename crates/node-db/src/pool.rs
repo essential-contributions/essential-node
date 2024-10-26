@@ -3,12 +3,10 @@
 //! This module extends [`essential_node_db`] and [`rusqlite_pool::tokio`] items
 //! with node-specific wrappers, short-hands and helpers.
 
+use crate::{with_tx, AcquireConnection, AwaitNewBlock, QueryError};
 use core::ops::Range;
-use essential_node_db as db;
-pub use essential_node_db::{AwaitNewBlock, QueryError};
 use essential_types::{solution::Solution, Block, ContentAddress, Key, Value, Word};
 use futures::Stream;
-use rusqlite::Transaction;
 use rusqlite_pool::tokio::{AsyncConnectionHandle, AsyncConnectionPool};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use thiserror::Error;
@@ -18,7 +16,7 @@ use tokio::sync::{AcquireError, TryAcquireError};
 ///
 /// The handle is safe to clone and share between threads.
 #[derive(Clone)]
-pub struct ConnectionPool(pub(crate) AsyncConnectionPool);
+pub struct ConnectionPool(AsyncConnectionPool);
 
 /// A temporary connection handle to a [`Node`][`crate::Node`]'s [`ConnectionPool`].
 ///
@@ -61,7 +59,7 @@ pub enum AcquireThenError<E> {
 pub type AcquireThenRusqliteError = AcquireThenError<rusqlite::Error>;
 
 /// An `acquire_then` error whose function returns a result with a query error.
-pub type AcquireThenQueryError = AcquireThenError<db::QueryError>;
+pub type AcquireThenQueryError = AcquireThenError<crate::QueryError>;
 
 /// One or more connections failed to close.
 #[derive(Debug, Error)]
@@ -69,8 +67,40 @@ pub struct ConnectionCloseErrors(pub Vec<(rusqlite::Connection, rusqlite::Error)
 
 impl ConnectionPool {
     /// Create the connection pool from the given configuration.
+    ///
+    /// Note that this function does not initialise the node DB tables by default. See the
+    /// [`ConnectionPool::with_tables`] constructor.
     pub fn new(conf: &Config) -> rusqlite::Result<Self> {
-        Ok(Self(new_conn_pool(conf)?))
+        let conn_pool = Self(new_conn_pool(conf)?);
+        if let Source::Path(_) = conf.source {
+            let conn = conn_pool
+                .try_acquire()
+                .expect("pool must have at least one connection");
+            conn.pragma_update(None, "journal_mode", "wal")?;
+        }
+        Ok(conn_pool)
+    }
+
+    /// Create the connection pool from the given configuration and ensure the DB tables have been
+    /// created if they do not already exist before returning.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// # #[tokio::main]
+    /// # async fn main() {
+    /// let conf = essential_node_db::pool::Config::default();
+    /// let db = essential_node_db::ConnectionPool::with_tables(&conf).unwrap();
+    /// for block in db.list_blocks(0..100).await.unwrap() {
+    ///     println!("Block: {block:?}");
+    /// }
+    /// # }
+    /// ```
+    pub fn with_tables(conf: &Config) -> rusqlite::Result<Self> {
+        let conn_pool = Self::new(conf)?;
+        let mut conn = conn_pool.try_acquire().unwrap();
+        with_tx(&mut conn, |tx| crate::create_tables(tx))?;
+        Ok(conn_pool)
     }
 
     /// Acquire a temporary database [`ConnectionHandle`] from the inner pool.
@@ -124,7 +154,7 @@ impl ConnectionPool {
 
     /// Create all database tables.
     pub async fn create_tables(&self) -> Result<(), AcquireThenRusqliteError> {
-        self.acquire_then(|h| with_tx(h, |tx| db::create_tables(tx)))
+        self.acquire_then(|h| with_tx(h, |tx| crate::create_tables(tx)))
             .await
     }
 
@@ -134,7 +164,7 @@ impl ConnectionPool {
         &self,
         block: Arc<Block>,
     ) -> Result<ContentAddress, AcquireThenRusqliteError> {
-        self.acquire_then(move |h| with_tx(h, |tx| db::insert_block(tx, &block)))
+        self.acquire_then(move |h| with_tx(h, |tx| crate::insert_block(tx, &block)))
             .await
     }
 
@@ -144,7 +174,7 @@ impl ConnectionPool {
         &self,
         block_ca: ContentAddress,
     ) -> Result<(), AcquireThenRusqliteError> {
-        self.acquire_then(move |h| db::finalize_block(h, &block_ca))
+        self.acquire_then(move |h| crate::finalize_block(h, &block_ca))
             .await
     }
 
@@ -155,7 +185,7 @@ impl ConnectionPool {
         key: Key,
         value: Value,
     ) -> Result<(), AcquireThenRusqliteError> {
-        self.acquire_then(move |h| db::update_state(h, &contract_ca, &key, &value))
+        self.acquire_then(move |h| crate::update_state(h, &contract_ca, &key, &value))
             .await
     }
 
@@ -165,7 +195,7 @@ impl ConnectionPool {
         contract_ca: ContentAddress,
         key: Key,
     ) -> Result<(), AcquireThenRusqliteError> {
-        self.acquire_then(move |h| db::delete_state(h, &contract_ca, &key))
+        self.acquire_then(move |h| crate::delete_state(h, &contract_ca, &key))
             .await
     }
 
@@ -174,7 +204,7 @@ impl ConnectionPool {
         &self,
         block_address: ContentAddress,
     ) -> Result<Option<Block>, AcquireThenQueryError> {
-        self.acquire_then(move |h| db::get_block(h, &block_address))
+        self.acquire_then(move |h| crate::get_block(h, &block_address))
             .await
     }
 
@@ -183,7 +213,8 @@ impl ConnectionPool {
         &self,
         ca: ContentAddress,
     ) -> Result<Option<Solution>, AcquireThenQueryError> {
-        self.acquire_then(move |h| db::get_solution(h, &ca)).await
+        self.acquire_then(move |h| crate::get_solution(h, &ca))
+            .await
     }
 
     /// Fetches the state value for the given contract content address and key pair.
@@ -192,7 +223,7 @@ impl ConnectionPool {
         contract_ca: ContentAddress,
         key: Key,
     ) -> Result<Option<Value>, AcquireThenQueryError> {
-        self.acquire_then(move |h| db::query_state(h, &contract_ca, &key))
+        self.acquire_then(move |h| crate::query_state(h, &contract_ca, &key))
             .await
     }
 
@@ -205,14 +236,14 @@ impl ConnectionPool {
     ) -> Result<Option<Value>, AcquireThenQueryError> {
         self.acquire_then(move |h| {
             let tx = h.transaction()?;
-            let Some(addr) = db::get_latest_finalized_block_address(&tx)? else {
+            let Some(addr) = crate::get_latest_finalized_block_address(&tx)? else {
                 return Ok(None);
             };
-            let Some((number, _)) = db::get_block_header(&tx, &addr)? else {
+            let Some((number, _)) = crate::get_block_header(&tx, &addr)? else {
                 return Ok(None);
             };
             let value =
-                db::finalized::query_state_inclusive_block(&tx, &contract_ca, &key, number)?;
+                crate::finalized::query_state_inclusive_block(&tx, &contract_ca, &key, number)?;
             tx.finish()?;
             Ok(value)
         })
@@ -228,7 +259,7 @@ impl ConnectionPool {
         block_number: Word,
     ) -> Result<Option<Value>, AcquireThenQueryError> {
         self.acquire_then(move |h| {
-            db::finalized::query_state_inclusive_block(h, &contract_ca, &key, block_number)
+            crate::finalized::query_state_inclusive_block(h, &contract_ca, &key, block_number)
         })
         .await
     }
@@ -242,7 +273,7 @@ impl ConnectionPool {
         block_number: Word,
     ) -> Result<Option<Value>, AcquireThenQueryError> {
         self.acquire_then(move |h| {
-            db::finalized::query_state_exclusive_block(h, &contract_ca, &key, block_number)
+            crate::finalized::query_state_exclusive_block(h, &contract_ca, &key, block_number)
         })
         .await
     }
@@ -257,7 +288,7 @@ impl ConnectionPool {
         solution_ix: u64,
     ) -> Result<Option<Value>, AcquireThenQueryError> {
         self.acquire_then(move |h| {
-            db::finalized::query_state_inclusive_solution(
+            crate::finalized::query_state_inclusive_solution(
                 h,
                 &contract_ca,
                 &key,
@@ -278,7 +309,7 @@ impl ConnectionPool {
         solution_ix: u64,
     ) -> Result<Option<Value>, AcquireThenQueryError> {
         self.acquire_then(move |h| {
-            db::finalized::query_state_exclusive_solution(
+            crate::finalized::query_state_exclusive_solution(
                 h,
                 &contract_ca,
                 &key,
@@ -293,7 +324,8 @@ impl ConnectionPool {
     pub async fn get_validation_progress(
         &self,
     ) -> Result<Option<ContentAddress>, AcquireThenQueryError> {
-        self.acquire_then(|h| db::get_validation_progress(h)).await
+        self.acquire_then(|h| crate::get_validation_progress(h))
+            .await
     }
 
     /// Get next block(s) given the current block hash.
@@ -301,7 +333,7 @@ impl ConnectionPool {
         &self,
         current_block: ContentAddress,
     ) -> Result<Vec<ContentAddress>, AcquireThenQueryError> {
-        self.acquire_then(move |h| db::get_next_block_addresses(h, &current_block))
+        self.acquire_then(move |h| crate::get_next_block_addresses(h, &current_block))
             .await
     }
 
@@ -310,7 +342,7 @@ impl ConnectionPool {
         &self,
         block_ca: ContentAddress,
     ) -> Result<(), AcquireThenRusqliteError> {
-        self.acquire_then(move |h| db::update_validation_progress(h, &block_ca))
+        self.acquire_then(move |h| crate::update_validation_progress(h, &block_ca))
             .await
     }
 
@@ -319,7 +351,7 @@ impl ConnectionPool {
         &self,
         block_range: Range<Word>,
     ) -> Result<Vec<Block>, AcquireThenQueryError> {
-        self.acquire_then(move |h| db::list_blocks(h, block_range))
+        self.acquire_then(move |h| crate::list_blocks(h, block_range))
             .await
     }
 
@@ -330,7 +362,7 @@ impl ConnectionPool {
         page_size: i64,
         page_number: i64,
     ) -> Result<Vec<Block>, AcquireThenQueryError> {
-        self.acquire_then(move |h| db::list_blocks_by_time(h, range, page_size, page_number))
+        self.acquire_then(move |h| crate::list_blocks_by_time(h, range, page_size, page_number))
             .await
     }
 
@@ -340,7 +372,7 @@ impl ConnectionPool {
         start_block: Word,
         await_new_block: impl AwaitNewBlock,
     ) -> impl Stream<Item = Result<Block, QueryError>> {
-        db::subscribe_blocks(start_block, self.clone(), await_new_block)
+        crate::subscribe_blocks(start_block, self.clone(), await_new_block)
     }
 }
 
@@ -369,6 +401,12 @@ impl Source {
     }
 }
 
+impl AsRef<AsyncConnectionPool> for ConnectionPool {
+    fn as_ref(&self) -> &AsyncConnectionPool {
+        &self.0
+    }
+}
+
 impl AsRef<rusqlite::Connection> for ConnectionHandle {
     fn as_ref(&self) -> &rusqlite::Connection {
         self
@@ -388,7 +426,7 @@ impl core::ops::DerefMut for ConnectionHandle {
     }
 }
 
-impl essential_node_db::AcquireConnection for ConnectionPool {
+impl AcquireConnection for ConnectionPool {
     async fn acquire_connection(&self) -> Option<impl 'static + AsRef<rusqlite::Connection>> {
         self.acquire().await.ok()
     }
@@ -417,21 +455,6 @@ impl core::fmt::Display for ConnectionCloseErrors {
         }
         Ok(())
     }
-}
-
-/// Short-hand for constructing a transaction, providing it as an argument to
-/// the given function, then committing the transaction before returning.
-pub(crate) fn with_tx<T, E>(
-    conn: &mut rusqlite::Connection,
-    f: impl FnOnce(&mut Transaction) -> Result<T, E>,
-) -> Result<T, E>
-where
-    E: From<rusqlite::Error>,
-{
-    let mut tx = conn.transaction()?;
-    let out = f(&mut tx)?;
-    tx.commit()?;
-    Ok(out)
 }
 
 /// Initialise the connection pool from the given configuration.

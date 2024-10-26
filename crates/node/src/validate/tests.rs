@@ -1,5 +1,5 @@
 use crate::{
-    db::with_tx,
+    db::{finalize_block, insert_block, with_tx},
     test_utils::{
         test_block_with_contracts, test_conn_pool, test_conn_pool_with_big_bang,
         test_contract_registry, test_invalid_block, test_invalid_block_with_contract,
@@ -10,7 +10,6 @@ use essential_check::{
     constraint_vm::error::CheckError,
     solution::{PredicateConstraintsError, PredicateError, PredicatesError},
 };
-use essential_node_db::{finalize_block, insert_block};
 use std::time::Duration;
 
 #[tokio::test]

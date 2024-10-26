@@ -1,37 +1,30 @@
-#![cfg(feature = "test-utils")]
-
-use essential_node::{
-    self as node,
-    db::{Config, Source},
-    test_utils::{self, register_contracts_block, test_contract_registry},
-};
+use essential_node_db::{self as db, ConnectionPool};
 use std::{sync::Arc, time::Duration};
 use tempfile::TempDir;
+use util::{register_contracts_block, test_conn_pool, test_contract_registry};
+
+mod util;
 
 #[test]
 fn test_conn_pool_new() {
-    let conf = test_utils::test_db_conf();
-    let _db = node::db(&conf).unwrap();
+    let _db = test_conn_pool();
 }
 
 #[test]
 fn test_conn_pool_close() {
-    let conf = test_utils::test_db_conf();
-    let db = node::db(&conf).unwrap();
+    let db = test_conn_pool();
     db.close().unwrap();
 }
 
 #[tokio::test]
 async fn test_acquire() {
-    let conf = test_utils::test_db_conf();
-    let db = node::db(&conf).unwrap();
+    let db = test_conn_pool();
     db.acquire().await.unwrap();
 }
 
 #[test]
 fn test_try_acquire() {
-    let conf = test_utils::test_db_conf();
-    let db = node::db(&conf).unwrap();
+    let db = test_conn_pool();
     db.try_acquire().unwrap();
 }
 
@@ -39,11 +32,11 @@ fn test_try_acquire() {
 async fn test_conn_pool_path() {
     let temp_dir = TempDir::new().unwrap();
     let path = temp_dir.path().join("test_conn_pool_path.sqlite3");
-    let conf = Config {
-        source: Source::Path(path.clone()),
+    let conf = db::pool::Config {
+        source: db::pool::Source::Path(path.clone()),
         ..Default::default()
     };
-    let db = node::db(&conf).unwrap();
+    let db = ConnectionPool::with_tables(&conf).unwrap();
     let conn = db.acquire().await.unwrap();
     conn.pragma_query(None, "trusted_schema", |row| {
         let val = row.get::<_, bool>(0)?;
@@ -66,7 +59,7 @@ async fn test_conn_pool_path() {
 
     // Reopen the database for the `journal_mode` change to be effective.
     drop(db);
-    let db = node::db(&conf).unwrap();
+    let db = ConnectionPool::with_tables(&conf).unwrap();
     let conn = db.acquire().await.unwrap();
 
     conn.pragma_query(None, "journal_mode", |row| {
@@ -80,8 +73,7 @@ async fn test_conn_pool_path() {
 #[tokio::test]
 async fn test_create_tables() {
     // Tables created during node initialisation.
-    let conf = test_utils::test_db_conf();
-    let db = node::db(&conf).unwrap();
+    let db = test_conn_pool();
 
     // Verify that each table exists by querying the SQLite master table
     {
@@ -107,11 +99,10 @@ async fn test_create_tables() {
 
 #[tokio::test]
 async fn test_block() {
-    let conf = test_utils::test_db_conf();
-    let db = node::db(&conf).unwrap();
+    let db = test_conn_pool();
 
     // The test blocks.
-    let (blocks, _) = test_utils::test_blocks(100);
+    let blocks = util::test_blocks(100);
 
     // Insert the blocks.
     for block in &blocks {
@@ -128,12 +119,11 @@ async fn test_block() {
 
 #[tokio::test]
 async fn test_contract() {
-    let conf = test_utils::test_db_conf();
-    let db = node::db(&conf).unwrap();
+    let db = test_conn_pool();
 
     // The test contract.
     let seed = 42;
-    let contract = test_utils::test_contract(seed);
+    let contract = util::test_contract(seed);
 
     // Insert the contract.
     let registry = test_contract_registry();
@@ -153,13 +143,12 @@ async fn test_contract() {
 
 #[tokio::test]
 async fn test_state() {
-    let conf = test_utils::test_db_conf();
-    let db = node::db(&conf).unwrap();
+    let db = test_conn_pool();
 
     // The test state.
     let seed = 36;
     let number = 100;
-    let contract = test_utils::test_contract(seed);
+    let contract = util::test_contract(seed);
 
     // Make some randomish keys and values.
     let mut keys = vec![];

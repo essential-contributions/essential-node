@@ -1,6 +1,9 @@
 use essential_node::{
     self as node,
-    db::{Config, ConnectionPool, Source},
+    db::{
+        pool::{Config, Source},
+        ConnectionPool,
+    },
 };
 use essential_node_api as node_api;
 use std::future::Future;
@@ -23,7 +26,7 @@ pub fn test_conn_pool() -> ConnectionPool {
         source: Source::Memory(uuid::Uuid::new_v4().into()),
         ..Default::default()
     };
-    node::db(&conf).unwrap()
+    ConnectionPool::with_tables(&conf).unwrap()
 }
 
 pub fn client() -> reqwest::Client {

@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 
+use essential_node_db::{self as db, ConnectionPool};
+use essential_node_types::{register_contract_solution, BigBang};
 use essential_types::{
     contract::Contract,
-    predicate::Predicate,
+    predicate::{header::PredicateError, Predicate},
     solution::{Mutation, Solution, SolutionData},
     Block, ConstraintBytecode, ContentAddress, PredicateAddress, StateReadBytecode, Word,
 };
@@ -13,6 +15,22 @@ pub fn test_conn() -> Connection {
     let conn = Connection::open_in_memory().unwrap();
     conn.pragma_update(None, "foreign_keys", true).unwrap();
     conn
+}
+
+pub fn test_pool_conf() -> db::pool::Config {
+    db::pool::Config {
+        source: db::pool::Source::Memory(uuid::Uuid::new_v4().into()),
+        ..Default::default()
+    }
+}
+
+pub fn test_conn_pool() -> ConnectionPool {
+    let conf = test_pool_conf();
+    ConnectionPool::with_tables(&conf).unwrap()
+}
+
+pub fn test_contract_registry() -> PredicateAddress {
+    BigBang::default().contract_registry
 }
 
 pub fn test_blocks_with_vars(n: Word) -> (ContentAddress, Vec<Block>) {
@@ -115,4 +133,31 @@ pub fn test_constraints(seed: Word) -> Vec<ConstraintBytecode> {
     let n = (1 + seed % 3) as usize;
     let b = (seed % u8::MAX as Word) as u8;
     vec![vec![b; 10]; n]
+}
+
+/// A helper for constructing a solution that registers the given set of contracts.
+pub fn register_contracts_solution<'a>(
+    contract_registry: PredicateAddress,
+    contracts: impl IntoIterator<Item = &'a Contract>,
+) -> Result<Solution, PredicateError> {
+    let data = contracts
+        .into_iter()
+        .map(|contract| register_contract_solution(contract_registry.clone(), contract))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Solution { data })
+}
+
+/// A helper for constructing a block that solely registers the given set of contracts.
+pub fn register_contracts_block<'a>(
+    contract_registry: PredicateAddress,
+    contracts: impl IntoIterator<Item = &'a Contract>,
+    block_number: Word,
+    block_timestamp: Duration,
+) -> Result<Block, PredicateError> {
+    let solution = register_contracts_solution(contract_registry, contracts)?;
+    Ok(Block {
+        solutions: vec![solution],
+        number: block_number,
+        timestamp: block_timestamp,
+    })
 }

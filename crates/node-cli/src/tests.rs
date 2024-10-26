@@ -41,11 +41,11 @@ async fn test_args() {
 async fn test_node() -> (impl std::future::Future<Output = ()>, u16) {
     let block_tx = node::BlockTx::new();
     let block_rx = block_tx.new_listener();
-    let config = node::db::Config {
-        source: node::db::Source::Memory(uuid::Uuid::new_v4().to_string()),
+    let config = node::db::pool::Config {
+        source: node::db::pool::Source::Memory(uuid::Uuid::new_v4().to_string()),
         ..Default::default()
     };
-    let db = node::db(&config).unwrap();
+    let db = node::db::ConnectionPool::with_tables(&config).unwrap();
     let api_state = node_api::State {
         new_block: Some(block_rx),
         conn_pool: db.clone(),
