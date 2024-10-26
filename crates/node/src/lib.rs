@@ -134,7 +134,7 @@ pub fn run(
     // Run relayer.
     let relayer_handle = if let Some(relayer_source_endpoint) = relayer_source_endpoint {
         let relayer = Relayer::new(relayer_source_endpoint.as_str())?;
-        Some(relayer.run(conn_pool.as_ref().clone(), block_notify.0.clone())?)
+        Some(relayer.run(conn_pool.clone(), block_notify.0.clone())?)
     } else {
         None
     };

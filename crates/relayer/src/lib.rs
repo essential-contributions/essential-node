@@ -9,10 +9,10 @@ pub use error::Error;
 use error::InternalError;
 use error::InternalResult;
 pub use error::Result;
+use essential_node_db::{self as db, ConnectionPool};
 use futures::StreamExt;
 pub use handle::Handle;
 use reqwest::{ClientBuilder, Url};
-use rusqlite_pool::tokio::AsyncConnectionPool;
 use std::future::Future;
 use sync::stream_blocks;
 use sync::sync_blocks;
@@ -49,16 +49,16 @@ impl Relayer {
     /// A handle is returned that can be used to close or join the streams.
     ///
     /// The two watch channels are used to notify the caller when new data has been synced.
-    pub fn run(self, conn: AsyncConnectionPool, new_block: watch::Sender<()>) -> Result<Handle> {
+    pub fn run(self, pool: ConnectionPool, new_block: watch::Sender<()>) -> Result<Handle> {
         // The blocks callback. This is a closure that will be called
         // every time the blocks stream is restarted.
         let blocks = move |shutdown: watch::Receiver<()>| {
-            let conn = conn.clone();
+            let pool = pool.clone();
             let relayer = self.clone();
             let notify = new_block.clone();
             async move {
                 // Run the blocks stream
-                relayer.run_blocks(conn, shutdown, notify).await
+                relayer.run_blocks(pool, shutdown, notify).await
             }
         };
 
@@ -69,7 +69,7 @@ impl Relayer {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     async fn run_blocks(
         &self,
-        conn: AsyncConnectionPool,
+        conn: ConnectionPool,
         mut shutdown: watch::Receiver<()>,
         notify: watch::Sender<()>,
     ) -> InternalResult<()> {
@@ -77,7 +77,9 @@ impl Relayer {
         tracing::info!("Stream starting");
 
         // Get the last progress that was made from the database.
-        let progress = sync::get_block_progress(&conn).await?;
+        let progress = sync::get_block_progress(&conn)
+            .await
+            .map_err(CriticalError::from)?;
 
         // Create the stream of blocks.
         let stream = stream_blocks(&self.endpoint, &self.client, &progress).await?;
@@ -168,22 +170,25 @@ async fn handle_error(e: InternalError) -> Result<()> {
 fn map_recoverable_errors(e: InternalError) -> InternalError {
     // Map recoverable rusqlite errors to recoverable errors
     match e {
-        InternalError::Critical(CriticalError::Rusqlite(e)) => match e {
-            rus @ rusqlite::Error::SqliteFailure(
-                rusqlite::ffi::Error {
-                    code: rusqlite::ffi::ErrorCode::DatabaseLocked,
-                    ..
-                },
-                _,
-            )
-            | rus @ rusqlite::Error::SqliteFailure(
-                rusqlite::ffi::Error {
-                    code: rusqlite::ffi::ErrorCode::DatabaseBusy,
-                    ..
-                },
-                _,
-            ) => InternalError::Recoverable(error::RecoverableError::Rusqlite(rus)),
-            _ => InternalError::Critical(CriticalError::Rusqlite(e)),
+        InternalError::Critical(CriticalError::DbPoolRusqlite(e)) => match e {
+            db::pool::AcquireThenError::Inner(e) => match e {
+                rus @ rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error {
+                        code: rusqlite::ffi::ErrorCode::DatabaseLocked,
+                        ..
+                    },
+                    _,
+                )
+                | rus @ rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error {
+                        code: rusqlite::ffi::ErrorCode::DatabaseBusy,
+                        ..
+                    },
+                    _,
+                ) => InternalError::Recoverable(error::RecoverableError::Rusqlite(rus)),
+                _ => InternalError::Critical(db::pool::AcquireThenError::Inner(e).into()),
+            },
+            _ => InternalError::Critical(e.into()),
         },
         _ => e,
     }

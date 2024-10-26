@@ -13,7 +13,6 @@ use essential_types::{
     solution::{Mutation, Solution, SolutionData},
     Block, PredicateAddress, Word,
 };
-use rusqlite_pool::tokio::AsyncConnectionPool;
 use std::sync::Arc;
 use tokio::{sync::oneshot::Sender, task::JoinHandle};
 
@@ -126,18 +125,12 @@ async fn test_sync() {
 }
 
 // Create a new AsyncConnectionPool with a unique in-memory database.
-fn new_conn_pool() -> AsyncConnectionPool {
-    let id = uuid::Uuid::new_v4().to_string();
-    AsyncConnectionPool::new(3, || {
-        let conn = rusqlite::Connection::open_with_flags_and_vfs(
-            format!("file:/{}", id),
-            Default::default(),
-            "memdb",
-        )?;
-        conn.pragma_update(None, "foreign_keys", true)?;
-        Ok(conn)
-    })
-    .unwrap()
+fn new_conn_pool() -> db::ConnectionPool {
+    let conf = Config {
+        source: Source::Memory(uuid::Uuid::new_v4().into()),
+        ..Default::default()
+    };
+    db::ConnectionPool::with_tables(&conf).unwrap()
 }
 
 pub fn client() -> reqwest::Client {
