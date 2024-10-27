@@ -28,7 +28,7 @@ async fn test_health_check() {
 }
 
 #[tokio::test]
-async fn test_query_state_and_query_state_range() {
+async fn test_query_state() {
     #[cfg(feature = "tracing")]
     init_tracing_subscriber();
 
@@ -69,10 +69,7 @@ async fn test_query_state_and_query_state_range() {
             let response = client()
                 .get(get_url(
                     port,
-                    &format!(
-                        "/query-state-range/{contract}/{key}?block_inclusive={}",
-                        n_blocks
-                    ),
+                    &format!("/query-state/{contract}/{key}?block_inclusive={}", n_blocks),
                 ))
                 .send()
                 .await
