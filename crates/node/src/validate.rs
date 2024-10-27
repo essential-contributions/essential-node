@@ -48,9 +48,7 @@ pub struct DryRun {
 
 #[derive(Clone)]
 /// In-memory database that contains a dry run block.
-struct Memory {
-    memory: db::ConnectionPool,
-}
+struct Memory(db::ConnectionPool);
 
 /// Either a cascading handle or a connection handle.
 enum Conn {
@@ -311,7 +309,7 @@ impl Memory {
         essential_node_db::finalize_block(&tx, &hash)?;
         tx.commit()?;
 
-        Ok(Self { memory })
+        Ok(Self(memory))
     }
 }
 
@@ -321,7 +319,7 @@ impl Db {
         let conn = match self {
             Db::DryRun(dry_run) => {
                 let cascade = Cascade {
-                    memory: dry_run.memory.memory.acquire().await?,
+                    memory: dry_run.memory.as_ref().acquire().await?,
                     db: dry_run.conn_pool.acquire().await?,
                 };
                 Conn::Cascade(cascade)
@@ -548,4 +546,10 @@ pub fn next_key(mut key: Key) -> Option<Key> {
         }
     }
     None
+}
+
+impl AsRef<db::ConnectionPool> for Memory {
+    fn as_ref(&self) -> &db::ConnectionPool {
+        &self.0
+    }
 }
