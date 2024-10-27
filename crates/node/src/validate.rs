@@ -1,7 +1,7 @@
 //! # Validation
 //! Functions for validating blocks and solutions.
 use crate::{
-    db::{self, ConnectionPool},
+    db::{self, ConnectionHandle, ConnectionPool},
     error::{QueryPredicateError, SolutionPredicatesError, StateReadError, ValidationError},
 };
 use essential_check::{
@@ -27,7 +27,53 @@ struct State {
     block_number: Word,
     solution_index: u64,
     pre_state: bool,
-    conn_pool: db::ConnectionPool,
+    conn_pool: Db,
+}
+
+#[derive(Clone)]
+/// Either a dry run database or a connection pool.
+enum Db {
+    DryRun(DryRun),
+    ConnectionPool(ConnectionPool),
+}
+
+#[derive(Clone)]
+/// A dry run database.
+///
+/// Cascades from in-memory to on-disk database.
+pub struct DryRun {
+    memory: Memory,
+    conn_pool: ConnectionPool,
+}
+
+#[derive(Clone)]
+/// In-memory database that contains a dry run block.
+struct Memory {
+    memory: db::ConnectionPool,
+}
+
+/// Either a cascading handle or a connection handle.
+enum Conn {
+    Cascade(Cascade),
+    Handle(ConnectionHandle),
+}
+
+/// Either a cascading transaction or a transaction.
+enum Transaction<'a> {
+    Cascade(CascadeTransaction<'a>),
+    Handle(rusqlite::Transaction<'a>),
+}
+
+/// Cascading handle that cascades from in-memory to on-disk database.
+struct Cascade {
+    memory: ConnectionHandle,
+    db: ConnectionHandle,
+}
+
+/// Cascading transaction that cascades from in-memory to on-disk database.
+struct CascadeTransaction<'a> {
+    memory: rusqlite::Transaction<'a>,
+    db: rusqlite::Transaction<'a>,
 }
 
 /// Result of validating a block.
@@ -111,6 +157,33 @@ pub async fn validate(
     contract_registry: &ContentAddress,
     block: &Block,
 ) -> Result<ValidateOutcome, ValidationError> {
+    let dry_run = DryRun::new(conn_pool.clone(), block).await?;
+    let db_type = Db::DryRun(dry_run);
+    validate_inner(db_type, contract_registry, block).await
+}
+
+/// Validates a block.
+///
+/// Returns a `ValidationResult` if no `ValidationError` occurred that prevented the block from being validated.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+pub(crate) async fn validate_incoming_block(
+    conn_pool: &ConnectionPool,
+    contract_registry: &ContentAddress,
+    block: &Block,
+) -> Result<ValidateOutcome, ValidationError> {
+    let db_type = Db::ConnectionPool(conn_pool.clone());
+    validate_inner(db_type, contract_registry, block).await
+}
+
+/// Validates a block.
+///
+/// Returns a `ValidationResult` if no `ValidationError` occurred that prevented the block from being validated.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+async fn validate_inner(
+    conn: Db,
+    contract_registry: &ContentAddress,
+    block: &Block,
+) -> Result<ValidateOutcome, ValidationError> {
     let mut total_gas: u64 = 0;
 
     // Check predicates.
@@ -119,13 +192,13 @@ pub async fn validate(
             block_number: block.number,
             solution_index: solution_index as u64,
             pre_state: true,
-            conn_pool: conn_pool.clone(),
+            conn_pool: conn.clone(),
         };
         let post_state = State {
             block_number: block.number,
             solution_index: solution_index as u64,
             pre_state: false,
-            conn_pool: conn_pool.clone(),
+            conn_pool: conn.clone(),
         };
 
         // Create the `predicates` map.
@@ -208,6 +281,96 @@ pub async fn validate(
     Ok(ValidateOutcome::Valid(ValidOutcome { total_gas }))
 }
 
+impl DryRun {
+    /// Create a new dry run database which puts the given block into memory
+    /// then cascades from in-memory to on-disk database.
+    pub async fn new(conn_pool: ConnectionPool, block: &Block) -> Result<Self, rusqlite::Error> {
+        let memory = Memory::new(block)?;
+        Ok(Self { memory, conn_pool })
+    }
+}
+
+impl Memory {
+    /// Create a new in-memory database with the given block.
+    fn new(block: &Block) -> Result<Self, rusqlite::Error> {
+        // Only need one connection for the memory database
+        // as there is no contention.
+        let config = db::Config {
+            conn_limit: 1,
+            source: db::Source::Memory(uuid::Uuid::new_v4().to_string()),
+        };
+        let memory = db::ConnectionPool::new(&config)?;
+        let mut conn = memory
+            .try_acquire()
+            .expect("can't fail due to no other connections");
+
+        // Insert and finalize the block.
+        let tx = conn.transaction()?;
+        essential_node_db::create_tables(&tx)?;
+        let hash = essential_node_db::insert_block(&tx, block)?;
+        essential_node_db::finalize_block(&tx, &hash)?;
+        tx.commit()?;
+
+        Ok(Self { memory })
+    }
+}
+
+impl Db {
+    /// Acquire a connection from the database.
+    pub async fn acquire(&self) -> Result<Conn, tokio::sync::AcquireError> {
+        let conn = match self {
+            Db::DryRun(dry_run) => {
+                let cascade = Cascade {
+                    memory: dry_run.memory.memory.acquire().await?,
+                    db: dry_run.conn_pool.acquire().await?,
+                };
+                Conn::Cascade(cascade)
+            }
+            Db::ConnectionPool(conn_pool) => Conn::Handle(conn_pool.acquire().await?),
+        };
+        Ok(conn)
+    }
+}
+
+impl Conn {
+    /// Start a transaction.
+    fn transaction(&mut self) -> Result<Transaction<'_>, rusqlite::Error> {
+        match self {
+            Conn::Cascade(cascade) => {
+                let memory = cascade.memory.transaction()?;
+                let db = cascade.db.transaction()?;
+                Ok(Transaction::Cascade(CascadeTransaction { memory, db }))
+            }
+            Conn::Handle(handle) => {
+                let tx = handle.transaction()?;
+                Ok(Transaction::Handle(tx))
+            }
+        }
+    }
+}
+
+/// Cascade from in-memory to on-disk database across transactions.
+fn cascade(
+    conn: &CascadeTransaction,
+    f: impl Fn(&rusqlite::Transaction) -> Result<Option<Value>, QueryError>,
+) -> Result<Option<Value>, QueryError> {
+    match f(&conn.memory)? {
+        Some(val) => Ok(Some(val)),
+        None => f(&conn.db),
+    }
+}
+
+/// Run a query on either a cascade or a handle.
+fn query(
+    conn: &Transaction,
+    f: impl Fn(&rusqlite::Transaction) -> Result<Option<Value>, QueryError>,
+) -> Result<Option<Value>, QueryError> {
+    match conn {
+        Transaction::Cascade(cascade_tx) => cascade(cascade_tx, f),
+        Transaction::Handle(tx) => f(tx),
+    }
+}
+
 impl StateRead for State {
     type Error = StateReadError;
 
@@ -231,19 +394,21 @@ impl StateRead for State {
             let mut conn = conn_pool.acquire().await?;
 
             tokio::task::spawn_blocking(move || {
-                let tx = conn.transaction()?;
                 let mut values = vec![];
+                let tx = conn.transaction()?;
 
                 for _ in 0..num_values {
-                    let value = query_state(
-                        &tx,
-                        &contract_addr,
-                        &key,
-                        block_number,
-                        solution_index,
-                        pre_state,
-                    )?
-                    .unwrap_or_default();
+                    let value = query(&tx, |tx| {
+                        query_state(
+                            tx,
+                            &contract_addr,
+                            &key,
+                            block_number,
+                            solution_index,
+                            pre_state,
+                        )
+                    })?;
+                    let value = value.unwrap_or_default();
                     values.push(value);
 
                     key = next_key(key).ok_or_else(|| StateReadError::KeyRangeError)?;
@@ -264,11 +429,11 @@ async fn query_solution_predicates(
     solution_data: &[SolutionData],
 ) -> Result<HashMap<PredicateAddress, Arc<Predicate>>, SolutionPredicatesError> {
     let mut predicates = HashMap::default();
-    let conn = state.conn_pool.acquire().await?;
+    let mut conn = state.conn_pool.acquire().await?;
     for data in solution_data {
         let pred_addr = data.predicate_to_solve.clone();
         let Some(pred) = query_predicate(
-            &conn,
+            &mut conn,
             contract_registry,
             &pred_addr,
             state.block_number,
@@ -289,7 +454,7 @@ async fn query_solution_predicates(
 // TODO: Take a connection pool and perform these queries in parallel.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, err))]
 fn query_predicate(
-    conn: &rusqlite::Connection,
+    conn: &mut Conn,
     contract_registry: &ContentAddress,
     pred_addr: &PredicateAddress,
     block_number: Word,
@@ -303,14 +468,17 @@ fn query_predicate(
 
     // Check whether the predicate is registered within the associated contract.
     let contract_predicate_key = contract_registry::contract_predicate_key(pred_addr);
-    if query_state(
-        conn,
-        contract_registry,
-        &contract_predicate_key,
-        block_number,
-        solution_ix,
-        pre_state,
-    )?
+    let tx = conn.transaction().map_err(QueryError::Rusqlite)?;
+    if query(&tx, |tx| {
+        query_state(
+            tx,
+            contract_registry,
+            &contract_predicate_key,
+            block_number,
+            solution_ix,
+            pre_state,
+        )
+    })?
     .is_none()
     {
         // If it is not associated with the contract, return `None`.
@@ -319,14 +487,16 @@ fn query_predicate(
 
     // Query the full predicate from the contract registry.
     let predicate_key = contract_registry::predicate_key(&pred_addr.predicate);
-    let Some(pred_words) = query_state(
-        conn,
-        contract_registry,
-        &predicate_key,
-        block_number,
-        solution_ix,
-        pre_state,
-    )?
+    let Some(pred_words) = query(&tx, |tx| {
+        query_state(
+            tx,
+            contract_registry,
+            &predicate_key,
+            block_number,
+            solution_ix,
+            pre_state,
+        )
+    })?
     else {
         // If no entry for the predicate, return `None`.
         return Ok(None);

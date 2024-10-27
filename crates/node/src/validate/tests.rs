@@ -130,3 +130,25 @@ async fn predicate_not_found() {
         ),
     }
 }
+
+#[tokio::test]
+async fn validate_dry_run() {
+    let conn_pool = test_conn_pool_with_big_bang().await;
+
+    // Insert a valid block with contracts.
+    let block = test_block_with_contracts(1, Duration::from_secs(1));
+
+    let contract_registry = test_contract_registry().contract;
+    let outcome = validate::validate(&conn_pool, &contract_registry, &block)
+        .await
+        .unwrap();
+
+    match outcome {
+        ValidateOutcome::Valid(ValidOutcome { total_gas }) => {
+            assert!(total_gas > 0);
+        }
+        ValidateOutcome::Invalid(_) => {
+            panic!("expected ValidateOutcome::Valid, found {:?}", outcome)
+        }
+    }
+}
