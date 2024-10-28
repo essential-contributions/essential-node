@@ -94,7 +94,7 @@ async fn validate_next_block(
         block.number
     );
 
-    let res = validate::validate_incoming_block(&conn_pool, contract_registry, &block).await?;
+    let res = validate::validate(&conn_pool, contract_registry, &block).await?;
 
     let more_blocks_available = match res {
         // Validation was successful.

@@ -41,7 +41,7 @@ enum Db {
 /// A dry run database.
 ///
 /// Cascades from in-memory to on-disk database.
-pub struct DryRun {
+struct DryRun {
     memory: Memory,
     conn_pool: ConnectionPool,
 }
@@ -116,13 +116,13 @@ pub enum ValidateFailure {
     GasOverflow,
 }
 
-/// Validates a solution.
+/// Validates a solution without adding it to the database.
 /// Creates a block at the next block number and current timestamp with the given solution
 /// and validates it.
 ///
 /// Returns a `ValidationResult` if no `ValidationError` occurred that prevented the solution from being validated.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-pub async fn validate_solution(
+pub async fn validate_solution_dry_run(
     conn_pool: &ConnectionPool,
     contract_registry: &ContentAddress,
     solution: Solution,
@@ -143,14 +143,14 @@ pub async fn validate_solution(
         solutions: vec![solution],
     };
     drop(tx);
-    validate(conn_pool, contract_registry, &block).await
+    validate_dry_run(conn_pool, contract_registry, &block).await
 }
 
-/// Validates a block.
+/// Validates a block without adding the block to the database.
 ///
 /// Returns a `ValidationResult` if no `ValidationError` occurred that prevented the block from being validated.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-pub async fn validate(
+pub async fn validate_dry_run(
     conn_pool: &ConnectionPool,
     contract_registry: &ContentAddress,
     block: &Block,
@@ -164,7 +164,7 @@ pub async fn validate(
 ///
 /// Returns a `ValidationResult` if no `ValidationError` occurred that prevented the block from being validated.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-pub(crate) async fn validate_incoming_block(
+pub(crate) async fn validate(
     conn_pool: &ConnectionPool,
     contract_registry: &ContentAddress,
     block: &Block,
