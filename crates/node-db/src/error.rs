@@ -14,4 +14,7 @@ pub enum QueryError {
     /// A decoding error occurred.
     #[error("failed to decode: {0}")]
     Decode(#[from] DecodeError),
+    /// Unsupported range used in query range.
+    #[error("query range called with an unsupported range")]
+    UnsupportedRange,
 }
