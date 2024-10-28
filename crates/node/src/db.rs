@@ -169,6 +169,15 @@ impl ConnectionPool {
             .await
     }
 
+    /// Fetches a block by its hash.
+    pub async fn get_block(
+        &self,
+        block_address: ContentAddress,
+    ) -> Result<Option<Block>, AcquireThenQueryError> {
+        self.acquire_then(move |h| db::get_block(h, &block_address))
+            .await
+    }
+
     /// Fetches a solution by its content address.
     pub async fn get_solution(
         &self,
@@ -285,6 +294,23 @@ impl ConnectionPool {
         &self,
     ) -> Result<Option<ContentAddress>, AcquireThenQueryError> {
         self.acquire_then(|h| db::get_validation_progress(h)).await
+    }
+
+    /// Get address of block with number 0.
+    pub async fn get_big_bang_block_address(
+        &self,
+    ) -> Result<Option<ContentAddress>, AcquireThenQueryError> {
+        self.acquire_then(|h| db::get_big_bang_block_address(h))
+            .await
+    }
+
+    /// Get next block(s) given the current block hash.
+    pub async fn get_next_block_address(
+        &self,
+        current_block: ContentAddress,
+    ) -> Result<Vec<ContentAddress>, AcquireThenQueryError> {
+        self.acquire_then(move |h| db::get_next_block_address(h, &current_block))
+            .await
     }
 
     /// Update the validation progress to point to the block with the given CA.
