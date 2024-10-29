@@ -41,7 +41,7 @@ fn test_insert_block() {
         assert_eq!(timestamp, block.timestamp);
 
         // Verify that the solutions were inserted correctly
-        for (solution_ix, solution) in block.solutions.iter().enumerate() {
+        for solution in block.solutions.iter() {
             // Verify solution were inserted
             let solution_address = &content_addr(solution);
             let solution_blob = node_db::encode(solution);
@@ -88,37 +88,6 @@ fn test_insert_block() {
                     let value_blob = dec_var_result.next().unwrap().unwrap();
                     let value: Value = decode(&value_blob).unwrap();
                     assert_eq!(value, *dec_var);
-                }
-
-                // Query pub vars
-                let query = "SELECT pub_var.key, pub_var.value
-                FROM pub_var
-                JOIN block_solution ON block_solution.solution_id = pub_var.solution_id
-                JOIN solution ON block_solution.solution_id = solution.id
-                JOIN block ON block.id = block_solution.block_id
-                WHERE pub_var.data_index = ? AND solution.content_hash = ? AND block_solution.solution_index = ? AND block.number = ?
-                ORDER BY pub_var.key ASC";
-                let mut stmt = conn.prepare(query).unwrap();
-                let pub_var_result = stmt
-                    .query_map(
-                        params![data_ix, solution_address.0, solution_ix, block.number],
-                        |row| {
-                            Ok((
-                                row.get::<_, Vec<u8>>("key")?,
-                                row.get::<_, Vec<u8>>("value")?,
-                            ))
-                        },
-                    )
-                    .unwrap();
-
-                // Verify pub vars were inserted correctly
-                for (res_ix, res) in pub_var_result.enumerate() {
-                    let (key_blob, value_blob) = res.unwrap();
-
-                    let key: Value = decode(&key_blob).unwrap();
-                    let value: Value = decode(&value_blob).unwrap();
-                    assert_eq!(data.transient_data[res_ix].key, key);
-                    assert_eq!(data.transient_data[res_ix].value, value);
                 }
             }
         }

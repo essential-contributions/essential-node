@@ -12,7 +12,6 @@ solution:
       contract: 476B3BE93CB5A20C2998FF91BAA2FD11EC55640743E1FC914BD54A2C7162A73B
       predicate: 96A296D224F285C67BEE93C30F8A309157F0DAA35DC5B87E410B78630A09CFC7
     decision_variables: []
-    transient_data: []
     state_mutations:
     - key:
       - 0
@@ -51,7 +50,6 @@ solution:
       contract: 476B3BE93CB5A20C2998FF91BAA2FD11EC55640743E1FC914BD54A2C7162A73B
       predicate: 96A296D224F285C67BEE93C30F8A309157F0DAA35DC5B87E410B78630A09CFC7
     decision_variables: []
-    transient_data: []
     state_mutations:
     - key:
       - 0
@@ -90,7 +88,6 @@ solution:
       contract: 54259280C974F0C07328B6F4EE42D71B588A9C25CA5A424A708D3831B51D0241
       predicate: 96A296D224F285C67BEE93C30F8A309157F0DAA35DC5B87E410B78630A09CFC7
     decision_variables: []
-    transient_data: []
     state_mutations:
     - key:
       - 0
