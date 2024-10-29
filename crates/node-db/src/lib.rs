@@ -23,6 +23,7 @@ use essential_types::{
 use futures::Stream;
 #[cfg(feature = "pool")]
 pub use pool::ConnectionPool;
+pub use query_range::address;
 pub use query_range::finalized;
 use rusqlite::{named_params, params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
@@ -96,10 +97,15 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<Content
     let solution_hashes: Vec<ContentAddress> = block.solutions.iter().map(content_addr).collect();
     let block_address =
         essential_hash::block_addr::from_block_and_solutions_addrs_slice(block, &solution_hashes);
+
+    // TODO: Use real parent block address once blocks have parent hashes.
+    let parent_block_address = ContentAddress([0; 32]);
+
     tx.execute(
         sql::insert::BLOCK,
         named_params! {
             ":block_address": block_address.0,
+            ":parent_block_address": parent_block_address.0,
             ":number": block.number,
             ":timestamp_secs": secs,
             ":timestamp_nanos": nanos,
@@ -330,6 +336,21 @@ pub fn get_latest_finalized_block_address(
     conn.query_row(sql::query::GET_LATEST_FINALIZED_BLOCK_ADDRESS, [], |row| {
         row.get::<_, Hash>("block_address").map(ContentAddress)
     })
+    .optional()
+}
+
+/// Fetches the parent block address.
+pub fn get_parent_block_address(
+    conn: &Connection,
+    block_address: &ContentAddress,
+) -> Result<Option<ContentAddress>, rusqlite::Error> {
+    conn.query_row(
+        sql::query::GET_PARENT_BLOCK_ADDRESS,
+        named_params! {
+            ":block_address": block_address.0,
+        },
+        |row| row.get::<_, Hash>("block_address").map(ContentAddress),
+    )
     .optional()
 }
 
