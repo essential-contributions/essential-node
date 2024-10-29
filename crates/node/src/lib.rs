@@ -17,8 +17,8 @@ use essential_relayer::Relayer;
 use essential_types::ContentAddress;
 pub use handles::node::Handle;
 use state_derivation::state_derivation_stream;
-pub use validate::validate;
-pub use validate::validate_solution;
+pub use validate::validate_dry_run;
+pub use validate::validate_solution_dry_run;
 use validation::validation_stream;
 
 pub mod db;
