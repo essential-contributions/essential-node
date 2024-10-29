@@ -17,24 +17,20 @@ use essential_types::{
     Block, ContentAddress, Key, PredicateAddress, Value, Word,
 };
 use futures::FutureExt;
-use std::{collections::HashMap, pin::Pin, sync::Arc};
+use std::{collections::HashMap, ops::DerefMut, pin::Pin, sync::Arc};
 
 #[cfg(test)]
 mod tests;
 
 #[derive(Clone)]
-struct State {
+struct State<DB>
+where
+    DB: Acquire + Clone,
+{
     block_number: Word,
     solution_index: u64,
     pre_state: bool,
-    conn_pool: Db,
-}
-
-#[derive(Clone)]
-/// Either a dry run database or a connection pool.
-enum Db {
-    DryRun(DryRun),
-    ConnectionPool(ConnectionPool),
+    conn_pool: DB,
 }
 
 #[derive(Clone)]
@@ -42,24 +38,8 @@ enum Db {
 ///
 /// Cascades from in-memory to on-disk database.
 struct DryRun {
-    memory: Memory,
+    memory: ConnectionPool,
     conn_pool: ConnectionPool,
-}
-
-#[derive(Clone)]
-/// In-memory database that contains a dry run block.
-struct Memory(db::ConnectionPool);
-
-/// Either a cascading handle or a connection handle.
-enum Conn {
-    Cascade(Cascade),
-    Handle(ConnectionHandle),
-}
-
-/// Either a cascading transaction or a transaction.
-enum Transaction<'a> {
-    Cascade(CascadeTransaction<'a>),
-    Handle(rusqlite::Transaction<'a>),
 }
 
 /// Cascading handle that cascades from in-memory to on-disk database.
@@ -72,6 +52,30 @@ struct Cascade {
 struct CascadeTransaction<'a> {
     memory: rusqlite::Transaction<'a>,
     db: rusqlite::Transaction<'a>,
+}
+
+/// Acquire a connection.
+trait Acquire {
+    type Conn: Transaction;
+    fn acquire(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Self::Conn, tokio::sync::AcquireError>>
+           + std::marker::Send;
+}
+
+/// Create a transaction.
+trait Transaction {
+    type Tx<'a>: Query
+    where
+        Self: 'a;
+    fn transaction(&mut self) -> Result<Self::Tx<'_>, rusqlite::Error>;
+}
+
+/// Query a transaction.
+trait Query {
+    fn query<F>(&self, f: F) -> Result<Option<Value>, QueryError>
+    where
+        F: Fn(&rusqlite::Transaction) -> Result<Option<Value>, QueryError>;
 }
 
 /// Result of validating a block.
@@ -156,8 +160,7 @@ pub async fn validate_dry_run(
     block: &Block,
 ) -> Result<ValidateOutcome, ValidationError> {
     let dry_run = DryRun::new(conn_pool.clone(), block).await?;
-    let db_type = Db::DryRun(dry_run);
-    validate_inner(db_type, contract_registry, block).await
+    validate_inner(dry_run, contract_registry, block).await
 }
 
 /// Validates a block.
@@ -169,19 +172,22 @@ pub(crate) async fn validate(
     contract_registry: &ContentAddress,
     block: &Block,
 ) -> Result<ValidateOutcome, ValidationError> {
-    let db_type = Db::ConnectionPool(conn_pool.clone());
-    validate_inner(db_type, contract_registry, block).await
+    validate_inner(conn_pool.clone(), contract_registry, block).await
 }
 
 /// Validates a block.
 ///
 /// Returns a `ValidationResult` if no `ValidationError` occurred that prevented the block from being validated.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-async fn validate_inner(
-    conn: Db,
+async fn validate_inner<DB>(
+    conn: DB,
     contract_registry: &ContentAddress,
     block: &Block,
-) -> Result<ValidateOutcome, ValidationError> {
+) -> Result<ValidateOutcome, ValidationError>
+where
+    DB: Acquire + Clone + Send + Sync + 'static,
+    DB::Conn: Send,
+{
     let mut total_gas: u64 = 0;
 
     // Check predicates.
@@ -283,14 +289,6 @@ impl DryRun {
     /// Create a new dry run database which puts the given block into memory
     /// then cascades from in-memory to on-disk database.
     pub async fn new(conn_pool: ConnectionPool, block: &Block) -> Result<Self, rusqlite::Error> {
-        let memory = Memory::new(block)?;
-        Ok(Self { memory, conn_pool })
-    }
-}
-
-impl Memory {
-    /// Create a new in-memory database with the given block.
-    fn new(block: &Block) -> Result<Self, rusqlite::Error> {
         // Only need one connection for the memory database
         // as there is no contention.
         let config = db::Config {
@@ -308,68 +306,15 @@ impl Memory {
         let hash = essential_node_db::insert_block(&tx, block)?;
         essential_node_db::finalize_block(&tx, &hash)?;
         tx.commit()?;
-
-        Ok(Self(memory))
+        Ok(Self { memory, conn_pool })
     }
 }
 
-impl Db {
-    /// Acquire a connection from the database.
-    pub async fn acquire(&self) -> Result<Conn, tokio::sync::AcquireError> {
-        let conn = match self {
-            Db::DryRun(dry_run) => {
-                let cascade = Cascade {
-                    memory: dry_run.memory.as_ref().acquire().await?,
-                    db: dry_run.conn_pool.acquire().await?,
-                };
-                Conn::Cascade(cascade)
-            }
-            Db::ConnectionPool(conn_pool) => Conn::Handle(conn_pool.acquire().await?),
-        };
-        Ok(conn)
-    }
-}
-
-impl Conn {
-    /// Start a transaction.
-    fn transaction(&mut self) -> Result<Transaction<'_>, rusqlite::Error> {
-        match self {
-            Conn::Cascade(cascade) => {
-                let memory = cascade.memory.transaction()?;
-                let db = cascade.db.transaction()?;
-                Ok(Transaction::Cascade(CascadeTransaction { memory, db }))
-            }
-            Conn::Handle(handle) => {
-                let tx = handle.transaction()?;
-                Ok(Transaction::Handle(tx))
-            }
-        }
-    }
-}
-
-/// Cascade from in-memory to on-disk database across transactions.
-fn cascade(
-    conn: &CascadeTransaction,
-    f: impl Fn(&rusqlite::Transaction) -> Result<Option<Value>, QueryError>,
-) -> Result<Option<Value>, QueryError> {
-    match f(&conn.memory)? {
-        Some(val) => Ok(Some(val)),
-        None => f(&conn.db),
-    }
-}
-
-/// Run a query on either a cascade or a handle.
-fn query(
-    conn: &Transaction,
-    f: impl Fn(&rusqlite::Transaction) -> Result<Option<Value>, QueryError>,
-) -> Result<Option<Value>, QueryError> {
-    match conn {
-        Transaction::Cascade(cascade_tx) => cascade(cascade_tx, f),
-        Transaction::Handle(tx) => f(tx),
-    }
-}
-
-impl StateRead for State {
+impl<DB> StateRead for State<DB>
+where
+    DB: Acquire + Clone + Send + 'static,
+    DB::Conn: Send,
+{
     type Error = StateReadError;
 
     type Future =
@@ -396,7 +341,7 @@ impl StateRead for State {
                 let tx = conn.transaction()?;
 
                 for _ in 0..num_values {
-                    let value = query(&tx, |tx| {
+                    let value = tx.query(|tx| {
                         query_state(
                             tx,
                             &contract_addr,
@@ -421,11 +366,14 @@ impl StateRead for State {
 
 /// Retrieve all predicates required by the solution.
 // TODO: Make proper use of `State`'s connection pool and query predicates in parallel.
-async fn query_solution_predicates(
-    state: &State,
+async fn query_solution_predicates<DB>(
+    state: &State<DB>,
     contract_registry: &ContentAddress,
     solution_data: &[SolutionData],
-) -> Result<HashMap<PredicateAddress, Arc<Predicate>>, SolutionPredicatesError> {
+) -> Result<HashMap<PredicateAddress, Arc<Predicate>>, SolutionPredicatesError>
+where
+    DB: Acquire + Clone,
+{
     let mut predicates = HashMap::default();
     let mut conn = state.conn_pool.acquire().await?;
     for data in solution_data {
@@ -451,13 +399,16 @@ async fn query_solution_predicates(
 /// Note that `query_predicate` will always query *inclusive* of the given solution index.
 // TODO: Take a connection pool and perform these queries in parallel.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, err))]
-fn query_predicate(
-    conn: &mut Conn,
+fn query_predicate<C>(
+    conn: &mut C,
     contract_registry: &ContentAddress,
     pred_addr: &PredicateAddress,
     block_number: Word,
     solution_ix: u64,
-) -> Result<Option<Predicate>, QueryPredicateError> {
+) -> Result<Option<Predicate>, QueryPredicateError>
+where
+    C: Transaction,
+{
     use essential_node_types::contract_registry;
     let pre_state = false;
 
@@ -467,17 +418,18 @@ fn query_predicate(
     // Check whether the predicate is registered within the associated contract.
     let contract_predicate_key = contract_registry::contract_predicate_key(pred_addr);
     let tx = conn.transaction().map_err(QueryError::Rusqlite)?;
-    if query(&tx, |tx| {
-        query_state(
-            tx,
-            contract_registry,
-            &contract_predicate_key,
-            block_number,
-            solution_ix,
-            pre_state,
-        )
-    })?
-    .is_none()
+    if tx
+        .query(|tx| {
+            query_state(
+                tx,
+                contract_registry,
+                &contract_predicate_key,
+                block_number,
+                solution_ix,
+                pre_state,
+            )
+        })?
+        .is_none()
     {
         // If it is not associated with the contract, return `None`.
         return Ok(None);
@@ -485,7 +437,7 @@ fn query_predicate(
 
     // Query the full predicate from the contract registry.
     let predicate_key = contract_registry::predicate_key(&pred_addr.predicate);
-    let Some(pred_words) = query(&tx, |tx| {
+    let Some(pred_words) = tx.query(|tx| {
         query_state(
             tx,
             contract_registry,
@@ -548,8 +500,67 @@ pub fn next_key(mut key: Key) -> Option<Key> {
     None
 }
 
-impl AsRef<db::ConnectionPool> for Memory {
-    fn as_ref(&self) -> &db::ConnectionPool {
-        &self.0
+impl Acquire for ConnectionPool {
+    type Conn = ConnectionHandle;
+    fn acquire(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Self::Conn, tokio::sync::AcquireError>>
+           + std::marker::Send {
+        self.acquire()
+    }
+}
+
+impl Transaction for ConnectionHandle {
+    type Tx<'a> = rusqlite::Transaction<'a>;
+
+    fn transaction(&mut self) -> Result<Self::Tx<'_>, rusqlite::Error> {
+        self.deref_mut().transaction()
+    }
+}
+
+impl Query for rusqlite::Transaction<'_> {
+    fn query<F>(&self, f: F) -> Result<Option<Value>, QueryError>
+    where
+        F: Fn(&rusqlite::Transaction) -> Result<Option<Value>, QueryError>,
+    {
+        f(self)
+    }
+}
+
+impl Acquire for DryRun {
+    type Conn = Cascade;
+    fn acquire(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Self::Conn, tokio::sync::AcquireError>>
+           + std::marker::Send {
+        let memory = self.memory.acquire();
+        let db = self.conn_pool.acquire();
+        async move {
+            let memory = memory.await?;
+            let db = db.await?;
+            Ok(Cascade { memory, db })
+        }
+    }
+}
+
+impl Transaction for Cascade {
+    type Tx<'a> = CascadeTransaction<'a>;
+
+    fn transaction(&mut self) -> Result<Self::Tx<'_>, rusqlite::Error> {
+        let memory = self.memory.transaction()?;
+        let db = self.db.transaction()?;
+        Ok(CascadeTransaction { memory, db })
+    }
+}
+
+impl Query for CascadeTransaction<'_> {
+    fn query<F>(&self, f: F) -> Result<Option<Value>, QueryError>
+    where
+        F: Fn(&rusqlite::Transaction) -> Result<Option<Value>, QueryError>,
+    {
+        match f(&self.memory)? {
+            Some(val) => Ok(Some(val)),
+            None => f(&self.db),
+        }
     }
 }
