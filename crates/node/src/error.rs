@@ -29,8 +29,6 @@ pub(super) enum InternalError {
 
 #[derive(Debug, Error)]
 pub enum RecoverableError {
-    #[error("block 0 not found")]
-    FirstBlockNotFound,
     #[error("could not read state")]
     ReadState(AcquireThenQueryError),
     #[error(transparent)]
