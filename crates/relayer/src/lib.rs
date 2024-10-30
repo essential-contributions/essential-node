@@ -118,7 +118,7 @@ where
                 Err(e) => {
                     // Return error if it's critical or
                     // continue if it's recoverable
-                    handle_error(e)?;
+                    handle_error(e).await?;
                 }
             }
         }
@@ -136,7 +136,7 @@ where
 }
 
 /// Exit on critical errors, log recoverable errors
-fn handle_error(e: InternalError) -> Result<()> {
+async fn handle_error(e: InternalError) -> Result<()> {
     let e = map_recoverable_errors(e);
     match e {
         InternalError::Critical(e) => {
@@ -149,6 +149,11 @@ fn handle_error(e: InternalError) -> Result<()> {
         }
         #[cfg(feature = "tracing")]
         InternalError::Recoverable(e) => {
+            // Slow down loop if source is unreachable
+            if matches!(e, error::RecoverableError::HttpClient(_)) {
+                // TODO: Make exponential backoff.
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
             tracing::error!("The relayer has encountered a recoverable error: {} and will now restart the stream.", e);
 
             Ok(())
