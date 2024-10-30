@@ -1,7 +1,7 @@
 INSERT
     OR IGNORE INTO dec_var (
         solution_id,
-        data_index,
+        data_id,
         dec_var_index,
         value
     )
@@ -16,5 +16,15 @@ VALUES
                 content_hash = :solution_hash
             LIMIT
                 1
-        ), :data_index, :dec_var_index, :value
+        ),
+        (
+            SELECT
+                id
+            FROM
+                solution_data
+            WHERE
+                data_index = :data_index
+            LIMIT
+                1
+        ), :dec_var_index, :value
     );

@@ -180,7 +180,8 @@ async fn get_next_block(
             Ok(Err(CriticalError::Fork.into()))
         } else {
             let block_address = blocks.into_iter().next().expect("blocks is not empty");
-            let block = essential_node_db::get_block(conn, &block_address)?;
+            let tx = conn.transaction()?;
+            let block = essential_node_db::get_block(&tx, &block_address)?;
             Ok(Ok(block))
         }
     })

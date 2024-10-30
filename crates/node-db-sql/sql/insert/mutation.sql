@@ -1,9 +1,8 @@
 INSERT
     OR IGNORE INTO mutation (
         solution_id,
-        data_index,
+        data_id,
         mutation_index,
-        contract_ca,
         key,
         value
     )
@@ -18,5 +17,15 @@ VALUES
                 content_hash = :solution_hash
             LIMIT
                 1
-        ), :data_index, :mutation_index, :contract_ca, :key, :value
+        ), 
+        (
+            SELECT 
+                id
+            FROM
+                solution_data
+            WHERE
+                data_index = :data_index
+            LIMIT
+                1
+        ), :mutation_index, :key, :value
     );

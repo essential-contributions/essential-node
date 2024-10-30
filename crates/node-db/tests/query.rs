@@ -18,12 +18,11 @@ fn test_get_solution() {
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
     node_db::insert_block(&tx, &block).unwrap();
-    tx.commit().unwrap();
 
     // Fetch the first solution.
     let solution = &block.solutions[0];
     let sol_ca = essential_hash::content_addr(solution);
-    let fetched_solution = node_db::get_solution(&conn, &sol_ca).unwrap().unwrap();
+    let fetched_solution = node_db::get_solution(&tx, &sol_ca).unwrap();
 
     assert_eq!(solution, &fetched_solution);
 }

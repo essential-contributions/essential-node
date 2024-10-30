@@ -205,17 +205,23 @@ impl ConnectionPool {
         &self,
         block_address: ContentAddress,
     ) -> Result<Option<Block>, AcquireThenQueryError> {
-        self.acquire_then(move |h| crate::get_block(h, &block_address))
-            .await
+        self.acquire_then(move |h| {
+            let tx = h.transaction()?;
+            crate::get_block(&tx, &block_address)
+        })
+        .await
     }
 
     /// Fetches a solution by its content address.
     pub async fn get_solution(
         &self,
         ca: ContentAddress,
-    ) -> Result<Option<Solution>, AcquireThenQueryError> {
-        self.acquire_then(move |h| crate::get_solution(h, &ca))
-            .await
+    ) -> Result<Solution, AcquireThenQueryError> {
+        self.acquire_then(move |h| {
+            let tx = h.transaction()?;
+            crate::get_solution(&tx, &ca)
+        })
+        .await
     }
 
     /// Fetches the state value for the given contract content address and key pair.

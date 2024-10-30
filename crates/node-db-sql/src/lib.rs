@@ -25,6 +25,7 @@ pub mod create {
     decl_const_sql_str!(FAILED_BLOCK, "create/failed_block.sql");
     decl_const_sql_str!(FINALIZED_BLOCK, "create/finalized_block.sql");
     decl_const_sql_str!(MUTATION, "create/mutation.sql");
+    decl_const_sql_str!(SOLUTION_DATA, "create/solution_data.sql");
     decl_const_sql_str!(SOLUTION, "create/solution.sql");
     decl_const_sql_str!(STATE, "create/state.sql");
     decl_const_sql_str!(VALIDATION_PROGRESS, "create/validation_progress.sql");
@@ -38,6 +39,7 @@ pub mod insert {
     decl_const_sql_str!(FAILED_BLOCK, "insert/failed_block.sql");
     decl_const_sql_str!(FINALIZE_BLOCK, "insert/finalize_block.sql");
     decl_const_sql_str!(MUTATION, "insert/mutation.sql");
+    decl_const_sql_str!(SOLUTION_DATA, "insert/solution_data.sql");
     decl_const_sql_str!(SOLUTION, "insert/solution.sql");
     decl_const_sql_str!(VALIDATION_PROGRESS, "insert/validation_progress.sql");
 }
@@ -59,7 +61,9 @@ pub mod query {
         GET_PARENT_BLOCK_ADDRESS,
         "query/get_parent_block_address.sql"
     );
-    decl_const_sql_str!(GET_SOLUTION, "query/get_solution.sql");
+    decl_const_sql_str!(GET_SOLUTION_DATA, "query/get_solution_data.sql");
+    decl_const_sql_str!(GET_SOLUTION_DEC_VARS, "query/get_solution_dec_vars.sql");
+    decl_const_sql_str!(GET_SOLUTION_MUTATIONS, "query/get_solution_mutations.sql");
     decl_const_sql_str!(GET_STATE, "query/get_state.sql");
     decl_const_sql_str!(GET_VALIDATION_PROGRESS, "query/get_validation_progress.sql");
     decl_const_sql_str!(LIST_BLOCKS, "query/list_blocks.sql");
@@ -110,6 +114,7 @@ pub mod table {
     pub const FAILED_BLOCK: Table = Table::new("failed_block", create::FAILED_BLOCK);
     pub const FINALIZED_BLOCK: Table = Table::new("finalized_block", create::FINALIZED_BLOCK);
     pub const MUTATION: Table = Table::new("mutation", create::MUTATION);
+    pub const SOLUTION_DATA: Table = Table::new("solution_data", create::SOLUTION_DATA);
     pub const SOLUTION: Table = Table::new("solution", create::SOLUTION);
     pub const STATE: Table = Table::new("state", create::STATE);
     pub const VALIDATION_PROGRESS: Table =
@@ -121,6 +126,7 @@ pub mod table {
         DEC_VAR,
         FINALIZED_BLOCK,
         MUTATION,
+        SOLUTION_DATA,
         SOLUTION,
         BLOCK_SOLUTION,
         FAILED_BLOCK,

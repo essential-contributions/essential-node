@@ -44,21 +44,40 @@ fn test_insert_block() {
         for solution in block.solutions.iter() {
             // Verify solution were inserted
             let solution_address = &content_addr(solution);
-            let solution_blob = node_db::encode(solution);
-            let query = "SELECT solution FROM solution WHERE content_hash = ?";
+            let query = "SELECT 1 FROM solution WHERE content_hash = ?";
             let mut stmt = conn.prepare(query).unwrap();
             let mut rows = stmt.query([&solution_address.0]).unwrap();
             let row = rows.next().unwrap().unwrap();
-            let solution_data: Vec<u8> = row.get(0).unwrap();
-            assert_eq!(solution_data, solution_blob);
+            let solution_data: Option<bool> = row.get(0).unwrap();
+            assert!(solution_data.is_some());
 
             for (data_ix, data) in solution.data.iter().enumerate() {
+                // Verify solution data was inserted corectly
+                let query = "SELECT solution_data.contract_addr, solution_data.predicate_addr 
+                    FROM solution_data JOIN solution ON solution_data.solution_id = solution.id
+                    WHERE solution.content_hash = ? AND solution_data.data_index = ?";
+                let mut stmt = conn.prepare(query).unwrap();
+                let mut rows = stmt
+                    .query(params![solution_address.0, data_ix as i64])
+                    .unwrap();
+                let row = rows.next().unwrap().unwrap();
+                let contract_addr: Hash = decode(&row.get::<_, Vec<u8>>(0).unwrap()).unwrap();
+                let predicate_addr: Hash = decode(&row.get::<_, Vec<u8>>(1).unwrap()).unwrap();
+                assert_eq!(
+                    PredicateAddress {
+                        contract: ContentAddress(contract_addr),
+                        predicate: ContentAddress(predicate_addr)
+                    },
+                    data.predicate_to_solve
+                );
+
                 // Verify contract to mutation mappings were inserted correctly
                 for (mutation_ix, mutation) in data.state_mutations.iter().enumerate() {
                     // Query deployed contract
                     let query = "SELECT mutation.key FROM mutation
                     JOIN solution ON mutation.solution_id = solution.id
-                    WHERE solution.content_hash = ? AND mutation.mutation_index = ? AND mutation.data_index = ?
+                    JOIN solution_data ON solution_data.id = mutation.data_id
+                    WHERE solution.content_hash = ? AND mutation.mutation_index = ? AND solution_data.data_index = ?
                     ORDER BY mutation.mutation_index ASC";
                     let mut stmt = conn.prepare(query).unwrap();
                     let mut result = stmt
@@ -76,8 +95,8 @@ fn test_insert_block() {
                 for (dvi, dec_var) in data.decision_variables.iter().enumerate() {
                     // Query dec vars
                     let query = "SELECT dec_var.value
-                        FROM dec_var JOIN solution ON dec_var.solution_id = solution.id
-                        WHERE dec_var.data_index = ? AND dec_var.dec_var_index = ? AND solution.content_hash = ?";
+                        FROM dec_var JOIN solution ON dec_var.solution_id = solution.id JOIN solution_data ON dec_var.data_id = solution_data.id
+                        WHERE solution_data.data_index = ? AND dec_var.dec_var_index = ? AND solution.content_hash = ?";
                     let mut stmt = conn.prepare(query).unwrap();
                     let mut dec_var_result = stmt
                         .query_map(params![data_ix, dvi, solution_address.0], |row| {
