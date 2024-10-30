@@ -81,7 +81,7 @@ async fn validate_next_block(
 ) -> Result<bool, InternalError> {
     let progress = get_last_progress(&conn_pool)
         .await?
-        .ok_or(RecoverableError::LastProgressNone)?;
+        .ok_or(CriticalError::LastProgressNone)?;
 
     // Only validate if there's a block to validate.
     let Some(block) = get_next_block(&conn_pool, progress).await? else {

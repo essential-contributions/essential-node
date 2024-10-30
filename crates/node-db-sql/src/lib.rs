@@ -44,10 +44,6 @@ pub mod insert {
 
 /// Statements for making queries.
 pub mod query {
-    decl_const_sql_str!(
-        GET_BIG_BANG_BLOCK_ADDRESS,
-        "query/get_big_bang_block_address.sql"
-    );
     decl_const_sql_str!(GET_BLOCK_HEADER, "query/get_block_header.sql");
     decl_const_sql_str!(GET_BLOCK, "query/get_block.sql");
     decl_const_sql_str!(GET_LATEST_BLOCK_NUMBER, "query/get_latest_block_number.sql");

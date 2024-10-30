@@ -39,8 +39,6 @@ pub enum RecoverableError {
     Join(#[from] tokio::task::JoinError),
     #[error("failed to get last block")]
     LastProgress(#[from] AcquireThenQueryError),
-    #[error("last progress cannot be none")]
-    LastProgressNone,
     #[error("A recoverable database error occurred: {0}")]
     Rusqlite(rusqlite::Error),
     #[error("predicate not in database: {}", fmt_pred_addr(.0))]
@@ -75,6 +73,8 @@ pub enum CriticalError {
     DbPoolClosed(#[from] tokio::sync::AcquireError),
     #[error(transparent)]
     Relayer(#[from] essential_relayer::Error),
+    #[error("last progress cannot be none")]
+    LastProgressNone,
 }
 
 #[derive(Debug, Error)]

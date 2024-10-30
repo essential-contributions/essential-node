@@ -347,18 +347,6 @@ pub fn get_validation_progress(conn: &Connection) -> Result<Option<ContentAddres
     Ok(value)
 }
 
-/// Returns the address of block with number 0.
-pub fn get_big_bang_block_address(conn: &Connection) -> Result<Option<ContentAddress>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::GET_BIG_BANG_BLOCK_ADDRESS)?;
-    let value: Option<ContentAddress> = stmt
-        .query_row([], |row| {
-            let block_address: Hash = row.get("block_address")?;
-            Ok(ContentAddress(block_address))
-        })
-        .optional()?;
-    Ok(value)
-}
-
 /// Given a block address, returns the addresses of blocks that have the next block number.
 pub fn get_next_block_addresses(
     conn: &Connection,
@@ -374,11 +362,11 @@ pub fn get_next_block_addresses(
             Ok(block_address)
         },
     )?;
-    let mut block_addresses = vec![];
-    for res in rows {
-        let block_address = res?;
-        block_addresses.push(ContentAddress(block_address));
-    }
+    let block_addresses = rows
+        .collect::<Result<Vec<_>, _>>()?
+        .iter()
+        .map(|hash| ContentAddress(*hash))
+        .collect();
     Ok(block_addresses)
 }
 
