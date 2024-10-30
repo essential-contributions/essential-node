@@ -13,13 +13,13 @@ use std::time::Duration;
 fn insert_block_and_send_notification(
     conn: &mut Connection,
     block: &Block,
-    state_rx: &tokio::sync::watch::Sender<()>,
+    block_rx: &tokio::sync::watch::Sender<()>,
 ) {
     let tx = conn.transaction().unwrap();
     let block_ca = insert_block(&tx, block).unwrap();
     finalize_block(&tx, &block_ca).unwrap();
     tx.commit().unwrap();
-    state_rx.send(()).unwrap();
+    block_rx.send(()).unwrap();
 }
 
 #[tokio::test]

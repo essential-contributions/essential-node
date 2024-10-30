@@ -4,7 +4,7 @@ use crate::{
     db::{Config, ConnectionPool, Source},
     ensure_big_bang_block,
 };
-use essential_node_db::{get_state_progress, get_validation_progress, query_state};
+use essential_node_db::{get_validation_progress, query_state};
 use essential_node_types::{register_contract_solution, BigBang};
 use essential_types::{
     contract::Contract,
@@ -201,19 +201,6 @@ pub fn test_constraints(seed: Word) -> Vec<ConstraintBytecode> {
         essential_constraint_asm::Stack::Push(1).into(),
     ])
     .collect()]
-}
-
-// Check that the state progress in the database is block number and hash
-pub fn assert_state_progress_is_some(conn: &Connection, hash: &ContentAddress) {
-    let progress_hash = get_state_progress(conn)
-        .unwrap()
-        .expect("state progress should be some");
-    assert_eq!(progress_hash, *hash);
-}
-
-// Check that the state progress in the database is none
-pub fn assert_state_progress_is_none(conn: &Connection) {
-    assert!(get_state_progress(conn).unwrap().is_none());
 }
 
 // Check that the validation progress in the database is block number and hash

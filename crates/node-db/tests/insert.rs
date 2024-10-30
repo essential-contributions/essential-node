@@ -274,63 +274,6 @@ fn test_fork_block() {
 }
 
 #[test]
-fn test_update_state_progress() {
-    let blocks = test_blocks(2);
-    let block_addresses = blocks.iter().map(content_addr).collect::<Vec<_>>();
-
-    let mut conn = test_conn();
-    let tx = conn.transaction().unwrap();
-    node_db::create_tables(&tx).unwrap();
-    for block in &blocks {
-        node_db::insert_block(&tx, block).unwrap();
-    }
-    node_db::update_state_progress(&tx, &block_addresses[0])
-        .expect("Failed to insert state progress");
-    tx.commit().unwrap();
-
-    let mut stmt = conn
-        .prepare("SELECT state_progress.id, block.block_address FROM state_progress JOIN block ON block.id = state_progress.block_id")
-        .unwrap();
-    let mut result = stmt
-        .query_map((), |row| {
-            Ok((
-                row.get::<_, u64>("id")?,
-                row.get::<_, Vec<u8>>("block_address")?,
-            ))
-        })
-        .unwrap();
-    let (id, block_address) = result.next().unwrap().unwrap();
-    assert_eq!(id, 1);
-    assert_eq!(
-        node_db::decode::<Hash>(&block_address).unwrap(),
-        block_addresses[0].0
-    );
-    assert!(result.next().is_none());
-
-    node_db::update_state_progress(&conn, &block_addresses[1])
-        .expect("Failed to insert state progress");
-
-    drop(result);
-
-    let result = node_db::get_state_progress(&conn).unwrap().unwrap();
-    assert_eq!(result, block_addresses[1]);
-
-    // Id should always be 1 because we only inserted one row.
-    let mut result = stmt.query_map((), |row| row.get::<_, u64>("id")).unwrap();
-    let id = result.next().unwrap().unwrap();
-    assert_eq!(id, 1);
-    drop(result);
-
-    // Check the db only has one row.
-    let num_rows = conn
-        .query_row("SELECT COUNT(id) FROM state_progress", (), |row| {
-            row.get::<_, i64>("COUNT(id)")
-        })
-        .unwrap();
-    assert_eq!(num_rows, 1);
-}
-
-#[test]
 fn test_update_validation_progress() {
     let blocks = test_blocks(2);
     let block_addresses = blocks.iter().map(content_addr).collect::<Vec<_>>();

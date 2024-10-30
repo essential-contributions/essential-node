@@ -28,28 +28,6 @@ fn test_get_solution() {
 }
 
 #[test]
-fn test_get_state_progress() {
-    // Create test block.
-    let block = test_block(42, Default::default());
-    let block_address = content_addr(&block);
-
-    // Create an in-memory SQLite database.
-    let mut conn = test_conn();
-
-    // Create the necessary tables and insert the contract progress.
-    let tx = conn.transaction().unwrap();
-    node_db::create_tables(&tx).unwrap();
-    node_db::insert_block(&tx, &block).unwrap();
-    node_db::update_state_progress(&tx, &block_address).unwrap();
-    tx.commit().unwrap();
-
-    // Fetch the state progress.
-    let fetched_block_address = node_db::get_state_progress(&conn).unwrap().unwrap();
-
-    assert_eq!(fetched_block_address, block_address);
-}
-
-#[test]
 fn test_get_validation_progress() {
     // Create test block.
     let block = test_block(42, Default::default());

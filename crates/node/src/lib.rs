@@ -6,7 +6,6 @@
 //!
 //! The node, via the [`run`] function:
 //! - Runs the relayer stream and syncs blocks.
-//! - Derives state from the synced blocks.
 //! - Performs validation.
 
 use db::ConnectionPool;
@@ -16,7 +15,6 @@ use essential_node_types::BigBang;
 use essential_relayer::Relayer;
 use essential_types::ContentAddress;
 pub use handles::node::Handle;
-use state_derivation::state_derivation_stream;
 pub use validate::validate_dry_run;
 pub use validate::validate_solution_dry_run;
 use validation::validation_stream;
@@ -24,7 +22,6 @@ use validation::validation_stream;
 pub mod db;
 mod error;
 mod handles;
-mod state_derivation;
 #[cfg(any(feature = "test-utils", test))]
 #[allow(missing_docs)]
 pub mod test_utils;
@@ -34,7 +31,7 @@ mod validation;
 /// Wrapper around `watch::Sender` to notify of new blocks.
 ///
 /// This is used by `essential-builder` to notify `essential-relayer`
-/// and by `essential-relayer` to notify [`state_derivation`] and [`validation`] streams.
+/// and by `essential-relayer` to notify and [`validation`] streams.
 #[derive(Clone, Default)]
 pub struct BlockTx(tokio::sync::watch::Sender<()>);
 
@@ -50,8 +47,6 @@ pub struct RunConfig {
     /// Node endpoint to sync blocks from.
     /// If `None` then the relayer stream will not run.
     pub relayer_source_endpoint: Option<String>,
-    /// If `false` then the state derivation stream will not run.
-    pub run_state_derivation: bool,
     /// If `false` then the validation stream will not run.
     pub run_validation: bool,
 }
@@ -152,10 +147,10 @@ pub async fn ensure_big_bang_block(
     Ok(bb_block_ca)
 }
 
-/// Optionally run the relayer and state derivation and validation streams.
+/// Optionally run the relayer and validation stream.
 ///
 /// Relayer will sync blocks from the node API blocks stream to node database
-/// and notify state derivation stream of new blocks via the shared watch channel.
+/// and notify validation stream of new blocks via the shared watch channel.
 ///
 /// Returns a [`Handle`] that can be used to close the streams.
 /// The streams will continue to run until the handle is dropped.
@@ -166,7 +161,6 @@ pub fn run(
     block_notify: BlockTx,
 ) -> Result<Handle, CriticalError> {
     let RunConfig {
-        run_state_derivation,
         run_validation,
         relayer_source_endpoint,
     } = conf;
@@ -175,16 +169,6 @@ pub fn run(
     let relayer_handle = if let Some(relayer_source_endpoint) = relayer_source_endpoint {
         let relayer = Relayer::new(relayer_source_endpoint.as_str())?;
         Some(relayer.run(conn_pool.0.clone(), block_notify.0.clone())?)
-    } else {
-        None
-    };
-
-    // Run state derivation stream.
-    let state_handle = if run_state_derivation {
-        Some(state_derivation_stream(
-            conn_pool.clone(),
-            block_notify.new_listener().0,
-        )?)
     } else {
         None
     };
@@ -200,7 +184,7 @@ pub fn run(
         None
     };
 
-    Ok(Handle::new(relayer_handle, state_handle, validation_handle))
+    Ok(Handle::new(relayer_handle, validation_handle))
 }
 
 impl BlockTx {

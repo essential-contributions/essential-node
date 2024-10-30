@@ -154,8 +154,8 @@ The query parameters must be empty or one of the following combinations:
         let contract_ca: ContentAddress = contract_ca.parse()?;
         let key: Vec<u8> = hex::decode(key)?;
         let key = key_words_from_bytes(&key);
-        // TODO: When state derivation actually compacts state and discards blocks,
-        // this query should fall back to querying compacted state.
+        // TODO: When state is compacted and blocks are discarded, this query should
+        // fall back to querying compacted state.
 
         // TODO: When blocks aren't immediately finalized, this query will need to
         // either take a block address or use a fork choice rule to determine the
