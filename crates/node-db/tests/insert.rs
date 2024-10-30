@@ -1,8 +1,8 @@
 //! Basic tests for testing insertion behaviour.
 
 use essential_hash::content_addr;
-use essential_node_db::{self as node_db, decode};
-use essential_types::{Hash, Key, Value, Word};
+use essential_node_db::{self as node_db, words_from_blob};
+use essential_types::{Key, Value, Word};
 use rusqlite::params;
 use std::time::Duration;
 use util::{test_blocks, test_blocks_with_vars, test_conn};
@@ -68,7 +68,7 @@ fn test_insert_block() {
                         )
                         .unwrap();
                     let key_blob = result.next().unwrap().unwrap();
-                    let key: Key = decode(&key_blob).unwrap();
+                    let key: Key = words_from_blob(&key_blob);
                     assert_eq!(mutation.key, key);
                 }
 
@@ -86,7 +86,7 @@ fn test_insert_block() {
                         .unwrap();
 
                     let value_blob = dec_var_result.next().unwrap().unwrap();
-                    let value: Value = decode(&value_blob).unwrap();
+                    let value: Value = words_from_blob(&value_blob);
                     assert_eq!(value, *dec_var);
                 }
             }
@@ -301,10 +301,7 @@ fn test_update_validation_progress() {
         .unwrap();
     let (id, block_address) = result.next().unwrap().unwrap();
     assert_eq!(id, 1);
-    assert_eq!(
-        node_db::decode::<Hash>(&block_address).unwrap(),
-        block_addresses[0].0
-    );
+    assert_eq!(block_address, block_addresses[0].0);
     assert!(result.next().is_none());
 
     node_db::update_validation_progress(&conn, &block_addresses[1])
