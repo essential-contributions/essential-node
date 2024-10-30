@@ -137,7 +137,6 @@ pub fn register_contract_solution(
 ) -> Result<SolutionData, PredicateError> {
     Ok(SolutionData {
         predicate_to_solve: contract_registry,
-        transient_data: vec![],
         decision_variables: vec![],
         state_mutations: register_contract_mutations(contract)?,
     })
@@ -202,7 +201,6 @@ pub fn block_state_solution(
 ) -> SolutionData {
     SolutionData {
         predicate_to_solve: block_state,
-        transient_data: vec![],
         decision_variables: vec![],
         state_mutations: block_state_mutations(block_number, block_timestamp_secs),
     }

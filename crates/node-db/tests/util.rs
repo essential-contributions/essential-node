@@ -36,15 +36,6 @@ pub fn test_blocks_with_vars(n: Word) -> (ContentAddress, Vec<Block>) {
                         })
                         .collect();
                     data.decision_variables = values.by_ref().take(2).map(|v| vec![v]).collect();
-                    data.transient_data = values
-                        .by_ref()
-                        .take(2)
-                        .zip(keys.by_ref())
-                        .map(|(v, k)| Mutation {
-                            key: vec![k as Word],
-                            value: vec![v],
-                        })
-                        .collect();
                 }
             }
             block
@@ -84,7 +75,6 @@ pub fn test_solution_data(seed: Word) -> SolutionData {
             predicate,
         },
         decision_variables: vec![],
-        transient_data: vec![],
         state_mutations: vec![],
     }
 }

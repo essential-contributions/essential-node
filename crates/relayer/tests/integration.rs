@@ -235,7 +235,6 @@ fn test_structs() -> (Vec<Solution>, Vec<Arc<Block>>) {
                 data: vec![SolutionData {
                     predicate_to_solve: addr,
                     decision_variables: vec![],
-                    transient_data: vec![],
                     state_mutations: vec![Mutation {
                         key: vec![1],
                         value: vec![1],

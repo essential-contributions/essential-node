@@ -117,7 +117,6 @@ pub fn test_invalid_block(number: Word, timestamp: Duration) -> (Block, Contract
             predicate,
         },
         decision_variables: vec![],
-        transient_data: vec![],
         state_mutations: vec![Mutation {
             key: vec![seed],
             value: vec![0, 0, 0, 0],
@@ -158,7 +157,6 @@ pub fn test_solution_data(seed: Word) -> (SolutionData, Contract) {
                 predicate,
             },
             decision_variables: vec![],
-            transient_data: vec![],
             state_mutations: vec![Mutation {
                 key: vec![seed],
                 value: vec![0, 0, 0, 0],
