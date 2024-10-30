@@ -30,7 +30,6 @@ async fn test_args() {
 
     // Disable all streams
     let mut a = args.clone();
-    a.disable_state_derivation = true;
     a.disable_validation = true;
     a.relayer_source_endpoint = None;
 

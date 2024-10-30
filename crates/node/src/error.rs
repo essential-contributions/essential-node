@@ -29,10 +29,6 @@ pub(super) enum InternalError {
 
 #[derive(Debug, Error)]
 pub enum RecoverableError {
-    #[error("block 0 not found")]
-    FirstBlockNotFound,
-    #[error("block {0} not found")]
-    BlockNotFound(ContentAddress),
     #[error("could not read state")]
     ReadState(AcquireThenQueryError),
     #[error(transparent)]
@@ -42,7 +38,7 @@ pub enum RecoverableError {
     #[error("failed to join handle")]
     Join(#[from] tokio::task::JoinError),
     #[error("failed to get last block")]
-    LastProgress,
+    LastProgress(#[from] AcquireThenQueryError),
     #[error("A recoverable database error occurred: {0}")]
     Rusqlite(rusqlite::Error),
     #[error("predicate not in database: {}", fmt_pred_addr(.0))]
@@ -71,10 +67,14 @@ pub enum CriticalError {
     DatabaseFailed(#[from] rusqlite::Error),
     #[error("Critical database failure: {0}")]
     ReadState(#[from] AcquireThenQueryError),
+    #[error("Critical error getting next block: {0}")]
+    GetNextBlock(AcquireThenQueryError),
     #[error("database connection pool closed")]
     DbPoolClosed(#[from] tokio::sync::AcquireError),
     #[error(transparent)]
     Relayer(#[from] essential_relayer::Error),
+    #[error("last progress cannot be none")]
+    LastProgressNone,
 }
 
 #[derive(Debug, Error)]

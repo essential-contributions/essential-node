@@ -285,6 +285,46 @@ pub fn get_block_header(
     .optional()
 }
 
+/// Returns the block with given address.
+pub fn get_block(
+    conn: &Connection,
+    block_address: &ContentAddress,
+) -> Result<Option<Block>, QueryError> {
+    let mut stmt = conn.prepare(sql::query::GET_BLOCK)?;
+    let rows = stmt.query_map(
+        named_params! {
+            ":block_address": block_address.0,
+        },
+        |row| {
+            let block_number: Word = row.get("number")?;
+            let timestamp_secs: u64 = row.get("timestamp_secs")?;
+            let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
+            let solution_blob: Vec<u8> = row.get("solution")?;
+            let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
+            Ok((block_number, timestamp, solution_blob))
+        },
+    )?;
+
+    let mut block_in_progress = Option::None;
+    for res in rows {
+        let (block_number, timestamp, solution_blob): (Word, Duration, Vec<u8>) = res?;
+
+        if block_in_progress.is_none() {
+            block_in_progress = Some(Block {
+                number: block_number,
+                timestamp,
+                solutions: vec![],
+            });
+        }
+        let mut block = block_in_progress.expect("should have been set above at worst case");
+        // Add the solution.
+        let solution: Solution = decode(&solution_blob)?;
+        block.solutions.push(solution);
+        block_in_progress = Some(block);
+    }
+    Ok(block_in_progress)
+}
+
 /// Fetches the latest finalized block hash.
 pub fn get_latest_finalized_block_address(
     conn: &Connection,
@@ -305,6 +345,29 @@ pub fn get_validation_progress(conn: &Connection) -> Result<Option<ContentAddres
         })
         .optional()?;
     Ok(value)
+}
+
+/// Given a block address, returns the addresses of blocks that have the next block number.
+pub fn get_next_block_addresses(
+    conn: &Connection,
+    current_block: &ContentAddress,
+) -> Result<Vec<ContentAddress>, QueryError> {
+    let mut stmt = conn.prepare(sql::query::GET_NEXT_BLOCK_ADDRESSES)?;
+    let rows = stmt.query_map(
+        named_params! {
+            ":current_block": current_block.0,
+        },
+        |row| {
+            let block_address: Hash = row.get("block_address")?;
+            Ok(block_address)
+        },
+    )?;
+    let block_addresses = rows
+        .collect::<Result<Vec<_>, _>>()?
+        .iter()
+        .map(|hash| ContentAddress(*hash))
+        .collect();
+    Ok(block_addresses)
 }
 
 /// Lists all blocks in the given range.

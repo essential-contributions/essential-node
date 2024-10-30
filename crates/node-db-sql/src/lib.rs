@@ -45,10 +45,15 @@ pub mod insert {
 /// Statements for making queries.
 pub mod query {
     decl_const_sql_str!(GET_BLOCK_HEADER, "query/get_block_header.sql");
+    decl_const_sql_str!(GET_BLOCK, "query/get_block.sql");
     decl_const_sql_str!(GET_LATEST_BLOCK_NUMBER, "query/get_latest_block_number.sql");
     decl_const_sql_str!(
         GET_LATEST_FINALIZED_BLOCK_ADDRESS,
         "query/get_latest_finalized_block_address.sql"
+    );
+    decl_const_sql_str!(
+        GET_NEXT_BLOCK_ADDRESSES,
+        "query/get_next_block_addresses.sql"
     );
     decl_const_sql_str!(GET_SOLUTION, "query/get_solution.sql");
     decl_const_sql_str!(GET_STATE, "query/get_state.sql");
