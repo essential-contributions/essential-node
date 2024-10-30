@@ -31,7 +31,7 @@ mod validation;
 /// Wrapper around `watch::Sender` to notify of new blocks.
 ///
 /// This is used by `essential-builder` to notify `essential-relayer`
-/// and by `essential-relayer` to notify and [`validation`] streams.
+/// and by `essential-relayer` to notify [`validation`] stream.
 #[derive(Clone, Default)]
 pub struct BlockTx(tokio::sync::watch::Sender<()>);
 
