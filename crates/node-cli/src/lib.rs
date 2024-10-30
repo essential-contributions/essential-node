@@ -1,6 +1,6 @@
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
-use essential_node::{self as node, db::pool::Config, RunConfig};
+use essential_node::{self as node, RunConfig};
 use essential_node_api as node_api;
 use essential_node_types::BigBang;
 use std::{
@@ -44,8 +44,17 @@ pub struct Args {
     /// The number of simultaneous sqlite DB connections to maintain for serving the API.
     ///
     /// By default, this is the number of available CPUs multiplied by 4.
-    #[arg(long, default_value_t = Config::default_conn_limit())]
-    db_conn_limit: usize,
+    #[arg(long, default_value_t = node::db::pool::Config::default_conn_limit())]
+    api_db_conn_limit: usize,
+    /// The number of simultaneous sqlite DB connections to maintain for the node's relayer and
+    /// validation streams.
+    ///
+    /// This is unique from the API connection limit in order to ensure that the node's relayer and
+    /// validation streams have high-priority DB connection access.
+    ///
+    /// By default, this is the number of available CPUs multiplied by 4.
+    #[arg(long, default_value_t = node::db::pool::Config::default_conn_limit())]
+    node_db_conn_limit: usize,
     /// Disable the tracing subscriber.
     #[arg(long)]
     disable_tracing: bool,
@@ -82,8 +91,8 @@ fn default_db_path() -> Option<PathBuf> {
     })
 }
 
-/// Construct the node's config from the parsed args.
-fn conf_from_args(args: &Args) -> anyhow::Result<Config> {
+/// Construct the node's DB config from the parsed args.
+fn node_db_conf_from_args(args: &Args) -> anyhow::Result<node::db::pool::Config> {
     let source = match (&args.db, &args.db_path) {
         (Db::Memory, None) => node::db::pool::Source::default_memory(),
         (_, Some(path)) => node::db::pool::Source::Path(path.clone()),
@@ -94,8 +103,8 @@ fn conf_from_args(args: &Args) -> anyhow::Result<Config> {
             node::db::pool::Source::Path(path)
         }
     };
-    let conn_limit = args.db_conn_limit;
-    let config = Config::new(source, conn_limit);
+    let conn_limit = args.node_db_conn_limit;
+    let config = node::db::pool::Config::new(source, conn_limit);
     Ok(config)
 }
 
@@ -132,17 +141,17 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     }
 
     // Start the node.
-    let conf = conf_from_args(&args)?;
+    let node_db_conf = node_db_conf_from_args(&args)?;
     #[cfg(feature = "tracing")]
     {
-        tracing::debug!("Node config:\n{:#?}", conf);
+        tracing::debug!("Node DB config:\n{:#?}", node_db_conf);
         tracing::info!("Starting node");
     }
-    let db = node::db::ConnectionPool::with_tables(&conf)?;
+    let node_db = node::db::ConnectionPool::with_tables(&node_db_conf)?;
 
     // Load the big bang configuration, and ensure the big bang block exists.
     let big_bang = load_big_bang_or_default(args.big_bang.as_deref())?;
-    node::ensure_big_bang_block(&db, &big_bang)
+    node::ensure_big_bang_block(&node_db, &big_bang)
         .await
         .context("failed to ensure big bang block")?;
 
@@ -180,7 +189,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         run_validation: !disable_validation,
     };
     let node_handle = node::run(
-        db.clone(),
+        node_db.clone(),
         run_conf,
         big_bang.contract_registry.contract,
         block_tx,
@@ -199,10 +208,17 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         }
     };
 
-    // Run the API.
+    // Run the API with its own connection pool.
+    let api_db_conf = node::db::pool::Config {
+        conn_limit: args.api_db_conn_limit,
+        ..node_db_conf
+    };
+    #[cfg(feature = "tracing")]
+    tracing::debug!("API DB config:\n{:#?}", api_db_conf);
+    let api_db = node::db::ConnectionPool::with_tables(&api_db_conf)?;
     let api_state = node_api::State {
         new_block: Some(block_rx),
-        conn_pool: db.clone(),
+        conn_pool: api_db.clone(),
     };
     let router = node_api::router(api_state);
     let listener = tokio::net::TcpListener::bind(args.bind_address).await?;
@@ -224,6 +240,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         },
     }
 
-    db.close().map_err(|e| anyhow::anyhow!("{e}"))?;
+    node_db.close().map_err(|e| anyhow::anyhow!("{e}"))?;
+    api_db.close().map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(())
 }
