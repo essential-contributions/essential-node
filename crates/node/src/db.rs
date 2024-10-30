@@ -305,11 +305,11 @@ impl ConnectionPool {
     }
 
     /// Get next block(s) given the current block hash.
-    pub async fn get_next_block_address(
+    pub async fn get_next_block_addresses(
         &self,
         current_block: ContentAddress,
     ) -> Result<Vec<ContentAddress>, AcquireThenQueryError> {
-        self.acquire_then(move |h| db::get_next_block_address(h, &current_block))
+        self.acquire_then(move |h| db::get_next_block_addresses(h, &current_block))
             .await
     }
 

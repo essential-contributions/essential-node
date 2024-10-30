@@ -55,7 +55,10 @@ pub mod query {
         GET_LATEST_FINALIZED_BLOCK_ADDRESS,
         "query/get_latest_finalized_block_address.sql"
     );
-    decl_const_sql_str!(GET_NEXT_BLOCK_ADDRESS, "query/get_next_block_address.sql");
+    decl_const_sql_str!(
+        GET_NEXT_BLOCK_ADDRESSES,
+        "query/get_next_block_addresses.sql"
+    );
     decl_const_sql_str!(GET_SOLUTION, "query/get_solution.sql");
     decl_const_sql_str!(GET_STATE, "query/get_state.sql");
     decl_const_sql_str!(GET_VALIDATION_PROGRESS, "query/get_validation_progress.sql");

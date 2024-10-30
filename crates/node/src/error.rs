@@ -71,6 +71,8 @@ pub enum CriticalError {
     DatabaseFailed(#[from] rusqlite::Error),
     #[error("Critical database failure: {0}")]
     ReadState(#[from] AcquireThenQueryError),
+    #[error("Critical error getting next block: {0}")]
+    GetNextBlock(AcquireThenQueryError),
     #[error("database connection pool closed")]
     DbPoolClosed(#[from] tokio::sync::AcquireError),
     #[error(transparent)]

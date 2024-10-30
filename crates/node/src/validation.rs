@@ -6,7 +6,7 @@ use crate::{
 };
 use essential_hash::content_addr;
 use essential_node_db::{
-    get_block_header, get_latest_finalized_block_address, update_validation_progress,
+    get_block_header, get_latest_finalized_block_address, update_validation_progress, QueryError,
 };
 use essential_types::{Block, ContentAddress};
 use tokio::sync::watch;
@@ -79,7 +79,9 @@ async fn validate_next_block(
     conn_pool: ConnectionPool,
     contract_registry: &ContentAddress,
 ) -> Result<bool, InternalError> {
-    let progress = get_last_progress(&conn_pool).await?;
+    let progress = get_last_progress(&conn_pool)
+        .await?
+        .ok_or(RecoverableError::LastProgressNone)?;
 
     // Only validate if there's a block to validate.
     let Some(block) = get_next_block(&conn_pool, progress).await? else {
@@ -166,46 +168,22 @@ async fn get_last_progress(
 /// Get the next block, or return `None` if we've reached the head of the chain.
 async fn get_next_block(
     conn: &ConnectionPool,
-    progress: Option<ContentAddress>,
+    progress: ContentAddress,
 ) -> Result<Option<Block>, InternalError> {
-    let blocks = tokio::task::spawn_blocking::<_, Result<_, InternalError>>({
-        let mut conn = conn.acquire().await.map_err(CriticalError::from)?;
-        let progress = progress.clone();
-        move || {
-            let tx = conn.transaction().map_err(RecoverableError::Rusqlite)?;
-            let blocks = match &progress {
-                Some(block_address) => {
-                    essential_node_db::get_next_block_address(&tx, block_address)
-                        .map_err(RecoverableError::from)?
-                }
-                None => return Err(RecoverableError::LastProgressNone.into()),
-            };
-            Ok(blocks)
+    conn.acquire_then(move |conn| {
+        let blocks = essential_node_db::get_next_block_addresses(conn, &progress)?;
+        if blocks.is_empty() {
+            Ok::<_, QueryError>(Ok(None))
+        } else if blocks.len() > 1 {
+            Ok(Err(CriticalError::Fork.into()))
+        } else {
+            let block_address = blocks.into_iter().next().expect("blocks is not empty");
+            let block = essential_node_db::get_block(conn, &block_address)?;
+            Ok(Ok(block))
         }
     })
     .await
-    .map_err(RecoverableError::Join)??;
-
-    if blocks.is_empty() {
-        Ok(None)
-    } else if blocks.len() > 1 {
-        Err(CriticalError::Fork.into())
-    } else {
-        // TODO: fork-choice rule
-        let block_address = blocks.into_iter().next().expect("blocks is not empty");
-
-        let block = tokio::task::spawn_blocking::<_, Result<_, InternalError>>({
-            let conn = conn.acquire().await.map_err(CriticalError::from)?;
-            move || {
-                Ok(essential_node_db::get_block(&conn, &block_address)
-                    .map_err(RecoverableError::from)?)
-            }
-        })
-        .await
-        .map_err(RecoverableError::Join)??;
-
-        Ok(block)
-    }
+    .map_err(CriticalError::GetNextBlock)?
 }
 
 /// Exit on critical errors, log recoverable errors.

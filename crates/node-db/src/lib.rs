@@ -316,8 +316,7 @@ pub fn get_block(
                 solutions: vec![],
             });
         }
-
-        let mut block = block_in_progress.unwrap();
+        let mut block = block_in_progress.expect("should have been set above at worst case");
         // Add the solution.
         let solution: Solution = decode(&solution_blob)?;
         block.solutions.push(solution);
@@ -361,11 +360,11 @@ pub fn get_big_bang_block_address(conn: &Connection) -> Result<Option<ContentAdd
 }
 
 /// Given a block address, returns the addresses of blocks that have the next block number.
-pub fn get_next_block_address(
+pub fn get_next_block_addresses(
     conn: &Connection,
     current_block: &ContentAddress,
 ) -> Result<Vec<ContentAddress>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::GET_NEXT_BLOCK_ADDRESS)?;
+    let mut stmt = conn.prepare(sql::query::GET_NEXT_BLOCK_ADDRESSES)?;
     let rows = stmt.query_map(
         named_params! {
             ":current_block": current_block.0,
