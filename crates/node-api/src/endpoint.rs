@@ -38,7 +38,7 @@ pub enum Error {
     #[error("failed to decode from hex string: {0}")]
     HexDecode(#[from] hex::FromHexError),
     #[error("DB query failed: {0}")]
-    ConnPoolQuery(#[from] db::AcquireThenQueryError),
+    ConnPoolQuery(#[from] db::pool::AcquireThenQueryError),
     #[error(
         "Invalid query parameter for /query-state: {0}. {}",
         query_state::HELP_MSG

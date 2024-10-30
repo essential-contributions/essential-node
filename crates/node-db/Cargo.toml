@@ -13,11 +13,24 @@ essential-hash = { workspace = true }
 essential-node-db-sql = { workspace = true }
 essential-types = { workspace = true }
 futures = { workspace = true }
+num_cpus = { workspace = true, optional = true }
 postcard = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true, optional = true }
+rusqlite-pool = { workspace = true, optional = true }
 
 [dev-dependencies]
+essential-node-types = { workspace = true }
 rusqlite-pool = { workspace = true, features = ["tokio"] }
+tempfile = { workspace = true }
 tokio = { workspace = true }
+uuid = { workspace = true }
+
+[features]
+default = ["pool"]
+pool = ["num_cpus", "rusqlite-pool", "rusqlite-pool/tokio", "tokio"]
+
+[package.metadata.docs.rs]
+all-features = true

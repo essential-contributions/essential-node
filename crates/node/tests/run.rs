@@ -3,7 +3,11 @@
 use essential_hash::content_addr;
 use essential_node::{
     self as node,
-    db::{Config, ConnectionPool, Source},
+    db::{
+        self,
+        pool::{Config, Source},
+        ConnectionPool,
+    },
     test_utils::{
         assert_multiple_block_mutations, assert_validation_progress_is_some,
         test_blocks_with_contracts, test_db_conf,
@@ -27,7 +31,7 @@ async fn test_run() {
 
     // Setup node
     let conf = test_db_conf();
-    let db = node::db(&conf).unwrap();
+    let db = ConnectionPool::with_tables(&conf).unwrap();
     let big_bang = BigBang::default();
     node::ensure_big_bang_block(&db, &big_bang).await.unwrap();
 
@@ -139,7 +143,7 @@ async fn test_node() -> (NodeServer, BlockTx) {
         source: Source::Memory(uuid::Uuid::new_v4().into()),
         ..Default::default()
     };
-    let db = node::db(&conf).unwrap();
+    let db = ConnectionPool::with_tables(&conf).unwrap();
     let big_bang = BigBang::default();
     node::ensure_big_bang_block(&db, &big_bang).await.unwrap();
     let source_block_tx = BlockTx::new();
@@ -157,7 +161,7 @@ async fn test_node() -> (NodeServer, BlockTx) {
 // Assert state mutations in the blocks have been applied to database.
 // Assert validation progress is the latest fetched block.
 fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block>) {
-    let fetched_blocks = &essential_node_db::list_blocks(
+    let fetched_blocks = &db::list_blocks(
         conn,
         expected_blocks[0].number..expected_blocks[expected_blocks.len() - 1].number + 1,
     )

@@ -8,9 +8,8 @@
 //! - Runs the relayer stream and syncs blocks.
 //! - Performs validation.
 
-use db::ConnectionPool;
-use error::{BigBangError, ConnPoolNewError, CriticalError};
-use essential_node_db as node_db;
+use error::{BigBangError, CriticalError};
+pub use essential_node_db as db;
 use essential_node_types::BigBang;
 use essential_relayer::Relayer;
 use essential_types::ContentAddress;
@@ -19,7 +18,6 @@ pub use validate::validate_dry_run;
 pub use validate::validate_solution_dry_run;
 use validation::validation_stream;
 
-pub mod db;
 mod error;
 mod handles;
 #[cfg(any(feature = "test-utils", test))]
@@ -51,38 +49,6 @@ pub struct RunConfig {
     pub run_validation: bool,
 }
 
-/// Create a new `ConnectionPool` from the given configuration.
-///
-/// Upon construction, the node's database tables are created if they have
-/// not already been created.
-///
-/// ## Example
-///
-/// ```rust
-/// # use essential_node::{BlockTx, db::Config, db, run};
-/// # #[tokio::main]
-/// # async fn main() {
-/// let conf = Config::default();
-/// let db = essential_node::db(&conf).unwrap();
-/// for block in db.list_blocks(0..100).await.unwrap() {
-///     println!("Block: {block:?}");
-/// }
-/// # }
-/// ```
-pub fn db(conf: &db::Config) -> Result<ConnectionPool, ConnPoolNewError> {
-    // Initialize the connection pool.
-    let db = db::ConnectionPool::new(conf)?;
-
-    // Create the tables.
-    let mut conn = db.try_acquire().expect("all permits available");
-    if let db::Source::Path(_) = conf.source {
-        conn.pragma_update(None, "journal_mode", "wal")?;
-    };
-    db::with_tx(&mut conn, |tx| essential_node_db::create_tables(tx))?;
-
-    Ok(db)
-}
-
 /// Ensures that a big bang block exists in the DB for the given `BigBang` configuration.
 ///
 /// If no block exists with `block_number` `0`, this inserts the big bang block.
@@ -95,7 +61,7 @@ pub fn db(conf: &db::Config) -> Result<ConnectionPool, ConnPoolNewError> {
 /// Returns the `ContentAddress` of the big bang `Block`.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 pub async fn ensure_big_bang_block(
-    conn_pool: &ConnectionPool,
+    conn_pool: &db::ConnectionPool,
     big_bang: &BigBang,
 ) -> Result<ContentAddress, BigBangError> {
     let bb_block = big_bang.block();
@@ -114,8 +80,8 @@ pub async fn ensure_big_bang_block(
             conn_pool
                 .acquire_then(|conn| {
                     db::with_tx(conn, move |tx| {
-                        node_db::insert_block(tx, &bb_block)?;
-                        node_db::finalize_block(tx, &bbb_ca)?;
+                        db::insert_block(tx, &bb_block)?;
+                        db::finalize_block(tx, &bbb_ca)?;
                         Ok::<_, rusqlite::Error>(())
                     })
                 })
@@ -155,7 +121,7 @@ pub async fn ensure_big_bang_block(
 /// Returns a [`Handle`] that can be used to close the streams.
 /// The streams will continue to run until the handle is dropped.
 pub fn run(
-    conn_pool: ConnectionPool,
+    conn_pool: db::ConnectionPool,
     conf: RunConfig,
     contract_registry: ContentAddress,
     block_notify: BlockTx,
@@ -168,7 +134,7 @@ pub fn run(
     // Run relayer.
     let relayer_handle = if let Some(relayer_source_endpoint) = relayer_source_endpoint {
         let relayer = Relayer::new(relayer_source_endpoint.as_str())?;
-        Some(relayer.run(conn_pool.0.clone(), block_notify.0.clone())?)
+        Some(relayer.run(conn_pool.clone(), block_notify.0.clone())?)
     } else {
         None
     };

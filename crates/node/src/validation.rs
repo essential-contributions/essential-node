@@ -1,13 +1,14 @@
 use crate::{
-    db::ConnectionPool,
+    db::{
+        self, get_block_header, get_latest_finalized_block_address, update_validation_progress,
+        ConnectionPool,
+    },
     error::{CriticalError, InternalError, RecoverableError, ValidationError},
     handles::validation::Handle,
     validate::{self, InvalidOutcome, ValidOutcome, ValidateOutcome},
 };
 use essential_hash::content_addr;
-use essential_node_db::{
-    get_block_header, get_latest_finalized_block_address, update_validation_progress, QueryError,
-};
+use essential_node_db::QueryError;
 use essential_types::{Block, ContentAddress};
 use tokio::sync::watch;
 
@@ -144,7 +145,7 @@ async fn validate_next_block(
             );
             let conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
             tokio::task::spawn_blocking(move || {
-                essential_node_db::insert_failed_block(&conn, &block_address, &failed_solution)
+                db::insert_failed_block(&conn, &block_address, &failed_solution)
                     .map_err(ValidationError::from)?;
 
                 Ok(false)
@@ -222,19 +223,19 @@ fn map_recoverable_errors(e: InternalError) -> InternalError {
             }
         }
         InternalError::Critical(CriticalError::ReadState(e)) => match e {
-            crate::db::AcquireThenError::Acquire(e) => CriticalError::DbPoolClosed(e).into(),
-            e @ crate::db::AcquireThenError::Join(_) => RecoverableError::ReadState(e).into(),
-            crate::db::AcquireThenError::Inner(essential_node_db::QueryError::Rusqlite(rus)) => {
+            db::pool::AcquireThenError::Acquire(e) => CriticalError::DbPoolClosed(e).into(),
+            e @ db::pool::AcquireThenError::Join(_) => RecoverableError::ReadState(e).into(),
+            db::pool::AcquireThenError::Inner(db::QueryError::Rusqlite(rus)) => {
                 if is_recoverable_db_err(&rus) {
                     RecoverableError::Rusqlite(rus).into()
                 } else {
                     CriticalError::DatabaseFailed(rus).into()
                 }
             }
-            e @ crate::db::AcquireThenError::Inner(essential_node_db::QueryError::Decode(_)) => {
+            e @ db::pool::AcquireThenError::Inner(db::QueryError::Decode(_)) => {
                 CriticalError::from(e).into()
             }
-            crate::db::AcquireThenError::Inner(essential_node_db::QueryError::UnsupportedRange) => {
+            db::pool::AcquireThenError::Inner(essential_node_db::QueryError::UnsupportedRange) => {
                 RecoverableError::Query(essential_node_db::QueryError::UnsupportedRange).into()
             }
         },

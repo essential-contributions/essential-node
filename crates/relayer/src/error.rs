@@ -1,4 +1,3 @@
-use essential_node_db::QueryError;
 use essential_types::{ContentAddress, Word};
 use thiserror::Error;
 
@@ -26,15 +25,6 @@ pub(crate) type CriticalError = Error;
 /// These causes the relayer to exit a spawned task.
 #[derive(Debug, Error)]
 pub enum Error {
-    /// A DB error occurred.
-    #[error("a DB error occurred: {0}")]
-    Rusqlite(#[from] rusqlite::Error),
-    /// Failed to join the db thread.
-    #[error("an error occurred when joining the db writing thread: {0}")]
-    DbWriteThreadFailed(#[from] tokio::task::JoinError),
-    /// Failed to query the db.
-    #[error("an error occurred when querying the db: {0}")]
-    DbQueryFailed(#[from] QueryError),
     /// Failed to parse a server url.
     #[error("an error occurred when parsing the server url")]
     UrlParse,
@@ -47,9 +37,9 @@ pub enum Error {
     /// An error occurred while building the http client.
     #[error("an error occurred while building the http client: {0}")]
     HttpClientBuild(reqwest::Error),
-    /// The db pool was closed.
-    #[error("failed to acquire a db connection: {0}")]
-    DbPoolClosed(#[from] tokio::sync::AcquireError),
+    /// Failed to acquire then use a DB connection from the pool.
+    #[error("failed to acquire or use a DB connection: {0}")]
+    DbPoolRusqlite(#[from] essential_node_db::pool::AcquireThenRusqliteError),
 }
 
 /// An error that can be recovered from.

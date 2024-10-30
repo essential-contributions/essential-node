@@ -1,9 +1,11 @@
 use super::*;
-use crate::test_utils::{
-    assert_validation_progress_is_some, test_blocks_with_contracts, test_conn_pool_with_big_bang,
-    test_contract_registry, test_invalid_block_with_contract,
+use crate::{
+    db::{self, finalize_block, insert_block},
+    test_utils::{
+        assert_validation_progress_is_some, test_blocks_with_contracts,
+        test_conn_pool_with_big_bang, test_contract_registry, test_invalid_block_with_contract,
+    },
 };
-use essential_node_db::{finalize_block, insert_block};
 use essential_node_types::BigBang;
 use essential_types::{Block, Word};
 use rusqlite::Connection;
@@ -89,7 +91,7 @@ async fn test_invalid_block_validation() {
     // Assert validation progress is still BBB.
     assert_validation_progress_is_some(&conn, &bbb_ca);
     // Assert block is in failed blocks table
-    let fetched_failed_blocks = essential_node_db::list_failed_blocks(&conn, 0..10).unwrap();
+    let fetched_failed_blocks = db::list_failed_blocks(&conn, 0..10).unwrap();
     assert_eq!(fetched_failed_blocks.len(), 1);
     assert_eq!(fetched_failed_blocks[0].0, block.number);
     assert_eq!(
@@ -140,7 +142,7 @@ async fn can_process_valid_and_invalid_blocks() {
     // Assert validation progress is still block 0
     assert_validation_progress_is_some(&conn, &hashes[0]);
     // Assert block is in failed blocks table
-    let fetched_failed_blocks = essential_node_db::list_failed_blocks(&conn, 0..10).unwrap();
+    let fetched_failed_blocks = db::list_failed_blocks(&conn, 0..10).unwrap();
     assert_eq!(fetched_failed_blocks.len(), 1);
     assert_eq!(fetched_failed_blocks[0].0, invalid_block.number);
     assert_eq!(

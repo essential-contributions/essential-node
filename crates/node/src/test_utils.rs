@@ -1,10 +1,14 @@
 #![allow(dead_code)]
 
 use crate::{
-    db::{Config, ConnectionPool, Source},
+    db::{
+        finalized::query_state_inclusive_block,
+        get_validation_progress,
+        pool::{Config, Source},
+        ConnectionPool,
+    },
     ensure_big_bang_block,
 };
-use essential_node_db::{finalized::query_state_inclusive_block, get_validation_progress};
 use essential_node_types::{register_contract_solution, BigBang};
 use essential_types::{
     contract::Contract,
@@ -17,7 +21,7 @@ use std::time::Duration;
 
 pub fn test_conn_pool() -> ConnectionPool {
     let conf = test_db_conf();
-    crate::db(&conf).unwrap()
+    ConnectionPool::with_tables(&conf).unwrap()
 }
 
 pub async fn test_conn_pool_with_big_bang() -> ConnectionPool {

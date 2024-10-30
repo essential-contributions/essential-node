@@ -1,11 +1,10 @@
+use essential_node_db::{self as db, with_tx, ConnectionPool};
 use essential_types::Block;
 use essential_types::ContentAddress;
 use essential_types::Word;
 use futures::stream::TryStreamExt;
 use futures::Stream;
-use rusqlite_pool::tokio::AsyncConnectionPool;
 use tokio::sync::watch;
-use tokio::task::spawn_blocking;
 
 pub(crate) use streams::stream_blocks;
 
@@ -26,27 +25,23 @@ pub struct BlockProgress {
 
 /// Get the last block progress from the database.
 pub async fn get_block_progress(
-    conn: &AsyncConnectionPool,
-) -> crate::Result<Option<BlockProgress>> {
-    let mut conn = conn.acquire().await?;
-    tokio::task::spawn_blocking(move || {
-        let tx = conn.transaction()?;
-        let Some(block_address) = essential_node_db::get_latest_finalized_block_address(&tx)?
-        else {
-            return Ok(None);
-        };
-        let Some((block_number, _ts)) = essential_node_db::get_block_header(&tx, &block_address)?
-        else {
-            return Ok(None);
-        };
-        tx.finish()?;
-        let progress = BlockProgress {
-            last_block_number: block_number,
-            last_block_address: block_address,
-        };
-        Ok(Some(progress))
+    pool: &ConnectionPool,
+) -> Result<Option<BlockProgress>, db::pool::AcquireThenRusqliteError> {
+    pool.acquire_then(|conn| {
+        with_tx(conn, |tx| {
+            let Some(block_address) = db::get_latest_finalized_block_address(tx)? else {
+                return Ok(None);
+            };
+            let Some((block_number, _ts)) = db::get_block_header(tx, &block_address)? else {
+                return Ok(None);
+            };
+            Ok(Some(BlockProgress {
+                last_block_number: block_number,
+                last_block_address: block_address,
+            }))
+        })
     })
-    .await?
+    .await
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
@@ -55,7 +50,7 @@ pub async fn get_block_progress(
 /// The first block in the stream must be the last
 /// block that was synced unless progress is None.
 pub async fn sync_blocks<S>(
-    conn: AsyncConnectionPool,
+    pool: ConnectionPool,
     progress: &Option<BlockProgress>,
     notify: watch::Sender<()>,
     stream: S,
@@ -97,7 +92,7 @@ where
             block_number = block.number.saturating_add(1);
 
             let notify = notify.clone();
-            let conn = conn.clone();
+            let pool = pool.clone();
             async move {
                 // If the block is not sequential, return an error.
                 if !sequential_block {
@@ -110,7 +105,9 @@ where
                 tracing::debug!("Writing block number {} to database", block.number);
 
                 // Write the block to the database.
-                write_block(&conn, block).await?;
+                write_block(&pool, block)
+                    .await
+                    .map_err(CriticalError::from)?;
 
                 // Best effort to notify of new block
                 let _ = notify.send(());
@@ -122,21 +119,23 @@ where
 }
 
 /// Write a block to the database.
-async fn write_block(conn: &AsyncConnectionPool, block: Block) -> crate::Result<()> {
-    let mut conn = conn.acquire().await?;
-    spawn_blocking(move || {
-        let block_address = essential_hash::content_addr(&block);
-        let tx = conn.transaction()?;
-        essential_node_db::insert_block(&tx, &block)?;
+async fn write_block(
+    pool: &ConnectionPool,
+    block: Block,
+) -> Result<(), db::pool::AcquireThenRusqliteError> {
+    pool.acquire_then(move |conn| {
+        with_tx(conn, |tx| {
+            let block_address = essential_hash::content_addr(&block);
+            essential_node_db::insert_block(tx, &block)?;
 
-        // We are currently finalizing the block immediately.
-        // This will be changed in the when we have a time period
-        // before finalization can occur.
-        essential_node_db::finalize_block(&tx, &block_address)?;
-        tx.commit()?;
-        Ok(())
+            // We are currently finalizing the block immediately.
+            // This will be changed in the when we have a time period
+            // before finalization can occur.
+            essential_node_db::finalize_block(tx, &block_address)?;
+            Ok(())
+        })
     })
-    .await?
+    .await
 }
 
 /// Check that the block matches the last progress.

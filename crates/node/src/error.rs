@@ -1,5 +1,7 @@
-use crate::db::{AcquireThenQueryError, AcquireThenRusqliteError};
-use essential_node_db::QueryError;
+use crate::db::{
+    pool::{AcquireThenQueryError, AcquireThenRusqliteError},
+    QueryError,
+};
 use essential_types::{predicate, ContentAddress, PredicateAddress};
 use thiserror::Error;
 use tokio::sync::AcquireError;
