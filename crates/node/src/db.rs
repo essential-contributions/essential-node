@@ -280,13 +280,6 @@ impl ConnectionPool {
         .await
     }
 
-    /// Get the state progress, returning the last block hash.
-    pub async fn get_state_progress(
-        &self,
-    ) -> Result<Option<ContentAddress>, AcquireThenQueryError> {
-        self.acquire_then(|h| db::get_state_progress(h)).await
-    }
-
     /// Get the validation progress, returning the last block hash.
     pub async fn get_validation_progress(
         &self,

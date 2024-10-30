@@ -5,8 +5,7 @@ use essential_node::{
     self as node,
     db::{Config, ConnectionPool, Source},
     test_utils::{
-        assert_multiple_block_mutations, assert_state_progress_is_none,
-        assert_state_progress_is_some, assert_validation_progress_is_some,
+        assert_multiple_block_mutations, assert_validation_progress_is_some,
         test_blocks_with_contracts, test_db_conf,
     },
     BlockTx, RunConfig,
@@ -36,7 +35,6 @@ async fn test_run() {
     let block_tx = BlockTx::new();
     let run_conf = RunConfig {
         relayer_source_endpoint: Some(node_server.address),
-        run_state_derivation: true,
         run_validation: true,
     };
     let big_bang = BigBang::default();
@@ -53,8 +51,7 @@ async fn test_run() {
     let test_blocks = test_blocks_with_contracts(1, test_blocks_count + 1);
     let conn = db.acquire().await.unwrap();
 
-    // Initially, the state progress and validation progress are none
-    assert_state_progress_is_none(&conn);
+    // Initially, the validation progress is big bang block
     let bbb_ca = essential_hash::content_addr(&big_bang.block());
     assert_validation_progress_is_some(&conn, &bbb_ca);
 
@@ -67,7 +64,7 @@ async fn test_run() {
     source_block_tx.notify();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    // Check block, state and state progress
+    // Check block, state and validation progress
     let conn = db.acquire().await.unwrap();
     assert_submit_solutions_effects(&conn, vec![test_blocks[0].clone()]);
 
@@ -86,7 +83,7 @@ async fn test_run() {
     source_block_tx.notify();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    // Check block, state and state progress
+    // Check block, state and validation progress
     let conn = db.acquire().await.unwrap();
     assert_submit_solutions_effects(&conn, vec![test_blocks[1].clone(), test_blocks[2].clone()]);
 
@@ -99,7 +96,7 @@ async fn test_run() {
     source_block_tx.notify();
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    // Check block, state and state progress
+    // Check block, state and validation progress
     let conn = db.acquire().await.unwrap();
     assert_submit_solutions_effects(&conn, vec![test_blocks[3].clone()]);
 }
@@ -158,7 +155,6 @@ async fn test_node() -> (NodeServer, BlockTx) {
 
 // Fetch blocks from node database and assert that they contain the same solutions as expected.
 // Assert state mutations in the blocks have been applied to database.
-// Assert state progress is the latest fetched block.
 // Assert validation progress is the latest fetched block.
 fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block>) {
     let fetched_blocks = &essential_node_db::list_blocks(
@@ -179,11 +175,6 @@ fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block
         // Assert mutations in block are in database
         assert_multiple_block_mutations(conn, &[&fetched_blocks[i]]);
     }
-    // Assert state progress is latest block
-    assert_state_progress_is_some(
-        conn,
-        &content_addr(&fetched_blocks[fetched_blocks.len() - 1]),
-    );
     // Assert validation progress is latest block
     assert_validation_progress_is_some(
         conn,

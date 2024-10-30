@@ -14,9 +14,6 @@ pub enum NodeHandleJoinError {
     /// The relayer stream joined with an error.
     #[error("the relayer stream returned with an error: {0}")]
     Relayer(essential_relayer::Error),
-    /// The state derivation stream joined with an error.
-    #[error("the state derivation stream returned with an error: {0}")]
-    StateDerivation(CriticalError),
     /// The validation stream joined with an error.
     #[error("the validation stream returned with an error: {0}")]
     Validation(CriticalError),

@@ -26,9 +26,6 @@ pub struct Args {
     /// use of Ethereum (or Ethereum test-net) as an L1.
     #[arg(long)]
     relayer_source_endpoint: Option<String>,
-    /// Disable the state derivation stream.
-    #[arg(long)]
-    disable_state_derivation: bool,
     /// Disable the validation stream.
     #[arg(long)]
     disable_validation: bool,
@@ -152,42 +149,22 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     // Run the node with specified config.
     let Args {
         relayer_source_endpoint,
-        disable_state_derivation,
         disable_validation,
         ..
     } = args;
 
     #[cfg(feature = "tracing")]
     tracing::info!(
-        "Starting {}{}{}",
-        if disable_state_derivation {
-            ""
-        } else {
-            "state derivation"
-        },
+        "Starting {}{}",
         if disable_validation {
             "".to_string()
         } else {
-            format!(
-                "{}{}",
-                if disable_state_derivation {
-                    ""
-                } else if relayer_source_endpoint.is_some() {
-                    ", "
-                } else {
-                    " and "
-                },
-                "validation"
-            )
+            "validation".to_string()
         },
         if let Some(node_endpoint) = relayer_source_endpoint.as_ref() {
             format!(
                 "{}relayer (relaying from {:?})",
-                if disable_state_derivation && disable_validation {
-                    ""
-                } else {
-                    " and "
-                },
+                if disable_validation { "" } else { " and " },
                 node_endpoint,
             )
         } else {
@@ -200,7 +177,6 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
 
     let run_conf = RunConfig {
         relayer_source_endpoint: relayer_source_endpoint.clone(),
-        run_state_derivation: !disable_state_derivation,
         run_validation: !disable_validation,
     };
     let node_handle = node::run(
@@ -210,7 +186,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         block_tx,
     )?;
     let node_future = async move {
-        if relayer_source_endpoint.is_none() && disable_state_derivation && disable_validation {
+        if relayer_source_endpoint.is_none() && disable_validation {
             std::future::pending().await
         } else {
             let r = node_handle.join().await;
@@ -235,7 +211,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let api = node_api::serve(&router, &listener, args.tcp_conn_limit);
 
     // Select the first future to complete to close.
-    // TODO: We should select over relayer/state-derivation critical error here.
+    // TODO: We should select over relayer / validation critical error here.
     let ctrl_c = tokio::signal::ctrl_c();
     tokio::select! {
         _ = api => {},
@@ -243,7 +219,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         r = node_future => {
             if let Err(e) = r {
                 #[cfg(feature = "tracing")]
-                tracing::error!("Critical error on relayer, state derivation or validation streams: {e}")
+                tracing::error!("Critical error on relayer or validation stream: {e}")
             }
         },
     }

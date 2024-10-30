@@ -4,7 +4,7 @@
 //!
 //! The core capability of the node is to:
 //!
-//! 1. Receive blocks from an L1 relayer and derive state from their solutions.
+//! 1. Receive blocks from an L1 relayer and validate them.
 //! 2. Receive contracts from the p2p network so that they're available for validation.
 //!
 //! As a part of satisfying these requirements, this crate provides the basic
@@ -202,20 +202,6 @@ pub fn update_state(
     Ok(())
 }
 
-/// Updates the progress on state derivation.
-pub fn update_state_progress(
-    conn: &Connection,
-    block_address: &ContentAddress,
-) -> rusqlite::Result<()> {
-    conn.execute(
-        sql::insert::STATE_PROGRESS,
-        named_params! {
-            ":block_address": block_address.0,
-        },
-    )?;
-    Ok(())
-}
-
 /// Updates the progress on validation.
 pub fn update_validation_progress(
     conn: &Connection,
@@ -307,18 +293,6 @@ pub fn get_latest_finalized_block_address(
         row.get::<_, Hash>("block_address").map(ContentAddress)
     })
     .optional()
-}
-
-/// Fetches the last progress on state derivation.
-pub fn get_state_progress(conn: &Connection) -> Result<Option<ContentAddress>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::GET_STATE_PROGRESS)?;
-    let value: Option<ContentAddress> = stmt
-        .query_row([], |row| {
-            let block_address: Hash = row.get("block_address")?;
-            Ok(ContentAddress(block_address))
-        })
-        .optional()?;
-    Ok(value)
 }
 
 /// Fetches the last progress on validation.

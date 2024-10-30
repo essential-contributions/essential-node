@@ -27,7 +27,6 @@ pub mod create {
     decl_const_sql_str!(MUTATION, "create/mutation.sql");
     decl_const_sql_str!(SOLUTION, "create/solution.sql");
     decl_const_sql_str!(STATE, "create/state.sql");
-    decl_const_sql_str!(STATE_PROGRESS, "create/state_progress.sql");
     decl_const_sql_str!(VALIDATION_PROGRESS, "create/validation_progress.sql");
 }
 
@@ -40,7 +39,6 @@ pub mod insert {
     decl_const_sql_str!(FINALIZE_BLOCK, "insert/finalize_block.sql");
     decl_const_sql_str!(MUTATION, "insert/mutation.sql");
     decl_const_sql_str!(SOLUTION, "insert/solution.sql");
-    decl_const_sql_str!(STATE_PROGRESS, "insert/state_progress.sql");
     decl_const_sql_str!(VALIDATION_PROGRESS, "insert/validation_progress.sql");
 }
 
@@ -53,7 +51,6 @@ pub mod query {
         "query/get_latest_finalized_block_address.sql"
     );
     decl_const_sql_str!(GET_SOLUTION, "query/get_solution.sql");
-    decl_const_sql_str!(GET_STATE_PROGRESS, "query/get_state_progress.sql");
     decl_const_sql_str!(GET_STATE, "query/get_state.sql");
     decl_const_sql_str!(GET_VALIDATION_PROGRESS, "query/get_validation_progress.sql");
     decl_const_sql_str!(LIST_BLOCKS, "query/list_blocks.sql");
@@ -102,7 +99,6 @@ pub mod table {
     pub const MUTATION: Table = Table::new("mutation", create::MUTATION);
     pub const SOLUTION: Table = Table::new("solution", create::SOLUTION);
     pub const STATE: Table = Table::new("state", create::STATE);
-    pub const STATE_PROGRESS: Table = Table::new("state_progress", create::STATE_PROGRESS);
     pub const VALIDATION_PROGRESS: Table =
         Table::new("validation_progress", create::VALIDATION_PROGRESS);
 
@@ -116,7 +112,6 @@ pub mod table {
         BLOCK_SOLUTION,
         FAILED_BLOCK,
         STATE,
-        STATE_PROGRESS,
         VALIDATION_PROGRESS,
     ];
 }
