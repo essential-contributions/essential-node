@@ -4,7 +4,7 @@ use crate::{
     db::{Config, ConnectionPool, Source},
     ensure_big_bang_block,
 };
-use essential_node_db::{get_validation_progress, query_state};
+use essential_node_db::{finalized::query_state_inclusive_block, get_validation_progress};
 use essential_node_types::{register_contract_solution, BigBang};
 use essential_types::{
     contract::Contract,
@@ -222,9 +222,14 @@ pub fn assert_multiple_block_mutations(conn: &Connection, blocks: &[&Block]) {
         for solution in &block.solutions {
             for data in &solution.data {
                 for mutation in &data.state_mutations {
-                    let value = query_state(conn, &data.predicate_to_solve.contract, &mutation.key)
-                        .unwrap()
-                        .unwrap();
+                    let value = query_state_inclusive_block(
+                        conn,
+                        &data.predicate_to_solve.contract,
+                        &mutation.key,
+                        block.number,
+                    )
+                    .unwrap()
+                    .unwrap();
                     assert_eq!(value, mutation.value);
                 }
             }
