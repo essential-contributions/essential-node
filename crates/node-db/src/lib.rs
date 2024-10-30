@@ -15,12 +15,16 @@ pub use error::{DecodeError, QueryError};
 use essential_hash::content_addr;
 #[doc(inline)]
 pub use essential_node_db_sql as sql;
-use essential_types::{solution::Solution, Block, ContentAddress, Hash, Key, Value, Word};
+use essential_types::{
+    convert::{bytes_from_word, word_from_bytes},
+    solution::Solution,
+    Block, ContentAddress, Hash, Key, Value, Word,
+};
 use futures::Stream;
 #[cfg(feature = "pool")]
 pub use pool::ConnectionPool;
 pub use query_range::finalized;
-use rusqlite::{named_params, Connection, OptionalExtension, Transaction};
+use rusqlite::{named_params, params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use std::{ops::Range, time::Duration};
 
@@ -124,26 +128,22 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<Content
         })?;
 
         for (data_ix, data) in solution.data.iter().enumerate() {
-            let contract_ca_blob = encode(&data.predicate_to_solve.contract);
             for (mutation_ix, mutation) in data.state_mutations.iter().enumerate() {
-                let key_blob = encode(&mutation.key);
-                let value_blob = encode(&mutation.value);
                 stmt_mutation.execute(named_params! {
                     ":solution_hash": ca.0,
                     ":data_index": data_ix,
                     ":mutation_index": mutation_ix,
-                    ":contract_ca": contract_ca_blob,
-                    ":key": key_blob,
-                    ":value": value_blob,
+                    ":contract_ca": data.predicate_to_solve.contract.0,
+                    ":key": blob_from_words(&mutation.key),
+                    ":value": blob_from_words(&mutation.value),
                 })?;
             }
             for (dec_var_ix, dec_var) in data.decision_variables.iter().enumerate() {
-                let blob = encode(&dec_var);
                 stmt_dec_var.execute(named_params! {
                     ":solution_hash": ca.0,
                     ":data_index": data_ix,
                     ":dec_var_index": dec_var_ix,
-                    ":value": blob
+                    ":value": blob_from_words(dec_var)
                 })?;
             }
         }
@@ -191,15 +191,12 @@ pub fn update_state(
     key: &Key,
     value: &Value,
 ) -> rusqlite::Result<()> {
-    let contract_ca_blob = encode(contract_ca);
-    let key_blob = encode(key);
-    let value_blob = encode(value);
     conn.execute(
         sql::update::STATE,
         named_params! {
-            ":contract_ca": contract_ca_blob,
-            ":key": key_blob,
-            ":value": value_blob,
+            ":contract_ca": contract_ca.0,
+            ":key": blob_from_words(key),
+            ":value": blob_from_words(value),
         },
     )?;
     Ok(())
@@ -225,13 +222,11 @@ pub fn delete_state(
     contract_ca: &ContentAddress,
     key: &Key,
 ) -> rusqlite::Result<()> {
-    let contract_ca_blob = encode(contract_ca);
-    let key_blob = encode(key);
     conn.execute(
         sql::update::DELETE_STATE,
         named_params! {
-            ":contract_ca": contract_ca_blob,
-            ":key": key_blob,
+            ":contract_ca": contract_ca.0,
+            ":key": blob_from_words(key),
         },
     )?;
     Ok(())
@@ -256,13 +251,13 @@ pub fn query_state(
     key: &Key,
 ) -> Result<Option<Value>, QueryError> {
     use rusqlite::OptionalExtension;
-    let contract_ca_blob = encode(contract_ca);
-    let key_blob = encode(key);
     let mut stmt = conn.prepare(sql::query::GET_STATE)?;
     let value_blob: Option<Vec<u8>> = stmt
-        .query_row([contract_ca_blob, key_blob], |row| row.get("value"))
+        .query_row(params![contract_ca.0, blob_from_words(key)], |row| {
+            row.get("value")
+        })
         .optional()?;
-    Ok(value_blob.as_deref().map(decode).transpose()?)
+    Ok(value_blob.as_deref().map(words_from_blob))
 }
 
 /// Given a block address, returns the header for that block.
@@ -622,4 +617,16 @@ where
     let out = f(&mut tx)?;
     tx.commit()?;
     Ok(out)
+}
+
+/// Convert a slice of `Word`s into a blob.
+pub fn blob_from_words(words: &[Word]) -> Vec<u8> {
+    words.iter().copied().flat_map(bytes_from_word).collect()
+}
+/// Convert a blob into a vector of `Word`s.
+pub fn words_from_blob(bytes: &[u8]) -> Vec<Word> {
+    bytes
+        .chunks_exact(core::mem::size_of::<Word>())
+        .map(|bytes| word_from_bytes(bytes.try_into().expect("Can't fail due to chunks exact")))
+        .collect()
 }

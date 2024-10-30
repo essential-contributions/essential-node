@@ -5,7 +5,7 @@ use essential_node_db_sql as sql;
 use essential_types::{ContentAddress, Key, Value, Word};
 use rusqlite::{named_params, Connection, OptionalExtension};
 
-use crate::{decode, encode, QueryError};
+use crate::{blob_from_words, words_from_blob, QueryError};
 
 /// Query the most recent value for a key in a contract's state
 /// that was set at or before the given block number.
@@ -17,20 +17,18 @@ pub fn query_state_inclusive_block(
     key: &Key,
     block_number: Word,
 ) -> Result<Option<Value>, QueryError> {
-    let contract_ca_blob = encode(contract_ca);
-    let key_blob = encode(key);
     let mut stmt = conn.prepare(sql::query::QUERY_STATE_AT_BLOCK_FINALIZED)?;
     let value_blob: Option<Vec<u8>> = stmt
         .query_row(
             named_params! {
-                ":contract_ca": contract_ca_blob,
-                ":key": key_blob,
+                ":contract_ca": contract_ca.0,
+                ":key": blob_from_words(key),
                 ":block_number": block_number,
             },
             |row| row.get("value"),
         )
         .optional()?;
-    Ok(value_blob.as_deref().map(decode).transpose()?)
+    Ok(value_blob.as_deref().map(words_from_blob))
 }
 
 /// Query for the most recent version value of a key in a contracts state
@@ -62,21 +60,19 @@ pub fn query_state_inclusive_solution(
     block_number: Word,
     solution_index: u64,
 ) -> Result<Option<Value>, QueryError> {
-    let contract_ca_blob = encode(contract_ca);
-    let key_blob = encode(key);
     let mut stmt = conn.prepare(sql::query::QUERY_STATE_AT_SOLUTION_FINALIZED)?;
     let value_blob: Option<Vec<u8>> = stmt
         .query_row(
             named_params! {
-                ":contract_ca": contract_ca_blob,
-                ":key": key_blob,
+                ":contract_ca": contract_ca.0,
+                ":key": blob_from_words(key),
                 ":block_number": block_number,
                 ":solution_index": solution_index,
             },
             |row| row.get("value"),
         )
         .optional()?;
-    Ok(value_blob.as_deref().map(decode).transpose()?)
+    Ok(value_blob.as_deref().map(words_from_blob))
 }
 
 /// Query for the most recent version value of a key in a contracts state
