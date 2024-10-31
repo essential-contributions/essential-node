@@ -67,6 +67,7 @@ pub struct BigBang {
     pub solution: Solution,
 }
 
+#[cfg(feature = "new-block")]
 /// Wrapper around `watch::Sender` to notify of new blocks.
 ///
 /// This is used by `essential-builder` to notify `essential-relayer`
@@ -74,6 +75,7 @@ pub struct BigBang {
 #[derive(Clone, Default)]
 pub struct BlockTx(tokio::sync::watch::Sender<()>);
 
+#[cfg(feature = "new-block")]
 /// Wrapper around `watch::Receiver` to listen to new blocks.
 ///
 /// This is used by [`db::subscribe_blocks`] stream.
@@ -98,6 +100,7 @@ impl Default for BigBang {
     }
 }
 
+#[cfg(feature = "new-block")]
 impl BlockTx {
     /// Create a new [`BlockTx`] to notify listeners of new blocks.
     pub fn new() -> Self {
@@ -123,6 +126,7 @@ impl BlockTx {
     }
 }
 
+#[cfg(feature = "new-block")]
 impl BlockRx {
     /// Waits for a change notification.
     pub async fn changed(&mut self) -> Result<(), tokio::sync::watch::error::RecvError> {
