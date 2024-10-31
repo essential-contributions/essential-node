@@ -10,8 +10,7 @@
 
 use error::{BigBangError, CriticalError};
 pub use essential_node_db as db;
-use essential_node_types::BigBang;
-use essential_node_types::BlockTx;
+use essential_node_types::{block_notify::BlockTx, BigBang};
 use essential_relayer::Relayer;
 use essential_types::ContentAddress;
 pub use handles::node::Handle;

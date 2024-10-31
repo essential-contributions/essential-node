@@ -10,7 +10,7 @@ use error::InternalError;
 use error::InternalResult;
 pub use error::Result;
 use essential_node_db::{self as db, ConnectionPool};
-use essential_node_types::BlockTx;
+use essential_node_types::block_notify::BlockTx;
 use futures::StreamExt;
 pub use handle::Handle;
 use reqwest::{ClientBuilder, Url};

@@ -11,7 +11,7 @@ repository.workspace = true
 [dependencies]
 essential-hash = { workspace = true }
 essential-node-db-sql = { workspace = true }
-essential-node-types = { workspace = true, optional = true, features = ["new-block"] }
+essential-node-types = { workspace = true, optional = true, features = ["block-notify"] }
 essential-types = { workspace = true }
 futures = { workspace = true }
 num_cpus = { workspace = true, optional = true }

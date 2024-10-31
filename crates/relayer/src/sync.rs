@@ -1,5 +1,5 @@
 use essential_node_db::{self as db, with_tx, ConnectionPool};
-use essential_node_types::BlockTx;
+use essential_node_types::block_notify::BlockTx;
 use essential_types::Block;
 use essential_types::ContentAddress;
 use essential_types::Word;

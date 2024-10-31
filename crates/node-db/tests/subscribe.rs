@@ -1,5 +1,5 @@
 use essential_node_db::{self as node_db};
-use essential_node_types::BlockTx;
+use essential_node_types::block_notify::BlockTx;
 use futures::StreamExt;
 use util::test_conn_pool;
 

@@ -5,7 +5,7 @@
 
 use crate::{with_tx, AcquireConnection, AwaitNewBlock, QueryError};
 use core::ops::Range;
-use essential_node_types::BlockRx;
+use essential_node_types::block_notify::BlockRx;
 use essential_types::{solution::Solution, Block, ContentAddress, Key, Value, Word};
 use futures::Stream;
 use rusqlite_pool::tokio::{AsyncConnectionHandle, AsyncConnectionPool};

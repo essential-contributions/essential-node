@@ -3,7 +3,7 @@ use essential_node::db::{
     pool::{Config, Source},
     ConnectionPool,
 };
-use essential_node_types::BlockTx;
+use essential_node_types::block_notify::BlockTx;
 use essential_relayer::{DataSyncError, Relayer};
 use essential_types::{
     contract::Contract,

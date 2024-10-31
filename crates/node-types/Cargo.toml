@@ -16,5 +16,5 @@ serde_yaml = { workspace = true }
 tokio = { workspace = true, optional = true }
 
 [features]
-default = []
-new-block = [ "tokio" ]
+default = [ "block-notify" ]
+block-notify = [ "tokio" ]

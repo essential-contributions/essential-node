@@ -9,7 +9,7 @@ use crate::{
 };
 use essential_hash::content_addr;
 use essential_node_db::QueryError;
-use essential_node_types::BlockRx;
+use essential_node_types::block_notify::BlockRx;
 use essential_types::{Block, ContentAddress};
 use tokio::sync::watch;
 

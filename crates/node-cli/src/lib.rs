@@ -2,7 +2,7 @@ use anyhow::Context;
 use clap::{Parser, ValueEnum};
 use essential_node::{self as node, db::pool::Config, RunConfig};
 use essential_node_api as node_api;
-use essential_node_types::{BigBang, BlockTx};
+use essential_node_types::{block_notify::BlockTx, BigBang};
 use std::{
     net::{SocketAddr, SocketAddrV4},
     path::{Path, PathBuf},

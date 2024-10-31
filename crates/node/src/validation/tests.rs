@@ -6,7 +6,7 @@ use crate::{
         test_conn_pool_with_big_bang, test_contract_registry, test_invalid_block_with_contract,
     },
 };
-use essential_node_types::{BigBang, BlockTx};
+use essential_node_types::{block_notify::BlockTx, BigBang};
 use essential_types::{Block, Word};
 use rusqlite::Connection;
 use std::time::Duration;

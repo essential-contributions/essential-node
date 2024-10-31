@@ -6,7 +6,7 @@
 
 use axum::{routing::get, Router};
 use essential_node::db;
-use essential_node_types::BlockRx;
+use essential_node_types::block_notify::BlockRx;
 use std::{io, net::SocketAddr};
 use thiserror::Error;
 use tokio::{

@@ -9,7 +9,7 @@ use axum::{
     Json,
 };
 use essential_node::db;
-use essential_node_types::BlockRx;
+use essential_node_types::block_notify::BlockRx;
 use essential_types::{convert::word_from_bytes, Block, ContentAddress, Value, Word};
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
