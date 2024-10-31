@@ -5,7 +5,8 @@
 //! To serve the node API, construct a [`router`], a [`TcpListener`] and call [`serve`].
 
 use axum::{routing::get, Router};
-use essential_node::{db, BlockRx};
+use essential_node::db;
+use essential_node_types::BlockRx;
 use std::{io, net::SocketAddr};
 use thiserror::Error;
 use tokio::{

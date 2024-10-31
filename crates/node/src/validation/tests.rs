@@ -6,22 +6,18 @@ use crate::{
         test_conn_pool_with_big_bang, test_contract_registry, test_invalid_block_with_contract,
     },
 };
-use essential_node_types::BigBang;
+use essential_node_types::{BigBang, BlockTx};
 use essential_types::{Block, Word};
 use rusqlite::Connection;
 use std::time::Duration;
 
 // Insert a block to the database and send a notification to the stream
-fn insert_block_and_send_notification(
-    conn: &mut Connection,
-    block: &Block,
-    block_rx: &tokio::sync::watch::Sender<()>,
-) {
+fn insert_block_and_send_notification(conn: &mut Connection, block: &Block, block_tx: &BlockTx) {
     let tx = conn.transaction().unwrap();
     let block_ca = insert_block(&tx, block).unwrap();
     finalize_block(&tx, &block_ca).unwrap();
     tx.commit().unwrap();
-    block_rx.send(()).unwrap();
+    block_tx.notify();
 }
 
 #[tokio::test]
@@ -36,7 +32,8 @@ async fn can_validate() {
     let blocks = test_blocks_with_contracts(1, 1 + NUM_TEST_BLOCKS);
     let hashes = blocks.iter().map(content_addr).collect::<Vec<_>>();
 
-    let (block_tx, block_rx) = tokio::sync::watch::channel(());
+    let block_tx = BlockTx::new();
+    let block_rx = block_tx.new_listener();
 
     let contract_registry = test_contract_registry().contract;
     let handle = validation_stream(conn_pool.clone(), contract_registry, block_rx).unwrap();
@@ -76,7 +73,8 @@ async fn test_invalid_block_validation() {
 
     let block = test_invalid_block_with_contract(1, Duration::from_secs(1));
 
-    let (block_tx, block_rx) = tokio::sync::watch::channel(());
+    let block_tx = BlockTx::new();
+    let block_rx = block_tx.new_listener();
 
     let contract_registry = test_contract_registry().contract;
     let handle = validation_stream(conn_pool.clone(), contract_registry, block_rx).unwrap();
@@ -121,7 +119,8 @@ async fn can_process_valid_and_invalid_blocks() {
     let blocks = test_blocks;
     let hashes = blocks.iter().map(content_addr).collect::<Vec<_>>();
 
-    let (block_tx, block_rx) = tokio::sync::watch::channel(());
+    let block_tx = BlockTx::new();
+    let block_rx = block_tx.new_listener();
 
     let contract_registry = test_contract_registry().contract;
     let handle = validation_stream(conn_pool.clone(), contract_registry, block_rx).unwrap();

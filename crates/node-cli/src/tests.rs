@@ -1,6 +1,5 @@
-use std::time::Duration;
-
 use super::*;
+use std::time::Duration;
 
 #[tokio::test]
 async fn test_args() {
@@ -39,7 +38,7 @@ async fn test_args() {
 }
 
 async fn test_node() -> (impl std::future::Future<Output = ()>, u16) {
-    let block_tx = node::BlockTx::new();
+    let block_tx = BlockTx::new();
     let block_rx = block_tx.new_listener();
     let config = node::db::pool::Config {
         source: node::db::pool::Source::Memory(uuid::Uuid::new_v4().to_string()),

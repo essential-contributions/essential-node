@@ -5,6 +5,7 @@
 
 use crate::{with_tx, AcquireConnection, AwaitNewBlock, QueryError};
 use core::ops::Range;
+use essential_node_types::BlockRx;
 use essential_types::{solution::Solution, Block, ContentAddress, Key, Value, Word};
 use futures::Stream;
 use rusqlite_pool::tokio::{AsyncConnectionHandle, AsyncConnectionPool};
@@ -398,6 +399,12 @@ impl Source {
     pub fn default_memory() -> Self {
         // Default ID cannot be an empty string.
         Self::Memory("__default-id".to_string())
+    }
+}
+
+impl AwaitNewBlock for BlockRx {
+    async fn await_new_block(&mut self) -> Option<()> {
+        self.changed().await.ok()
     }
 }
 

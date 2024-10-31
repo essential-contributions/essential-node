@@ -1,10 +1,10 @@
 use essential_node_db::{self as db, with_tx, ConnectionPool};
+use essential_node_types::BlockTx;
 use essential_types::Block;
 use essential_types::ContentAddress;
 use essential_types::Word;
 use futures::stream::TryStreamExt;
 use futures::Stream;
-use tokio::sync::watch;
 
 pub(crate) use streams::stream_blocks;
 
@@ -52,7 +52,7 @@ pub async fn get_block_progress(
 pub async fn sync_blocks<S>(
     pool: ConnectionPool,
     progress: &Option<BlockProgress>,
-    notify: watch::Sender<()>,
+    notify: BlockTx,
     stream: S,
 ) -> InternalResult<()>
 where
@@ -110,7 +110,7 @@ where
                     .map_err(CriticalError::from)?;
 
                 // Best effort to notify of new block
-                let _ = notify.send(());
+                notify.notify();
                 Ok(())
             }
         })
