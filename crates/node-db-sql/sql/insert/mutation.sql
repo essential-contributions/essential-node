@@ -19,12 +19,13 @@ VALUES
                 1
         ), 
         (
-            SELECT 
-                id
+            SELECT
+                solution_data.id
             FROM
                 solution_data
+                JOIN solution ON solution.id = solution_data.solution_id
             WHERE
-                data_index = :data_index
+                solution.content_hash = :solution_hash AND solution_data.data_index = :data_index
             LIMIT
                 1
         ), :mutation_index, :key, :value

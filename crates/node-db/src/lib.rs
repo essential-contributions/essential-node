@@ -248,6 +248,7 @@ pub fn get_solution(tx: &Transaction, ca: &ContentAddress) -> Result<Solution, Q
     let mut data_stmt = tx.prepare(sql::query::GET_SOLUTION_DATA)?;
     let mut data = data_stmt
         .query_map([ca.0], |row| {
+            let index = row.get::<_, i64>("data_index")? as usize;
             let contract_addr = row.get::<_, Hash>("contract_addr")?;
             let predicate_addr = row.get::<_, Hash>("predicate_addr")?;
             Ok(SolutionData {
