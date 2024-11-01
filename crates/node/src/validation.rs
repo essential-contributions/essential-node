@@ -235,9 +235,6 @@ fn map_recoverable_errors(e: InternalError) -> InternalError {
                     CriticalError::DatabaseFailed(rus).into()
                 }
             }
-            e @ db::pool::AcquireThenError::Inner(db::QueryError::Decode(_)) => {
-                CriticalError::from(e).into()
-            }
             db::pool::AcquireThenError::Inner(essential_node_db::QueryError::UnsupportedRange) => {
                 RecoverableError::Query(essential_node_db::QueryError::UnsupportedRange).into()
             }

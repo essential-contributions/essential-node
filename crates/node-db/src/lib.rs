@@ -11,7 +11,7 @@
 //! functions required for safely creating the necessary tables and inserting/
 //! querying/updating them as necessary.
 
-pub use error::{DecodeError, QueryError};
+pub use error::QueryError;
 use essential_hash::content_addr;
 #[doc(inline)]
 pub use essential_node_db_sql as sql;
@@ -26,7 +26,6 @@ pub use pool::ConnectionPool;
 pub use query_range::address;
 pub use query_range::finalized;
 use rusqlite::{named_params, params, Connection, OptionalExtension, Transaction};
-use serde::{Deserialize, Serialize};
 use std::{ops::Range, time::Duration};
 
 mod error;
@@ -54,26 +53,6 @@ pub trait AwaitNewBlock {
     /// `None` when the notification source is no longer available.
     #[allow(async_fn_in_trait)]
     async fn await_new_block(&mut self) -> Option<()>;
-}
-
-/// Encodes the given value into a blob.
-///
-/// This serializes the value using postcard.
-pub fn encode<T>(value: &T) -> Vec<u8>
-where
-    T: Serialize,
-{
-    postcard::to_allocvec(value).expect("postcard serialization cannot fail")
-}
-
-/// Decodes the given blob into a value of type `T`.
-///
-/// This deserializes the bytes into a value of `T` with `postcard`.
-pub fn decode<T>(value: &[u8]) -> Result<T, DecodeError>
-where
-    T: for<'de> Deserialize<'de>,
-{
-    Ok(postcard::from_bytes(value)?)
 }
 
 /// Create all tables.
