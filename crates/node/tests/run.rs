@@ -12,9 +12,9 @@ use essential_node::{
         assert_multiple_block_mutations, assert_validation_progress_is_some,
         test_blocks_with_contracts, test_db_conf,
     },
-    BlockTx, RunConfig,
+    RunConfig,
 };
-use essential_node_types::BigBang;
+use essential_node_types::{block_notify::BlockTx, BigBang};
 use essential_types::Block;
 use rusqlite::Connection;
 

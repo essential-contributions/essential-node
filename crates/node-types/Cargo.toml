@@ -13,3 +13,8 @@ essential-hash = { workspace = true }
 essential-types = { workspace = true }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
+tokio = { workspace = true, optional = true }
+
+[features]
+default = [ "block-notify" ]
+block-notify = [ "tokio" ]

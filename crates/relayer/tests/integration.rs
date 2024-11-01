@@ -1,11 +1,9 @@
-use essential_node::{
-    db::{
-        self,
-        pool::{Config, Source},
-        ConnectionPool,
-    },
-    BlockTx,
+use essential_node::db::{
+    self,
+    pool::{Config, Source},
+    ConnectionPool,
 };
+use essential_node_types::block_notify::BlockTx;
 use essential_relayer::{DataSyncError, Relayer};
 use essential_types::{
     contract::Contract,
@@ -29,7 +27,7 @@ struct NodeServer {
 async fn test_sync() {
     let relayer_conn = new_conn_pool();
 
-    let (node_server, block_tx) = test_node().await;
+    let (node_server, source_block_tx) = test_node().await;
     let source_db = node_server.conn_pool.clone();
 
     let mut test_conn = relayer_conn.acquire().await.unwrap();
@@ -40,13 +38,14 @@ async fn test_sync() {
     let (solutions, blocks) = test_structs();
 
     source_db.insert_block(blocks[0].clone()).await.unwrap();
-    block_tx.notify();
+    source_block_tx.notify();
 
     let relayer = Relayer::new(node_server.address.as_str()).unwrap();
-    let (block_notify, mut new_block) = tokio::sync::watch::channel(());
-    let relayer_handle = relayer.run(relayer_conn.clone(), block_notify).unwrap();
+    let block_tx = BlockTx::new();
+    let mut block_rx = block_tx.new_listener();
+    let relayer_handle = relayer.run(relayer_conn.clone(), block_tx.clone()).unwrap();
 
-    new_block.changed().await.unwrap();
+    block_rx.changed().await.unwrap();
     let result = db::list_blocks(&test_conn, 0..100).unwrap();
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].number, 0);
@@ -54,9 +53,9 @@ async fn test_sync() {
     assert_eq!(result[0].solutions[0], solutions[0]);
 
     source_db.insert_block(blocks[1].clone()).await.unwrap();
-    block_tx.notify();
+    source_block_tx.notify();
 
-    new_block.changed().await.unwrap();
+    block_rx.changed().await.unwrap();
     let result = db::list_blocks(&test_conn, 0..100).unwrap();
     assert_eq!(result.len(), 2);
     assert_eq!(result[1].number, 1);
@@ -67,11 +66,11 @@ async fn test_sync() {
 
     for block in &blocks[2..] {
         source_db.insert_block(block.clone()).await.unwrap();
-        block_tx.notify();
+        source_block_tx.notify();
     }
     let relayer = Relayer::new(node_server.address.as_str()).unwrap();
-    let (block_notify, _new_block) = tokio::sync::watch::channel(());
-    let relayer_handle = relayer.run(relayer_conn.clone(), block_notify).unwrap();
+    let block_tx = BlockTx::new();
+    let relayer_handle = relayer.run(relayer_conn.clone(), block_tx).unwrap();
 
     let start = tokio::time::Instant::now();
     let mut num_solutions: usize = 0;
@@ -106,9 +105,9 @@ async fn test_sync() {
     let (node_server, ..) = test_node().await;
 
     let relayer = Relayer::new(node_server.address.as_str()).unwrap();
-    let (block_notify, _new_block) = tokio::sync::watch::channel(());
+    let block_tx = BlockTx::new();
 
-    let relayer_handle = relayer.run(relayer_conn, block_notify).unwrap();
+    let relayer_handle = relayer.run(relayer_conn, block_tx).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
     let r = relayer_handle.close().await;
     assert!(

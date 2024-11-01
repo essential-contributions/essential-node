@@ -749,6 +749,7 @@ dependencies = [
  "essential-types",
  "serde",
  "serde_yaml",
+ "tokio",
 ]
 
 [[package]]
@@ -759,6 +760,7 @@ dependencies = [
  "essential-node",
  "essential-node-api",
  "essential-node-db",
+ "essential-node-types",
  "essential-sign",
  "essential-types",
  "futures",

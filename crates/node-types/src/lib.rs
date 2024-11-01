@@ -12,6 +12,10 @@ use essential_types::{
 };
 use serde::{Deserialize, Serialize};
 
+/// Wrappers around tokio's `watch` channel for notifying of new blocks.
+#[cfg(feature = "block-notify")]
+pub mod block_notify;
+
 /// The default big-bang configuration.
 pub const DEFAULT_BIG_BANG: &str = include_str!("../big-bang.yml");
 

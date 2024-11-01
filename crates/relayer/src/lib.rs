@@ -10,6 +10,7 @@ use error::InternalError;
 use error::InternalResult;
 pub use error::Result;
 use essential_node_db::{self as db, ConnectionPool};
+use essential_node_types::block_notify::BlockTx;
 use futures::StreamExt;
 pub use handle::Handle;
 use reqwest::{ClientBuilder, Url};
@@ -49,7 +50,7 @@ impl Relayer {
     /// A handle is returned that can be used to close or join the streams.
     ///
     /// The two watch channels are used to notify the caller when new data has been synced.
-    pub fn run(self, pool: ConnectionPool, new_block: watch::Sender<()>) -> Result<Handle> {
+    pub fn run(self, pool: ConnectionPool, new_block: BlockTx) -> Result<Handle> {
         // The blocks callback. This is a closure that will be called
         // every time the blocks stream is restarted.
         let blocks = move |shutdown: watch::Receiver<()>| {
@@ -71,7 +72,7 @@ impl Relayer {
         &self,
         conn: ConnectionPool,
         mut shutdown: watch::Receiver<()>,
-        notify: watch::Sender<()>,
+        notify: BlockTx,
     ) -> InternalResult<()> {
         #[cfg(feature = "tracing")]
         tracing::info!("Stream starting");

@@ -10,7 +10,7 @@
 
 use error::{BigBangError, CriticalError};
 pub use essential_node_db as db;
-use essential_node_types::BigBang;
+use essential_node_types::{block_notify::BlockTx, BigBang};
 use essential_relayer::Relayer;
 use essential_types::ContentAddress;
 pub use handles::node::Handle;
@@ -25,19 +25,6 @@ mod handles;
 pub mod test_utils;
 pub mod validate;
 mod validation;
-
-/// Wrapper around `watch::Sender` to notify of new blocks.
-///
-/// This is used by `essential-builder` to notify `essential-relayer`
-/// and by `essential-relayer` to notify [`validation`] stream.
-#[derive(Clone, Default)]
-pub struct BlockTx(tokio::sync::watch::Sender<()>);
-
-/// Wrapper around `watch::Receiver` to listen to new blocks.
-///
-/// This is used by [`db::subscribe_blocks`] stream.
-#[derive(Clone)]
-pub struct BlockRx(tokio::sync::watch::Receiver<()>);
 
 /// Options for running the node.
 #[derive(Clone, Debug)]
@@ -134,7 +121,7 @@ pub fn run(
     // Run relayer.
     let relayer_handle = if let Some(relayer_source_endpoint) = relayer_source_endpoint {
         let relayer = Relayer::new(relayer_source_endpoint.as_str())?;
-        Some(relayer.run(conn_pool.clone(), block_notify.0.clone())?)
+        Some(relayer.run(conn_pool.clone(), block_notify.clone())?)
     } else {
         None
     };
@@ -144,38 +131,11 @@ pub fn run(
         Some(validation_stream(
             conn_pool.clone(),
             contract_registry,
-            block_notify.new_listener().0,
+            block_notify.new_listener(),
         )?)
     } else {
         None
     };
 
     Ok(Handle::new(relayer_handle, validation_handle))
-}
-
-impl BlockTx {
-    /// Create a new [`BlockTx`] to notify listeners of new blocks.
-    pub fn new() -> Self {
-        let (block_tx, _block_rx) = tokio::sync::watch::channel(());
-        Self(block_tx)
-    }
-
-    /// Notify listeners that a new block has been received.
-    ///
-    /// Note this is best effort and will still send even if there are currently no listeners.
-    pub fn notify(&self) {
-        let _ = self.0.send(());
-    }
-
-    /// Create a new [`BlockRx`] to listen for new blocks.
-    pub fn new_listener(&self) -> BlockRx {
-        BlockRx(self.0.subscribe())
-    }
-}
-
-impl BlockRx {
-    /// Waits for a change notification.
-    pub async fn changed(&mut self) -> Result<(), tokio::sync::watch::error::RecvError> {
-        self.0.changed().await
-    }
 }

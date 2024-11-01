@@ -2,7 +2,7 @@ use anyhow::Context;
 use clap::{Parser, ValueEnum};
 use essential_node::{self as node, db::pool::Config, RunConfig};
 use essential_node_api as node_api;
-use essential_node_types::BigBang;
+use essential_node_types::{block_notify::BlockTx, BigBang};
 use std::{
     net::{SocketAddr, SocketAddrV4},
     path::{Path, PathBuf},
@@ -172,7 +172,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         }
     );
 
-    let block_tx = node::BlockTx::new();
+    let block_tx = BlockTx::new();
     let block_rx = block_tx.new_listener();
 
     let run_conf = RunConfig {

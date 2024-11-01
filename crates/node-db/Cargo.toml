@@ -11,6 +11,7 @@ repository.workspace = true
 [dependencies]
 essential-hash = { workspace = true }
 essential-node-db-sql = { workspace = true }
+essential-node-types = { workspace = true, optional = true, features = ["block-notify"] }
 essential-types = { workspace = true }
 futures = { workspace = true }
 num_cpus = { workspace = true, optional = true }
@@ -30,7 +31,7 @@ uuid = { workspace = true }
 
 [features]
 default = ["pool"]
-pool = ["num_cpus", "rusqlite-pool", "rusqlite-pool/tokio", "tokio"]
+pool = [ "essential-node-types", "essential-node-types/tokio", "num_cpus", "rusqlite-pool", "rusqlite-pool/tokio", "tokio"]
 
 [package.metadata.docs.rs]
 all-features = true

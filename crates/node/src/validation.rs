@@ -9,6 +9,7 @@ use crate::{
 };
 use essential_hash::content_addr;
 use essential_node_db::QueryError;
+use essential_node_types::block_notify::BlockRx;
 use essential_types::{Block, ContentAddress};
 use tokio::sync::watch;
 
@@ -28,7 +29,7 @@ mod tests;
 pub fn validation_stream(
     conn_pool: ConnectionPool,
     contract_registry: ContentAddress,
-    mut block_rx: watch::Receiver<()>,
+    mut block_rx: BlockRx,
 ) -> Result<Handle<CriticalError>, CriticalError> {
     let (shutdown, stream_close) = watch::channel(());
 
