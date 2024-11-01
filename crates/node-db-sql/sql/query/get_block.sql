@@ -9,3 +9,5 @@ FROM
     LEFT JOIN solution ON block_solution.solution_id = solution.id
 WHERE
     block.block_address = :block_address
+ORDER BY
+    block_solution.solution_index ASC

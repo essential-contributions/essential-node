@@ -1,11 +1,10 @@
 //! Finalized queries query for the most recent version of a key less than or equal to a
 //! given block number or solution index for blocks that have been finalized.
 
+use crate::{blob_from_words, words_from_blob, QueryError};
 use essential_node_db_sql as sql;
 use essential_types::{ContentAddress, Key, Value, Word};
 use rusqlite::{named_params, Connection, OptionalExtension};
-
-use crate::{blob_from_words, words_from_blob, QueryError};
 
 /// Query the most recent value for a key in a contract's state
 /// that was set at or before the given block number.

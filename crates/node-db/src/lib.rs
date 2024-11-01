@@ -42,7 +42,7 @@ pub trait AcquireConnection {
     /// Returns `Some` in the case a connection could be acquired, or `None` in
     /// the case that the connection source is no longer available.
     #[allow(async_fn_in_trait)]
-    async fn acquire_connection(&self) -> Option<impl 'static + AsRef<Connection>>;
+    async fn acquire_connection(&self) -> Option<impl 'static + AsMut<Connection>>;
 }
 
 /// Types that may be provided to [`subscribe_blocks`] to asynchronously await
@@ -248,7 +248,6 @@ pub fn get_solution(tx: &Transaction, ca: &ContentAddress) -> Result<Solution, Q
     let mut data_stmt = tx.prepare(sql::query::GET_SOLUTION_DATA)?;
     let mut data = data_stmt
         .query_map([ca.0], |row| {
-            let index = row.get::<_, i64>("data_index")? as usize;
             let contract_addr = row.get::<_, Hash>("contract_addr")?;
             let predicate_addr = row.get::<_, Hash>("predicate_addr")?;
             Ok(SolutionData {
@@ -278,8 +277,8 @@ pub fn get_solution(tx: &Transaction, ca: &ContentAddress) -> Result<Solution, Q
         while let Some(mutation_row) = mutation_rows.next()? {
             let key_blob: Vec<u8> = mutation_row.get("key")?;
             let value_blob: Vec<u8> = mutation_row.get("value")?;
-            let key: Key = decode(&key_blob)?;
-            let value: Value = decode(&value_blob)?;
+            let key: Key = words_from_blob(&key_blob);
+            let value: Value = words_from_blob(&value_blob);
             mutations.push(Mutation { key, value });
         }
 
@@ -290,7 +289,7 @@ pub fn get_solution(tx: &Transaction, ca: &ContentAddress) -> Result<Solution, Q
         })?;
         while let Some(dec_var_row) = dec_var_rows.next()? {
             let value_blob: Vec<u8> = dec_var_row.get("value")?;
-            let value: Value = decode(&value_blob)?;
+            let value: Value = words_from_blob(&value_blob);
             dec_vars.push(value);
         }
 
@@ -444,8 +443,8 @@ pub fn get_next_block_addresses(
 }
 
 /// Lists all blocks in the given range.
-pub fn list_blocks(conn: &Connection, block_range: Range<Word>) -> Result<Vec<Block>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::LIST_BLOCKS)?;
+pub fn list_blocks(tx: &Transaction, block_range: Range<Word>) -> Result<Vec<Block>, QueryError> {
+    let mut stmt = tx.prepare(sql::query::LIST_BLOCKS)?;
     let rows = stmt.query_map(
         named_params! {
             ":start_block": block_range.start,
@@ -456,9 +455,14 @@ pub fn list_blocks(conn: &Connection, block_range: Range<Word>) -> Result<Vec<Bl
             let block_number: Word = row.get("number")?;
             let timestamp_secs: u64 = row.get("timestamp_secs")?;
             let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
-            let solution_blob: Vec<u8> = row.get("solution")?;
+            let solution_hash: Hash = row.get("content_hash")?;
             let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
-            Ok((block_address, block_number, timestamp, solution_blob))
+            Ok((
+                block_address,
+                block_number,
+                timestamp,
+                ContentAddress(solution_hash),
+            ))
         },
     )?;
 
@@ -466,11 +470,11 @@ pub fn list_blocks(conn: &Connection, block_range: Range<Word>) -> Result<Vec<Bl
     let mut blocks: Vec<Block> = vec![];
     let mut last_block_address = None;
     for res in rows {
-        let (block_address, block_number, timestamp, solution_blob): (
+        let (block_address, block_number, timestamp, solution_addr): (
             essential_types::Hash,
             Word,
             Duration,
-            Vec<u8>,
+            ContentAddress,
         ) = res?;
 
         // Fetch the block associated with the block number, inserting it first if new.
@@ -488,7 +492,7 @@ pub fn list_blocks(conn: &Connection, block_range: Range<Word>) -> Result<Vec<Bl
         };
 
         // Add the solution.
-        let solution: Solution = decode(&solution_blob)?;
+        let solution = get_solution(tx, &solution_addr)?;
         block.solutions.push(solution);
     }
     Ok(blocks)
@@ -496,12 +500,12 @@ pub fn list_blocks(conn: &Connection, block_range: Range<Word>) -> Result<Vec<Bl
 
 /// Lists blocks and their solutions within a specific time range with pagination.
 pub fn list_blocks_by_time(
-    conn: &Connection,
+    tx: &Transaction,
     range: Range<Duration>,
     page_size: i64,
     page_number: i64,
 ) -> Result<Vec<Block>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::LIST_BLOCKS_BY_TIME)?;
+    let mut stmt = tx.prepare(sql::query::LIST_BLOCKS_BY_TIME)?;
     let rows = stmt.query_map(
         named_params! {
             ":start_secs": range.start.as_secs(),
@@ -516,9 +520,14 @@ pub fn list_blocks_by_time(
             let block_number: Word = row.get("number")?;
             let timestamp_secs: u64 = row.get("timestamp_secs")?;
             let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
-            let solution_blob: Vec<u8> = row.get("solution")?;
+            let solution_hash: Hash = row.get("content_hash")?;
             let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
-            Ok((block_address, block_number, timestamp, solution_blob))
+            Ok((
+                block_address,
+                block_number,
+                timestamp,
+                ContentAddress(solution_hash),
+            ))
         },
     )?;
 
@@ -526,11 +535,11 @@ pub fn list_blocks_by_time(
     let mut blocks: Vec<Block> = vec![];
     let mut last_block_address: Option<essential_types::Hash> = None;
     for res in rows {
-        let (block_address, block_number, timestamp, solution_blob): (
+        let (block_address, block_number, timestamp, solution_addr): (
             essential_types::Hash,
             Word,
             Duration,
-            Vec<u8>,
+            ContentAddress,
         ) = res?;
 
         // Fetch the block associated with the block number, inserting it first if new.
@@ -548,7 +557,7 @@ pub fn list_blocks_by_time(
         };
 
         // Add the solution.
-        let solution: Solution = decode(&solution_blob)?;
+        let solution = get_solution(tx, &solution_addr)?;
         block.solutions.push(solution);
     }
     Ok(blocks)
@@ -582,10 +591,10 @@ pub fn list_failed_blocks(
 
 /// Lists all unchecked blocks in the given range.
 pub fn list_unchecked_blocks(
-    conn: &Connection,
+    tx: &Transaction,
     block_range: Range<Word>,
 ) -> Result<Vec<Block>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::LIST_UNCHECKED_BLOCKS)?;
+    let mut stmt = tx.prepare(sql::query::LIST_UNCHECKED_BLOCKS)?;
     let rows = stmt.query_map(
         named_params! {
             ":start_block": block_range.start,
@@ -596,9 +605,14 @@ pub fn list_unchecked_blocks(
             let block_number: Word = row.get("number")?;
             let timestamp_secs: u64 = row.get("timestamp_secs")?;
             let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
-            let solution_blob: Vec<u8> = row.get("solution")?;
+            let solution_addr: Hash = row.get("content_hash")?;
             let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
-            Ok((block_address, block_number, timestamp, solution_blob))
+            Ok((
+                block_address,
+                block_number,
+                timestamp,
+                ContentAddress(solution_addr),
+            ))
         },
     )?;
 
@@ -606,11 +620,11 @@ pub fn list_unchecked_blocks(
     let mut blocks: Vec<Block> = vec![];
     let mut last_block_address = None;
     for res in rows {
-        let (block_address, block_number, timestamp, solution_blob): (
+        let (block_address, block_number, timestamp, solution_addr): (
             essential_types::Hash,
             Word,
             Duration,
-            Vec<u8>,
+            ContentAddress,
         ) = res?;
 
         // Fetch the block associated with the block number, inserting it first if new.
@@ -628,7 +642,7 @@ pub fn list_unchecked_blocks(
         };
 
         // Add the solution.
-        let solution: Solution = decode(&solution_blob)?;
+        let solution = get_solution(tx, &solution_addr)?;
         block.solutions.push(solution);
     }
     Ok(blocks)
@@ -653,14 +667,25 @@ pub fn subscribe_blocks(
     acquire_conn: impl AcquireConnection,
     await_new_block: impl AwaitNewBlock,
 ) -> impl Stream<Item = Result<Block, QueryError>> {
+    // Helper function to list blocks by block number range.
+    fn list_blocks_by_conn(
+        conn: &mut Connection,
+        block_range: Range<Word>,
+    ) -> Result<Vec<Block>, QueryError> {
+        let tx = conn.transaction()?;
+        let blocks = list_blocks(&tx, block_range)?;
+        drop(tx);
+        Ok(blocks)
+    }
+
     let init = (start_block, acquire_conn, await_new_block);
     futures::stream::unfold(init, move |(block_ix, acq_conn, mut new_block)| {
         let next_ix = block_ix + 1;
         async move {
             loop {
                 // Acquire a connection and query for the current block.
-                let conn = acq_conn.acquire_connection().await?;
-                let res = list_blocks(conn.as_ref(), block_ix..next_ix);
+                let mut conn = acq_conn.acquire_connection().await?;
+                let res = list_blocks_by_conn(conn.as_mut(), block_ix..next_ix);
                 // Drop the connection ASAP in case it needs returning to a pool.
                 std::mem::drop(conn);
                 match res {

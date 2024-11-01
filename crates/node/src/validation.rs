@@ -144,11 +144,12 @@ async fn validate_next_block(
                     .get(solution_index)
                     .expect("Failed solution must exist."),
             );
-            let conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
+            let mut conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
             tokio::task::spawn_blocking(move || {
                 db::insert_failed_block(&conn, &block_address, &failed_solution)
                     .map_err(ValidationError::from)?;
-
+                let tx = conn.transaction().unwrap();
+                tx.commit().unwrap();
                 Ok(false)
             })
             .await

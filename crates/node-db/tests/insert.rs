@@ -2,7 +2,7 @@
 
 use essential_hash::content_addr;
 use essential_node_db::{self as node_db, words_from_blob};
-use essential_types::{Key, Value, Word};
+use essential_types::{ContentAddress, Hash, Key, PredicateAddress, Value, Word};
 use rusqlite::params;
 use std::time::Duration;
 use util::{test_blocks, test_blocks_with_vars, test_conn};
@@ -61,8 +61,8 @@ fn test_insert_block() {
                     .query(params![solution_address.0, data_ix as i64])
                     .unwrap();
                 let row = rows.next().unwrap().unwrap();
-                let contract_addr: Hash = decode(&row.get::<_, Vec<u8>>(0).unwrap()).unwrap();
-                let predicate_addr: Hash = decode(&row.get::<_, Vec<u8>>(1).unwrap()).unwrap();
+                let contract_addr: Hash = row.get(0).unwrap();
+                let predicate_addr: Hash = row.get(1).unwrap();
                 assert_eq!(
                     PredicateAddress {
                         contract: ContentAddress(contract_addr),
@@ -137,9 +137,8 @@ fn test_finalize_block() {
     for block in &blocks {
         node_db::insert_block(&tx, block).unwrap();
     }
-    tx.commit().unwrap();
 
-    let r = node_db::list_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
+    let r = node_db::list_blocks(&tx, 0..(NUM_BLOCKS + 10)).unwrap();
     assert_eq!(r.len(), NUM_BLOCKS as usize);
 
     for (block, expected_block) in blocks.iter().zip(&r) {
@@ -147,16 +146,15 @@ fn test_finalize_block() {
     }
 
     // Finalize the blocks.
-    let tx = conn.transaction().unwrap();
     for block in blocks.iter().take(NUM_FINALIZED_BLOCKS as usize) {
         let block_address = content_addr(block);
         node_db::finalize_block(&tx, &block_address).unwrap();
     }
-    tx.commit().unwrap();
 
     // Should not change list blocks
-    let r = node_db::list_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
+    let r = node_db::list_blocks(&tx, 0..(NUM_BLOCKS + 10)).unwrap();
     assert_eq!(r.len(), NUM_BLOCKS as usize);
+    tx.commit().unwrap();
 
     // Check the latest finalized block hash.
     let latest_finalized_block_address =
@@ -223,9 +221,9 @@ fn test_failed_block() {
     for block in &blocks {
         node_db::insert_block(&tx, block).unwrap();
     }
-    tx.commit().unwrap();
 
-    let r = node_db::list_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
+    let r = node_db::list_blocks(&tx, 0..(NUM_BLOCKS + 10)).unwrap();
+    tx.commit().unwrap();
     assert_eq!(r.len(), 2);
     assert_eq!(&blocks[0], &r[0]);
     assert_eq!(&blocks[1], &r[1]);
@@ -253,12 +251,14 @@ fn test_failed_block() {
     let solution_hash = content_addr(blocks[1].solutions.first().unwrap());
     node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
 
-    let r = node_db::list_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
+    let tx = conn.transaction().unwrap();
+    let r = node_db::list_blocks(&tx, 0..(NUM_BLOCKS + 10)).unwrap();
     assert_eq!(r.len(), 2);
     assert_eq!(&blocks[1], &r[1]);
 
     // Check failed blocks.
-    let failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
+    let failed_blocks = node_db::list_failed_blocks(&tx, 0..(NUM_BLOCKS + 10)).unwrap();
+    drop(tx);
     assert_eq!(failed_blocks.len(), 2);
     assert_eq!(failed_blocks[1].0, blocks[1].number);
     assert_eq!(failed_blocks[1].1, solution_hash);
@@ -278,9 +278,9 @@ fn test_fork_block() {
     node_db::insert_block(&tx, &first).unwrap();
     node_db::insert_block(&tx, &fork_a).unwrap();
     node_db::insert_block(&tx, &fork_b).unwrap();
-    tx.commit().unwrap();
 
-    let r = node_db::list_blocks(&conn, 0..10).unwrap();
+    let r = node_db::list_blocks(&tx, 0..10).unwrap();
+    tx.commit().unwrap();
     assert_eq!(r.len(), 3);
     assert_eq!(r[0], first);
 

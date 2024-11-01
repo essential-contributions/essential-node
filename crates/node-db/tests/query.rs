@@ -1,6 +1,6 @@
 use essential_hash::content_addr;
 use essential_node_db::{self as node_db};
-use essential_types::{ContentAddress, Word};
+use essential_types::{Block, ContentAddress, Word};
 use std::time::Duration;
 use util::{test_block, test_blocks_with_vars, test_conn};
 
@@ -19,12 +19,91 @@ fn test_get_solution() {
     node_db::create_tables(&tx).unwrap();
     node_db::insert_block(&tx, &block).unwrap();
 
-    // Fetch the first solution.
-    let solution = &block.solutions[0];
-    let sol_ca = essential_hash::content_addr(solution);
-    let fetched_solution = node_db::get_solution(&tx, &sol_ca).unwrap();
+    // Fetch the solutions.
+    for solution in &block.solutions {
+        let sol_ca = essential_hash::content_addr(solution);
+        let fetched_solution = node_db::get_solution(&tx, &sol_ca).unwrap();
+        assert_eq!(solution, &fetched_solution);
+    }
+}
 
-    assert_eq!(solution, &fetched_solution);
+#[test]
+fn test_get_repeated_solution() {
+    // The test solution and blocks.
+    let solution = util::test_solution(42);
+    let block = Block {
+        number: 1,
+        timestamp: Duration::from_secs(1),
+        solutions: vec![solution.clone()],
+    };
+    let block2 = Block {
+        number: 2,
+        timestamp: Duration::from_secs(2),
+        solutions: vec![solution.clone()],
+    };
+
+    // Create an in-memory SQLite database.
+    let mut conn = test_conn();
+
+    // Create the necessary tables and insert the blocks.
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    node_db::insert_block(&tx, &block).unwrap();
+    node_db::insert_block(&tx, &block2).unwrap();
+
+    // Fetch the first solution.
+    let fetched_solution = node_db::get_solution(&tx, &content_addr(&solution)).unwrap();
+    let fetched_block = node_db::get_block(&tx, &content_addr(&block))
+        .unwrap()
+        .unwrap();
+    let fetched_block2 = node_db::get_block(&tx, &content_addr(&block2))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(solution, fetched_solution);
+    assert_eq!(block, fetched_block);
+    assert_eq!(block2, fetched_block2);
+}
+
+#[test]
+fn test_block_solution_ordering() {
+    // The test solution and blocks.
+    let solution = util::test_solution(42);
+    let solution2 = util::test_solution(43);
+    let block = Block {
+        number: 1,
+        timestamp: Duration::from_secs(1),
+        solutions: vec![solution.clone()],
+    };
+    let block2 = Block {
+        number: 2,
+        timestamp: Duration::from_secs(2),
+        solutions: vec![solution2.clone(), solution.clone()],
+    };
+
+    // Create an in-memory SQLite database.
+    let mut conn = test_conn();
+
+    // Create the necessary tables and insert the blocks.
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    node_db::insert_block(&tx, &block).unwrap();
+    node_db::insert_block(&tx, &block2).unwrap();
+
+    // Fetch the first solution.
+    let fetched_solution = node_db::get_solution(&tx, &content_addr(&solution)).unwrap();
+    let fetched_solution2 = node_db::get_solution(&tx, &content_addr(&solution2)).unwrap();
+    let fetched_block = node_db::get_block(&tx, &content_addr(&block))
+        .unwrap()
+        .unwrap();
+    let fetched_block2 = node_db::get_block(&tx, &content_addr(&block2))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(solution, fetched_solution);
+    assert_eq!(solution2, fetched_solution2);
+    assert_eq!(block, fetched_block);
+    assert_eq!(block2, fetched_block2);
 }
 
 #[test]
@@ -63,10 +142,10 @@ fn test_list_blocks() {
     for block in &blocks {
         node_db::insert_block(&tx, block).unwrap();
     }
-    tx.commit().unwrap();
 
     // List the blocks.
-    let fetched_blocks = node_db::list_blocks(&conn, 0..100).unwrap();
+    let fetched_blocks = node_db::list_blocks(&tx, 0..100).unwrap();
+    tx.commit().unwrap();
     assert_eq!(blocks, fetched_blocks);
 }
 
@@ -84,12 +163,12 @@ fn test_list_blocks_by_time() {
     for block in &blocks {
         node_db::insert_block(&tx, block).unwrap();
     }
-    tx.commit().unwrap();
 
     // List the blocks by time.
     let start_time = Duration::from_secs(3);
     let end_time = Duration::from_secs(6);
-    let fetched_blocks = node_db::list_blocks_by_time(&conn, start_time..end_time, 10, 0).unwrap();
+    let fetched_blocks = node_db::list_blocks_by_time(&tx, start_time..end_time, 10, 0).unwrap();
+    tx.commit().unwrap();
 
     // Filter the original blocks to match the time range.
     let expected_blocks: Vec<_> = blocks
