@@ -17,6 +17,12 @@ pub fn test_conn() -> Connection {
     conn
 }
 
+pub fn test_on_disk_conn(path: &str) -> Connection {
+    let conn = Connection::open(path).unwrap();
+    conn.pragma_update(None, "foreign_keys", true).unwrap();
+    conn
+}
+
 pub fn test_pool_conf() -> db::pool::Config {
     db::pool::Config {
         source: db::pool::Source::Memory(uuid::Uuid::new_v4().into()),

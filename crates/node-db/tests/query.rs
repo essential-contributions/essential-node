@@ -1,5 +1,6 @@
 use essential_hash::content_addr;
 use essential_node_db::{self as node_db};
+use essential_types::{ContentAddress, Word};
 use std::time::Duration;
 use util::{test_block, test_blocks_with_vars, test_conn};
 
@@ -277,6 +278,181 @@ fn test_query_at_finalized() {
         node_db::finalized::query_state_exclusive_solution(&tx, &contract_addr, &vec![0], 100, 100)
             .unwrap()
             .unwrap();
+
+    assert_eq!(
+        state,
+        blocks.last().unwrap().solutions.last().unwrap().data[0].state_mutations[0].value
+    );
+}
+
+#[test]
+fn test_query_state_block_address() {
+    // Test block that we'll insert.
+    let (contract_addr, blocks) = test_blocks_with_vars(10);
+
+    // Create an in-memory SQLite database.
+    let mut conn = test_conn();
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+
+    let mut prev_addr: Option<ContentAddress> = None;
+    for block in &blocks[0..5] {
+        let block_address = node_db::insert_block(&tx, block).unwrap();
+        node_db::finalize_block(&tx, &block_address).unwrap();
+        if let Some(prev_addr) = &prev_addr {
+            tx.execute(
+                "UPDATE block SET parent_block_id = (SELECT id FROM block WHERE block_address = ?) WHERE block_address = ?",
+                [prev_addr.0, block_address.0],
+            )
+            .unwrap();
+        }
+        prev_addr = Some(block_address);
+    }
+
+    let forks = blocks[5..]
+        .iter()
+        .chain(blocks[5..].iter())
+        .enumerate()
+        .map(|(i, block)| {
+            let mut fork = block.clone();
+            for solution in &mut fork.solutions {
+                for data in &mut solution.data {
+                    for mutation in &mut data.state_mutations {
+                        mutation.value[0] = (mutation.value[0] * 1000) + (i as Word);
+                    }
+                }
+            }
+            fork
+        });
+    for block in &blocks[5..] {
+        let block_address = node_db::insert_block(&tx, block).unwrap();
+        if let Some(prev_addr) = &prev_addr {
+            tx.execute(
+                "UPDATE block SET parent_block_id = (SELECT id FROM block WHERE block_address = ?) WHERE block_address = ?",
+                [prev_addr.0, block_address.0],
+            )
+            .unwrap();
+        }
+        prev_addr = Some(block_address);
+    }
+
+    for fork in forks {
+        let block_address = node_db::insert_block(&tx, &fork).unwrap();
+        let prev_addr = content_addr(&blocks[fork.number as usize - 1]);
+        tx.execute(
+            "UPDATE block SET parent_block_id = (SELECT id FROM block WHERE block_address = ?) WHERE block_address = ?",
+            [prev_addr.0, block_address.0],
+        )
+        .unwrap();
+    }
+
+    // Test queries at each block and solution.
+    for block in &blocks {
+        for (si, solution) in block.solutions.iter().enumerate() {
+            for (di, data) in solution.data.iter().enumerate() {
+                for (mi, mutation) in data.state_mutations.iter().enumerate() {
+                    let state = node_db::address::query_state_inclusive_block(
+                        &tx,
+                        &contract_addr,
+                        &mutation.key,
+                        &content_addr(block),
+                    )
+                    .unwrap()
+                    .unwrap();
+                    assert_eq!(
+                        state, block.solutions[2].data[di].state_mutations[mi].value,
+                        "block: {}, sol: {}, data: {}, mut: {}, k: {:?}, v: {:?}",
+                        block.number, si, di, mi, mutation.key, mutation.value
+                    );
+
+                    let state = node_db::address::query_state_exclusive_block(
+                        &tx,
+                        &contract_addr,
+                        &mutation.key,
+                        &content_addr(block),
+                    )
+                    .unwrap();
+
+                    if block.number == 0 {
+                        assert_eq!(state, None);
+                    } else {
+                        assert_eq!(
+                            state.unwrap(),
+                            blocks[(block.number - 1) as usize].solutions[2].data[di]
+                                .state_mutations[mi]
+                                .value
+                        );
+                    }
+
+                    let state = node_db::address::query_state_inclusive_solution(
+                        &tx,
+                        &contract_addr,
+                        &mutation.key,
+                        &content_addr(block),
+                        si as u64,
+                    )
+                    .unwrap()
+                    .unwrap();
+                    assert_eq!(
+                        state, mutation.value,
+                        "block: {}, sol: {}, data: {}, mut: {}, k: {:?}, v: {:?}",
+                        block.number, si, di, mi, mutation.key, mutation.value
+                    );
+
+                    let state = node_db::address::query_state_exclusive_solution(
+                        &tx,
+                        &contract_addr,
+                        &mutation.key,
+                        &content_addr(block),
+                        si as u64,
+                    )
+                    .unwrap();
+
+                    if block.number == 0 && si == 0 {
+                        assert_eq!(state, None);
+                    } else if si == 0 {
+                        assert_eq!(
+                            state.unwrap(),
+                            blocks[(block.number - 1) as usize].solutions[2].data[di]
+                                .state_mutations[mi]
+                                .value
+                        );
+                    } else {
+                        assert_eq!(
+                            state.unwrap(),
+                            block.solutions[si - 1].data[di].state_mutations[mi].value
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // Test queries past the end.
+    let state = node_db::address::query_state_inclusive_solution(
+        &tx,
+        &contract_addr,
+        &vec![0],
+        &content_addr(&blocks[9]),
+        5,
+    )
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(
+        state,
+        blocks.last().unwrap().solutions.last().unwrap().data[0].state_mutations[0].value
+    );
+
+    let state = node_db::address::query_state_exclusive_solution(
+        &tx,
+        &contract_addr,
+        &vec![0],
+        &content_addr(&blocks[9]),
+        5,
+    )
+    .unwrap()
+    .unwrap();
 
     assert_eq!(
         state,

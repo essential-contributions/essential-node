@@ -55,6 +55,10 @@ pub mod query {
         GET_NEXT_BLOCK_ADDRESSES,
         "query/get_next_block_addresses.sql"
     );
+    decl_const_sql_str!(
+        GET_PARENT_BLOCK_ADDRESS,
+        "query/get_parent_block_address.sql"
+    );
     decl_const_sql_str!(GET_SOLUTION, "query/get_solution.sql");
     decl_const_sql_str!(GET_STATE, "query/get_state.sql");
     decl_const_sql_str!(GET_VALIDATION_PROGRESS, "query/get_validation_progress.sql");
@@ -69,6 +73,10 @@ pub mod query {
     decl_const_sql_str!(
         QUERY_STATE_AT_SOLUTION_FINALIZED,
         "query/query_state_at_solution_finalized.sql"
+    );
+    decl_const_sql_str!(
+        QUERY_STATE_BLOCK_ADDRESS,
+        "query/query_state_block_address.sql"
     );
 }
 
