@@ -53,7 +53,7 @@ fn test_insert_block() {
 
             for (data_ix, data) in solution.data.iter().enumerate() {
                 // Verify solution data was inserted corectly
-                let query = "SELECT solution_data.contract_addr, solution_data.predicate_addr 
+                let query = "SELECT solution_data.contract_addr, solution_data.predicate_addr
                     FROM solution_data JOIN solution ON solution_data.solution_id = solution.id
                     WHERE solution.content_hash = ? AND solution_data.data_index = ?";
                 let mut stmt = conn.prepare(query).unwrap();
@@ -75,8 +75,8 @@ fn test_insert_block() {
                 for (mutation_ix, mutation) in data.state_mutations.iter().enumerate() {
                     // Query deployed contract
                     let query = "SELECT mutation.key FROM mutation
-                    JOIN solution ON mutation.solution_id = solution.id
                     JOIN solution_data ON solution_data.id = mutation.data_id
+                    JOIN solution ON solution_data.solution_id = solution.id
                     WHERE solution.content_hash = ? AND mutation.mutation_index = ? AND solution_data.data_index = ?
                     ORDER BY mutation.mutation_index ASC";
                     let mut stmt = conn.prepare(query).unwrap();
@@ -94,8 +94,9 @@ fn test_insert_block() {
                 // Verify dec vars were inserted correctly
                 for (dvi, dec_var) in data.decision_variables.iter().enumerate() {
                     // Query dec vars
-                    let query = "SELECT dec_var.value
-                        FROM dec_var JOIN solution ON dec_var.solution_id = solution.id JOIN solution_data ON dec_var.data_id = solution_data.id
+                    let query = "SELECT dec_var.value FROM dec_var
+                        JOIN solution_data ON solution_data.id = dec_var.data_id
+                        JOIN solution ON solution_data.solution_id = solution.id
                         WHERE solution_data.data_index = ? AND dec_var.dec_var_index = ? AND solution.content_hash = ?";
                     let mut stmt = conn.prepare(query).unwrap();
                     let mut dec_var_result = stmt

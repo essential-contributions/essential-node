@@ -354,6 +354,8 @@ pub fn get_block(
         }
         let mut block = block_in_progress.expect("should have been set above at worst case");
         // Add the solution.
+        // If there are performance issues, use statements in `get_solution` directly.
+        // See https://github.com/essential-contributions/essential-node/issues/154.
         let solution = get_solution(tx, &solution_addr)?;
         block.solutions.push(solution);
         block_in_progress = Some(block);
@@ -471,7 +473,9 @@ pub fn list_blocks(tx: &Transaction, block_range: Range<Word>) -> Result<Vec<Blo
         };
 
         // Add the solution.
-        let solution = get_solution(tx, &solution_addr)?;
+        // If there are performance issues, use statements in `get_solution` directly.
+        // See https://github.com/essential-contributions/essential-node/issues/154.
+       let solution = get_solution(tx, &solution_addr)?;
         block.solutions.push(solution);
     }
     Ok(blocks)
@@ -536,6 +540,8 @@ pub fn list_blocks_by_time(
         };
 
         // Add the solution.
+        // If there are performance issues, use statements in `get_solution` directly.
+        // See https://github.com/essential-contributions/essential-node/issues/154.
         let solution = get_solution(tx, &solution_addr)?;
         block.solutions.push(solution);
     }
@@ -621,6 +627,8 @@ pub fn list_unchecked_blocks(
         };
 
         // Add the solution.
+        // If there are performance issues, use statements in `get_solution` directly.
+        // See https://github.com/essential-contributions/essential-node/issues/154.
         let solution = get_solution(tx, &solution_addr)?;
         block.solutions.push(solution);
     }

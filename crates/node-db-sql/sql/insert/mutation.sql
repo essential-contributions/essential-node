@@ -1,6 +1,5 @@
 INSERT
     OR IGNORE INTO mutation (
-        solution_id,
         data_id,
         mutation_index,
         key,
@@ -8,17 +7,7 @@ INSERT
     )
 VALUES
     (
-        (
-            SELECT
-                id
-            FROM
-                solution
-            WHERE
-                content_hash = :solution_hash
-            LIMIT
-                1
-        ), 
-        (
+       (
             SELECT
                 solution_data.id
             FROM
