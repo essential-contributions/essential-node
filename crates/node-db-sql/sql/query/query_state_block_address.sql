@@ -11,8 +11,8 @@ WITH RECURSIVE chain AS (
     FROM
         block b
         LEFT JOIN block_solution bs ON bs.block_id = b.id
-        LEFT JOIN mutation m ON m.solution_id = bs.solution_id
-        AND m.contract_ca = :contract_ca
+        LEFT JOIN solution_data ON solution_data.solution_id = bs.solution_id AND solution_data.contract_addr = :contract_ca
+        LEFT JOIN mutation m ON m.data_id = solution_data.id
         AND m.key = :key
     WHERE
         b.block_address = :block_address
@@ -28,9 +28,8 @@ WITH RECURSIVE chain AS (
     FROM
         chain c
         JOIN block b ON b.id = c.parent_block_id
-        LEFT JOIN block_solution bs ON bs.block_id = b.id
-        LEFT JOIN mutation m ON m.solution_id = bs.solution_id
-        AND m.contract_ca = :contract_ca
+        LEFT JOIN solution_data ON solution_data.solution_id = b.id AND solution_data.contract_addr = :contract_ca
+        LEFT JOIN mutation m ON m.data_id = solution_data.id
         AND m.key = :key
     WHERE
         c.found_value IS NULL -- Stop recursing if we found a value
@@ -46,16 +45,16 @@ WITH RECURSIVE chain AS (
 )
 SELECT
     (
-        -- The key was found in this block but we 
+        -- The key was found in this block but we
         -- have to find the latest version within this block
         SELECT
             value
         FROM
             block_solution bs
-            JOIN mutation m ON m.solution_id = bs.solution_id
+            JOIN solution_data ON solution_data.solution_id = bs.solution_id AND solution_data.contract_addr = :contract_ca
+            JOIN mutation m ON m.data_id = solution_data.id
         WHERE
             bs.block_id = chain.block_id
-            AND m.contract_ca = :contract_ca
             AND m.key = :key
             AND (
                 :solution_index IS NULL

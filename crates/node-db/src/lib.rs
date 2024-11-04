@@ -475,7 +475,7 @@ pub fn list_blocks(tx: &Transaction, block_range: Range<Word>) -> Result<Vec<Blo
         // Add the solution.
         // If there are performance issues, use statements in `get_solution` directly.
         // See https://github.com/essential-contributions/essential-node/issues/154.
-       let solution = get_solution(tx, &solution_addr)?;
+        let solution = get_solution(tx, &solution_addr)?;
         block.solutions.push(solution);
     }
     Ok(blocks)
