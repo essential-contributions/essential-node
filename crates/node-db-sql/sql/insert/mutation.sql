@@ -1,22 +1,21 @@
 INSERT
     OR IGNORE INTO mutation (
-        solution_id,
-        data_index,
+        data_id,
         mutation_index,
-        contract_ca,
         key,
         value
     )
 VALUES
     (
-        (
+       (
             SELECT
-                id
+                solution_data.id
             FROM
-                solution
+                solution_data
+                JOIN solution ON solution.id = solution_data.solution_id
             WHERE
-                content_hash = :solution_hash
+                solution.content_hash = :solution_hash AND solution_data.data_index = :data_index
             LIMIT
                 1
-        ), :data_index, :mutation_index, :contract_ca, :key, :value
+        ), :mutation_index, :key, :value
     );

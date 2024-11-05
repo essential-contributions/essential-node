@@ -98,6 +98,12 @@ impl AsyncConnectionPool {
     }
 }
 
+impl AsMut<rusqlite::Connection> for AsyncConnectionHandle {
+    fn as_mut(&mut self) -> &mut rusqlite::Connection {
+        self
+    }
+}
+
 impl AsRef<rusqlite::Connection> for AsyncConnectionHandle {
     fn as_ref(&self) -> &rusqlite::Connection {
         self

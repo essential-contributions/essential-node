@@ -15,7 +15,6 @@ essential-node-types = { workspace = true, optional = true, features = ["block-n
 essential-types = { workspace = true }
 futures = { workspace = true }
 num_cpus = { workspace = true, optional = true }
-postcard = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

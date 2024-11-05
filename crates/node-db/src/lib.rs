@@ -11,14 +11,14 @@
 //! functions required for safely creating the necessary tables and inserting/
 //! querying/updating them as necessary.
 
-pub use error::{DecodeError, QueryError};
+pub use error::QueryError;
 use essential_hash::content_addr;
 #[doc(inline)]
 pub use essential_node_db_sql as sql;
 use essential_types::{
     convert::{bytes_from_word, word_from_bytes},
-    solution::Solution,
-    Block, ContentAddress, Hash, Key, Value, Word,
+    solution::{Mutation, Solution, SolutionData},
+    Block, ContentAddress, Hash, Key, PredicateAddress, Value, Word,
 };
 use futures::Stream;
 #[cfg(feature = "pool")]
@@ -26,7 +26,6 @@ pub use pool::ConnectionPool;
 pub use query_range::address;
 pub use query_range::finalized;
 use rusqlite::{named_params, params, Connection, OptionalExtension, Transaction};
-use serde::{Deserialize, Serialize};
 use std::{ops::Range, time::Duration};
 
 mod error;
@@ -42,7 +41,7 @@ pub trait AcquireConnection {
     /// Returns `Some` in the case a connection could be acquired, or `None` in
     /// the case that the connection source is no longer available.
     #[allow(async_fn_in_trait)]
-    async fn acquire_connection(&self) -> Option<impl 'static + AsRef<Connection>>;
+    async fn acquire_connection(&self) -> Option<impl 'static + AsMut<Connection>>;
 }
 
 /// Types that may be provided to [`subscribe_blocks`] to asynchronously await
@@ -54,26 +53,6 @@ pub trait AwaitNewBlock {
     /// `None` when the notification source is no longer available.
     #[allow(async_fn_in_trait)]
     async fn await_new_block(&mut self) -> Option<()>;
-}
-
-/// Encodes the given value into a blob.
-///
-/// This serializes the value using postcard.
-pub fn encode<T>(value: &T) -> Vec<u8>
-where
-    T: Serialize,
-{
-    postcard::to_allocvec(value).expect("postcard serialization cannot fail")
-}
-
-/// Decodes the given blob into a value of type `T`.
-///
-/// This deserializes the bytes into a value of `T` with `postcard`.
-pub fn decode<T>(value: &[u8]) -> Result<T, DecodeError>
-where
-    T: for<'de> Deserialize<'de>,
-{
-    Ok(postcard::from_bytes(value)?)
 }
 
 /// Create all tables.
@@ -115,15 +94,14 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<Content
     // Insert all solutions.
     let mut stmt_solution = tx.prepare(sql::insert::SOLUTION)?;
     let mut stmt_block_solution = tx.prepare(sql::insert::BLOCK_SOLUTION)?;
+    let mut stmt_solution_data = tx.prepare(sql::insert::SOLUTION_DATA)?;
     let mut stmt_mutation = tx.prepare(sql::insert::MUTATION)?;
     let mut stmt_dec_var = tx.prepare(sql::insert::DEC_VAR)?;
 
     for (ix, (solution, ca)) in block.solutions.iter().zip(solution_hashes).enumerate() {
         // Insert the solution.
-        let solution_blob = encode(solution);
         stmt_solution.execute(named_params! {
             ":content_hash": ca.0,
-            ":solution": solution_blob,
         })?;
 
         // Create a mapping between the block and the solution.
@@ -134,12 +112,17 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<Content
         })?;
 
         for (data_ix, data) in solution.data.iter().enumerate() {
+            stmt_solution_data.execute(named_params! {
+                ":solution_hash": ca.0,
+                ":data_index": data_ix,
+                ":contract_addr": data.predicate_to_solve.contract.0,
+                ":predicate_addr": data.predicate_to_solve.predicate.0,
+            })?;
             for (mutation_ix, mutation) in data.state_mutations.iter().enumerate() {
                 stmt_mutation.execute(named_params! {
                     ":solution_hash": ca.0,
                     ":data_index": data_ix,
                     ":mutation_index": mutation_ix,
-                    ":contract_ca": data.predicate_to_solve.contract.0,
                     ":key": blob_from_words(&mutation.key),
                     ":value": blob_from_words(&mutation.value),
                 })?;
@@ -156,6 +139,7 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<Content
     }
     stmt_solution.finalize()?;
     stmt_block_solution.finalize()?;
+    stmt_solution_data.finalize()?;
     stmt_mutation.finalize()?;
     stmt_dec_var.finalize()?;
 
@@ -239,15 +223,57 @@ pub fn delete_state(
 }
 
 /// Fetches a solution by its content address.
-pub fn get_solution(
-    conn: &Connection,
-    ca: &ContentAddress,
-) -> Result<Option<Solution>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::GET_SOLUTION)?;
-    let solution_blob: Option<Vec<u8>> = stmt
-        .query_row([ca.0], |row| row.get("solution"))
-        .optional()?;
-    Ok(solution_blob.as_deref().map(decode).transpose()?)
+pub fn get_solution(tx: &Transaction, ca: &ContentAddress) -> Result<Solution, QueryError> {
+    let mut data_stmt = tx.prepare(sql::query::GET_SOLUTION_DATA)?;
+    let mut data = data_stmt
+        .query_map([ca.0], |row| {
+            let contract_addr = row.get::<_, Hash>("contract_addr")?;
+            let predicate_addr = row.get::<_, Hash>("predicate_addr")?;
+            Ok(SolutionData {
+                predicate_to_solve: PredicateAddress {
+                    contract: ContentAddress(contract_addr),
+                    predicate: ContentAddress(predicate_addr),
+                },
+                state_mutations: vec![],
+                decision_variables: vec![],
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    data_stmt.finalize()?;
+
+    let mut dec_vars_stmt = tx.prepare(sql::query::GET_SOLUTION_DEC_VARS)?;
+    let mut mutations_stmt = tx.prepare(sql::query::GET_SOLUTION_MUTATIONS)?;
+
+    for (data_ix, datum) in data.iter_mut().enumerate() {
+        // Fetch the mutations.
+        let mut mutation_rows = mutations_stmt.query(named_params! {
+            ":content_hash": ca.0,
+            ":data_index": data_ix,
+        })?;
+        while let Some(mutation_row) = mutation_rows.next()? {
+            let key_blob: Vec<u8> = mutation_row.get("key")?;
+            let value_blob: Vec<u8> = mutation_row.get("value")?;
+            let key: Key = words_from_blob(&key_blob);
+            let value: Value = words_from_blob(&value_blob);
+            datum.state_mutations.push(Mutation { key, value });
+        }
+
+        // Fetch the decision variables.
+        let mut dec_var_rows = dec_vars_stmt.query(named_params! {
+            ":content_hash": ca.0,
+            ":data_index": data_ix,
+        })?;
+        while let Some(dec_var_row) = dec_var_rows.next()? {
+            let value_blob: Vec<u8> = dec_var_row.get("value")?;
+            let value: Value = words_from_blob(&value_blob);
+            datum.decision_variables.push(value);
+        }
+    }
+
+    mutations_stmt.finalize()?;
+    dec_vars_stmt.finalize()?;
+
+    Ok(Solution { data })
 }
 
 /// Fetches the state value for the given contract content address and key pair.
@@ -291,10 +317,10 @@ pub fn get_block_header(
 
 /// Returns the block with given address.
 pub fn get_block(
-    conn: &Connection,
+    tx: &Transaction,
     block_address: &ContentAddress,
 ) -> Result<Option<Block>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::GET_BLOCK)?;
+    let mut stmt = tx.prepare(sql::query::GET_BLOCK)?;
     let rows = stmt.query_map(
         named_params! {
             ":block_address": block_address.0,
@@ -303,15 +329,15 @@ pub fn get_block(
             let block_number: Word = row.get("number")?;
             let timestamp_secs: u64 = row.get("timestamp_secs")?;
             let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
-            let solution_blob: Vec<u8> = row.get("solution")?;
+            let solution_hash: Hash = row.get("content_hash")?;
             let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
-            Ok((block_number, timestamp, solution_blob))
+            Ok((block_number, timestamp, ContentAddress(solution_hash)))
         },
     )?;
 
     let mut block_in_progress = Option::None;
     for res in rows {
-        let (block_number, timestamp, solution_blob): (Word, Duration, Vec<u8>) = res?;
+        let (block_number, timestamp, solution_addr): (Word, Duration, ContentAddress) = res?;
 
         if block_in_progress.is_none() {
             block_in_progress = Some(Block {
@@ -322,7 +348,9 @@ pub fn get_block(
         }
         let mut block = block_in_progress.expect("should have been set above at worst case");
         // Add the solution.
-        let solution: Solution = decode(&solution_blob)?;
+        // If there are performance issues, use statements in `get_solution` directly.
+        // See https://github.com/essential-contributions/essential-node/issues/154.
+        let solution = get_solution(tx, &solution_addr)?;
         block.solutions.push(solution);
         block_in_progress = Some(block);
     }
@@ -390,8 +418,8 @@ pub fn get_next_block_addresses(
 }
 
 /// Lists all blocks in the given range.
-pub fn list_blocks(conn: &Connection, block_range: Range<Word>) -> Result<Vec<Block>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::LIST_BLOCKS)?;
+pub fn list_blocks(tx: &Transaction, block_range: Range<Word>) -> Result<Vec<Block>, QueryError> {
+    let mut stmt = tx.prepare(sql::query::LIST_BLOCKS)?;
     let rows = stmt.query_map(
         named_params! {
             ":start_block": block_range.start,
@@ -402,9 +430,14 @@ pub fn list_blocks(conn: &Connection, block_range: Range<Word>) -> Result<Vec<Bl
             let block_number: Word = row.get("number")?;
             let timestamp_secs: u64 = row.get("timestamp_secs")?;
             let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
-            let solution_blob: Vec<u8> = row.get("solution")?;
+            let solution_hash: Hash = row.get("content_hash")?;
             let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
-            Ok((block_address, block_number, timestamp, solution_blob))
+            Ok((
+                block_address,
+                block_number,
+                timestamp,
+                ContentAddress(solution_hash),
+            ))
         },
     )?;
 
@@ -412,11 +445,11 @@ pub fn list_blocks(conn: &Connection, block_range: Range<Word>) -> Result<Vec<Bl
     let mut blocks: Vec<Block> = vec![];
     let mut last_block_address = None;
     for res in rows {
-        let (block_address, block_number, timestamp, solution_blob): (
+        let (block_address, block_number, timestamp, solution_addr): (
             essential_types::Hash,
             Word,
             Duration,
-            Vec<u8>,
+            ContentAddress,
         ) = res?;
 
         // Fetch the block associated with the block number, inserting it first if new.
@@ -434,7 +467,9 @@ pub fn list_blocks(conn: &Connection, block_range: Range<Word>) -> Result<Vec<Bl
         };
 
         // Add the solution.
-        let solution: Solution = decode(&solution_blob)?;
+        // If there are performance issues, use statements in `get_solution` directly.
+        // See https://github.com/essential-contributions/essential-node/issues/154.
+        let solution = get_solution(tx, &solution_addr)?;
         block.solutions.push(solution);
     }
     Ok(blocks)
@@ -442,12 +477,12 @@ pub fn list_blocks(conn: &Connection, block_range: Range<Word>) -> Result<Vec<Bl
 
 /// Lists blocks and their solutions within a specific time range with pagination.
 pub fn list_blocks_by_time(
-    conn: &Connection,
+    tx: &Transaction,
     range: Range<Duration>,
     page_size: i64,
     page_number: i64,
 ) -> Result<Vec<Block>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::LIST_BLOCKS_BY_TIME)?;
+    let mut stmt = tx.prepare(sql::query::LIST_BLOCKS_BY_TIME)?;
     let rows = stmt.query_map(
         named_params! {
             ":start_secs": range.start.as_secs(),
@@ -462,9 +497,14 @@ pub fn list_blocks_by_time(
             let block_number: Word = row.get("number")?;
             let timestamp_secs: u64 = row.get("timestamp_secs")?;
             let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
-            let solution_blob: Vec<u8> = row.get("solution")?;
+            let solution_hash: Hash = row.get("content_hash")?;
             let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
-            Ok((block_address, block_number, timestamp, solution_blob))
+            Ok((
+                block_address,
+                block_number,
+                timestamp,
+                ContentAddress(solution_hash),
+            ))
         },
     )?;
 
@@ -472,11 +512,11 @@ pub fn list_blocks_by_time(
     let mut blocks: Vec<Block> = vec![];
     let mut last_block_address: Option<essential_types::Hash> = None;
     for res in rows {
-        let (block_address, block_number, timestamp, solution_blob): (
+        let (block_address, block_number, timestamp, solution_addr): (
             essential_types::Hash,
             Word,
             Duration,
-            Vec<u8>,
+            ContentAddress,
         ) = res?;
 
         // Fetch the block associated with the block number, inserting it first if new.
@@ -494,7 +534,9 @@ pub fn list_blocks_by_time(
         };
 
         // Add the solution.
-        let solution: Solution = decode(&solution_blob)?;
+        // If there are performance issues, use statements in `get_solution` directly.
+        // See https://github.com/essential-contributions/essential-node/issues/154.
+        let solution = get_solution(tx, &solution_addr)?;
         block.solutions.push(solution);
     }
     Ok(blocks)
@@ -528,10 +570,10 @@ pub fn list_failed_blocks(
 
 /// Lists all unchecked blocks in the given range.
 pub fn list_unchecked_blocks(
-    conn: &Connection,
+    tx: &Transaction,
     block_range: Range<Word>,
 ) -> Result<Vec<Block>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::LIST_UNCHECKED_BLOCKS)?;
+    let mut stmt = tx.prepare(sql::query::LIST_UNCHECKED_BLOCKS)?;
     let rows = stmt.query_map(
         named_params! {
             ":start_block": block_range.start,
@@ -542,9 +584,14 @@ pub fn list_unchecked_blocks(
             let block_number: Word = row.get("number")?;
             let timestamp_secs: u64 = row.get("timestamp_secs")?;
             let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
-            let solution_blob: Vec<u8> = row.get("solution")?;
+            let solution_addr: Hash = row.get("content_hash")?;
             let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
-            Ok((block_address, block_number, timestamp, solution_blob))
+            Ok((
+                block_address,
+                block_number,
+                timestamp,
+                ContentAddress(solution_addr),
+            ))
         },
     )?;
 
@@ -552,11 +599,11 @@ pub fn list_unchecked_blocks(
     let mut blocks: Vec<Block> = vec![];
     let mut last_block_address = None;
     for res in rows {
-        let (block_address, block_number, timestamp, solution_blob): (
+        let (block_address, block_number, timestamp, solution_addr): (
             essential_types::Hash,
             Word,
             Duration,
-            Vec<u8>,
+            ContentAddress,
         ) = res?;
 
         // Fetch the block associated with the block number, inserting it first if new.
@@ -574,7 +621,9 @@ pub fn list_unchecked_blocks(
         };
 
         // Add the solution.
-        let solution: Solution = decode(&solution_blob)?;
+        // If there are performance issues, use statements in `get_solution` directly.
+        // See https://github.com/essential-contributions/essential-node/issues/154.
+        let solution = get_solution(tx, &solution_addr)?;
         block.solutions.push(solution);
     }
     Ok(blocks)
@@ -599,14 +648,25 @@ pub fn subscribe_blocks(
     acquire_conn: impl AcquireConnection,
     await_new_block: impl AwaitNewBlock,
 ) -> impl Stream<Item = Result<Block, QueryError>> {
+    // Helper function to list blocks by block number range.
+    fn list_blocks_by_conn(
+        conn: &mut Connection,
+        block_range: Range<Word>,
+    ) -> Result<Vec<Block>, QueryError> {
+        let tx = conn.transaction()?;
+        let blocks = list_blocks(&tx, block_range)?;
+        drop(tx);
+        Ok(blocks)
+    }
+
     let init = (start_block, acquire_conn, await_new_block);
     futures::stream::unfold(init, move |(block_ix, acq_conn, mut new_block)| {
         let next_ix = block_ix + 1;
         async move {
             loop {
                 // Acquire a connection and query for the current block.
-                let conn = acq_conn.acquire_connection().await?;
-                let res = list_blocks(conn.as_ref(), block_ix..next_ix);
+                let mut conn = acq_conn.acquire_connection().await?;
+                let res = list_blocks_by_conn(conn.as_mut(), block_ix..next_ix);
                 // Drop the connection ASAP in case it needs returning to a pool.
                 std::mem::drop(conn);
                 match res {

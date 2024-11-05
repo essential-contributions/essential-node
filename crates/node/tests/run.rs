@@ -69,8 +69,8 @@ async fn test_run() {
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Check block, state and validation progress
-    let conn = db.acquire().await.unwrap();
-    assert_submit_solutions_effects(&conn, vec![test_blocks[0].clone()]);
+    let mut conn = db.acquire().await.unwrap();
+    assert_submit_solutions_effects(&mut conn, vec![test_blocks[0].clone()]);
 
     // Insert block 1 and 2 to database and send notification
     node_server
@@ -88,8 +88,11 @@ async fn test_run() {
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Check block, state and validation progress
-    let conn = db.acquire().await.unwrap();
-    assert_submit_solutions_effects(&conn, vec![test_blocks[1].clone(), test_blocks[2].clone()]);
+    let mut conn = db.acquire().await.unwrap();
+    assert_submit_solutions_effects(
+        &mut conn,
+        vec![test_blocks[1].clone(), test_blocks[2].clone()],
+    );
 
     // Insert block 3 to database and send notification
     node_server
@@ -101,8 +104,8 @@ async fn test_run() {
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Check block, state and validation progress
-    let conn = db.acquire().await.unwrap();
-    assert_submit_solutions_effects(&conn, vec![test_blocks[3].clone()]);
+    let mut conn = db.acquire().await.unwrap();
+    assert_submit_solutions_effects(&mut conn, vec![test_blocks[3].clone()]);
 }
 
 pub fn client() -> reqwest::Client {
@@ -160,12 +163,15 @@ async fn test_node() -> (NodeServer, BlockTx) {
 // Fetch blocks from node database and assert that they contain the same solutions as expected.
 // Assert state mutations in the blocks have been applied to database.
 // Assert validation progress is the latest fetched block.
-fn assert_submit_solutions_effects(conn: &Connection, expected_blocks: Vec<Block>) {
+fn assert_submit_solutions_effects(conn: &mut Connection, expected_blocks: Vec<Block>) {
+    let tx = conn.transaction().unwrap();
     let fetched_blocks = &db::list_blocks(
-        conn,
+        &tx,
         expected_blocks[0].number..expected_blocks[expected_blocks.len() - 1].number + 1,
     )
     .unwrap();
+    drop(tx);
+
     for (i, expected_block) in expected_blocks.iter().enumerate() {
         // Check if the block was added to the database
         assert_eq!(fetched_blocks[i].number, expected_block.number);

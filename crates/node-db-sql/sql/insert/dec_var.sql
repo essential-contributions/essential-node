@@ -1,20 +1,20 @@
 INSERT
     OR IGNORE INTO dec_var (
-        solution_id,
-        data_index,
+        data_id,
         dec_var_index,
         value
     )
 VALUES
     (
-        (
+       (
             SELECT
-                id
+                solution_data.id
             FROM
-                solution
+                solution_data
+                JOIN solution ON solution.id = solution_data.solution_id
             WHERE
-                content_hash = :solution_hash
+                solution.content_hash = :solution_hash AND solution_data.data_index = :data_index
             LIMIT
                 1
-        ), :data_index, :dec_var_index, :value
+        ), :dec_var_index, :value
     );

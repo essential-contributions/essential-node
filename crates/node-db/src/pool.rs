@@ -205,7 +205,7 @@ impl ConnectionPool {
         &self,
         block_address: ContentAddress,
     ) -> Result<Option<Block>, AcquireThenQueryError> {
-        self.acquire_then(move |h| crate::get_block(h, &block_address))
+        self.acquire_then(move |h| with_tx(h, |tx| crate::get_block(tx, &block_address)))
             .await
     }
 
@@ -213,8 +213,8 @@ impl ConnectionPool {
     pub async fn get_solution(
         &self,
         ca: ContentAddress,
-    ) -> Result<Option<Solution>, AcquireThenQueryError> {
-        self.acquire_then(move |h| crate::get_solution(h, &ca))
+    ) -> Result<Solution, AcquireThenQueryError> {
+        self.acquire_then(move |h| with_tx(h, |tx| crate::get_solution(tx, &ca)))
             .await
     }
 
@@ -352,7 +352,7 @@ impl ConnectionPool {
         &self,
         block_range: Range<Word>,
     ) -> Result<Vec<Block>, AcquireThenQueryError> {
-        self.acquire_then(move |h| crate::list_blocks(h, block_range))
+        self.acquire_then(move |h| with_tx(h, |tx| crate::list_blocks(tx, block_range)))
             .await
     }
 
@@ -363,8 +363,12 @@ impl ConnectionPool {
         page_size: i64,
         page_number: i64,
     ) -> Result<Vec<Block>, AcquireThenQueryError> {
-        self.acquire_then(move |h| crate::list_blocks_by_time(h, range, page_size, page_number))
-            .await
+        self.acquire_then(move |h| {
+            with_tx(h, |tx| {
+                crate::list_blocks_by_time(tx, range, page_size, page_number)
+            })
+        })
+        .await
     }
 
     /// Subscribe to all blocks from the given starting block number.
@@ -420,6 +424,12 @@ impl AsRef<rusqlite::Connection> for ConnectionHandle {
     }
 }
 
+impl AsMut<rusqlite::Connection> for ConnectionHandle {
+    fn as_mut(&mut self) -> &mut rusqlite::Connection {
+        self
+    }
+}
+
 impl core::ops::Deref for ConnectionHandle {
     type Target = AsyncConnectionHandle;
     fn deref(&self) -> &Self::Target {
@@ -434,7 +444,7 @@ impl core::ops::DerefMut for ConnectionHandle {
 }
 
 impl AcquireConnection for ConnectionPool {
-    async fn acquire_connection(&self) -> Option<impl 'static + AsRef<rusqlite::Connection>> {
+    async fn acquire_connection(&self) -> Option<impl 'static + AsMut<rusqlite::Connection>> {
         self.acquire().await.ok()
     }
 }

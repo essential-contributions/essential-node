@@ -46,7 +46,9 @@ async fn test_sync() {
     let relayer_handle = relayer.run(relayer_conn.clone(), block_tx.clone()).unwrap();
 
     block_rx.changed().await.unwrap();
-    let result = db::list_blocks(&test_conn, 0..100).unwrap();
+    let tx = test_conn.transaction().unwrap();
+    let result = db::list_blocks(&tx, 0..100).unwrap();
+    drop(tx);
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].number, 0);
     assert_eq!(result[0].solutions.len(), 1);
@@ -56,7 +58,9 @@ async fn test_sync() {
     source_block_tx.notify();
 
     block_rx.changed().await.unwrap();
-    let result = db::list_blocks(&test_conn, 0..100).unwrap();
+    let tx = test_conn.transaction().unwrap();
+    let result = db::list_blocks(&tx, 0..100).unwrap();
+    drop(tx);
     assert_eq!(result.len(), 2);
     assert_eq!(result[1].number, 1);
     assert_eq!(result[1].solutions.len(), 1);
@@ -79,10 +83,12 @@ async fn test_sync() {
         if start.elapsed() > tokio::time::Duration::from_secs(10) {
             panic!("timeout num_solutions: {}, {}", num_solutions, result.len());
         }
-        let Ok(r) = db::list_blocks(&test_conn, 0..203) else {
+        let tx = test_conn.transaction().unwrap();
+        let Ok(r) = db::list_blocks(&tx, 0..203) else {
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             continue;
         };
+        drop(tx);
         result = r;
         num_solutions = result.iter().map(|b| b.solutions.len()).sum();
         if num_solutions >= 200 {

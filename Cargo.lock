@@ -727,7 +727,6 @@ dependencies = [
  "essential-types",
  "futures",
  "num_cpus",
- "postcard",
  "rusqlite",
  "rusqlite-pool",
  "serde",

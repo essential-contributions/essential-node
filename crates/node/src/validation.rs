@@ -148,7 +148,6 @@ async fn validate_next_block(
             tokio::task::spawn_blocking(move || {
                 db::insert_failed_block(&conn, &block_address, &failed_solution)
                     .map_err(ValidationError::from)?;
-
                 Ok(false)
             })
             .await
@@ -180,7 +179,8 @@ async fn get_next_block(
             Ok(Err(CriticalError::Fork.into()))
         } else {
             let block_address = blocks.into_iter().next().expect("blocks is not empty");
-            let block = essential_node_db::get_block(conn, &block_address)?;
+            let tx = conn.transaction()?;
+            let block = essential_node_db::get_block(&tx, &block_address)?;
             Ok(Ok(block))
         }
     })
@@ -232,9 +232,6 @@ fn map_recoverable_errors(e: InternalError) -> InternalError {
                 } else {
                     CriticalError::DatabaseFailed(rus).into()
                 }
-            }
-            e @ db::pool::AcquireThenError::Inner(db::QueryError::Decode(_)) => {
-                CriticalError::from(e).into()
             }
             db::pool::AcquireThenError::Inner(essential_node_db::QueryError::UnsupportedRange) => {
                 RecoverableError::Query(essential_node_db::QueryError::UnsupportedRange).into()
