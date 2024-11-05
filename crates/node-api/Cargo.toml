@@ -1,6 +1,6 @@
 [package]
 name = "essential-node-api"
-version = "0.7.0"
+version = "0.8.0"
 description = "API implementation for the Essential node"
 authors.workspace = true
 edition.workspace = true

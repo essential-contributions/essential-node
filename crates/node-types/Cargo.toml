@@ -1,6 +1,6 @@
 [package]
 name = "essential-node-types"
-version = "0.1.0"
+version = "0.2.0"
 description = "Core types used within this implementation of the Essential protocol."
 edition.workspace = true
 authors.workspace = true
