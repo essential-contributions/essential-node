@@ -592,9 +592,9 @@ dependencies = [
 
 [[package]]
 name = "essential-check"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7c612285b2dce895d9817accedc320d893918c6e623dbb7f06291bb34da0ec3"
+checksum = "d7bd54ccabf1e8c65d95ad9e5e575ba9e79657fdb6290670475f87c40b3d7633"
 dependencies = [
  "essential-constraint-vm",
  "essential-hash",
@@ -636,9 +636,9 @@ dependencies = [
 
 [[package]]
 name = "essential-hash"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8992dea035fa2eeb7074abe76e4ed039e6aa81988fcf9f291fe5ac8044f8e14"
+checksum = "5583f27d3fe49100720d65207bbfc555111316a48246f50f9305c9db9b0ea08c"
 dependencies = [
  "essential-types",
  "postcard",
@@ -648,7 +648,7 @@ dependencies = [
 
 [[package]]
 name = "essential-node"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "essential-check",
  "essential-constraint-asm",
@@ -674,7 +674,7 @@ dependencies = [
 
 [[package]]
 name = "essential-node-api"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "axum",
  "essential-hash",
@@ -702,7 +702,7 @@ dependencies = [
 
 [[package]]
 name = "essential-node-cli"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -719,7 +719,7 @@ dependencies = [
 
 [[package]]
 name = "essential-node-db"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "essential-hash",
  "essential-node-db-sql",
@@ -738,11 +738,11 @@ dependencies = [
 
 [[package]]
 name = "essential-node-db-sql"
-version = "0.3.0"
+version = "0.4.0"
 
 [[package]]
 name = "essential-node-types"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "essential-hash",
  "essential-types",
@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "essential-relayer"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "essential-hash",
  "essential-node",
@@ -778,9 +778,9 @@ dependencies = [
 
 [[package]]
 name = "essential-sign"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7309ebdab055d95209220963ed5122e6c78490b1cb3df13d518b6559b32e717b"
+checksum = "4a0479a5b95a348740ea5d211a019cc8e7950588dea999da9afbaff9e7bd54dc"
 dependencies = [
  "essential-hash",
  "essential-types",
@@ -1750,7 +1750,7 @@ dependencies = [
 
 [[package]]
 name = "rusqlite-pool"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "crossbeam",
  "rusqlite",
