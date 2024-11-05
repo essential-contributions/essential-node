@@ -245,9 +245,6 @@ pub fn get_solution(tx: &Transaction, ca: &ContentAddress) -> Result<Solution, Q
     let mut mutations_stmt = tx.prepare(sql::query::GET_SOLUTION_MUTATIONS)?;
 
     for (data_ix, datum) in data.iter_mut().enumerate() {
-        let mut mutations = vec![];
-        let mut dec_vars = vec![];
-
         // Fetch the mutations.
         let mut mutation_rows = mutations_stmt.query(named_params! {
             ":content_hash": ca.0,
@@ -258,7 +255,7 @@ pub fn get_solution(tx: &Transaction, ca: &ContentAddress) -> Result<Solution, Q
             let value_blob: Vec<u8> = mutation_row.get("value")?;
             let key: Key = words_from_blob(&key_blob);
             let value: Value = words_from_blob(&value_blob);
-            mutations.push(Mutation { key, value });
+            datum.state_mutations.push(Mutation { key, value });
         }
 
         // Fetch the decision variables.
@@ -269,11 +266,8 @@ pub fn get_solution(tx: &Transaction, ca: &ContentAddress) -> Result<Solution, Q
         while let Some(dec_var_row) = dec_var_rows.next()? {
             let value_blob: Vec<u8> = dec_var_row.get("value")?;
             let value: Value = words_from_blob(&value_blob);
-            dec_vars.push(value);
+            datum.decision_variables.push(value);
         }
-
-        datum.state_mutations = mutations;
-        datum.decision_variables = dec_vars;
     }
 
     mutations_stmt.finalize()?;
