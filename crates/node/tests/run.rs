@@ -70,7 +70,7 @@ async fn test_run() {
 
     // Check block, state and validation progress
     let mut conn = db.acquire().await.unwrap();
-    assert_submit_solutions_effects(&mut *conn, vec![test_blocks[0].clone()]);
+    assert_submit_solutions_effects(&mut conn, vec![test_blocks[0].clone()]);
 
     // Insert block 1 and 2 to database and send notification
     node_server
@@ -90,7 +90,7 @@ async fn test_run() {
     // Check block, state and validation progress
     let mut conn = db.acquire().await.unwrap();
     assert_submit_solutions_effects(
-        &mut *conn,
+        &mut conn,
         vec![test_blocks[1].clone(), test_blocks[2].clone()],
     );
 
@@ -105,7 +105,7 @@ async fn test_run() {
 
     // Check block, state and validation progress
     let mut conn = db.acquire().await.unwrap();
-    assert_submit_solutions_effects(&mut *conn, vec![test_blocks[3].clone()]);
+    assert_submit_solutions_effects(&mut conn, vec![test_blocks[3].clone()]);
 }
 
 pub fn client() -> reqwest::Client {
