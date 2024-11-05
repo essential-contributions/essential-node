@@ -1,7 +1,4 @@
 SELECT
-    block.number,
-    block.timestamp_secs,
-    block.timestamp_nanos,
     solution.content_hash
 FROM
     block

@@ -320,41 +320,35 @@ pub fn get_block(
     tx: &Transaction,
     block_address: &ContentAddress,
 ) -> Result<Option<Block>, QueryError> {
+    let Some((block_number, timestamp)) = get_block_header(tx, block_address)? else {
+        return Ok(None);
+    };
     let mut stmt = tx.prepare(sql::query::GET_BLOCK)?;
     let rows = stmt.query_map(
         named_params! {
             ":block_address": block_address.0,
         },
         |row| {
-            let block_number: Word = row.get("number")?;
-            let timestamp_secs: u64 = row.get("timestamp_secs")?;
-            let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
             let solution_hash: Hash = row.get("content_hash")?;
-            let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
-            Ok((block_number, timestamp, ContentAddress(solution_hash)))
+            Ok(ContentAddress(solution_hash))
         },
     )?;
 
-    let mut block_in_progress = Option::None;
+    let mut block = Block {
+        number: block_number,
+        timestamp,
+        solutions: vec![],
+    };
     for res in rows {
-        let (block_number, timestamp, solution_addr): (Word, Duration, ContentAddress) = res?;
+        let solution_addr: ContentAddress = res?;
 
-        if block_in_progress.is_none() {
-            block_in_progress = Some(Block {
-                number: block_number,
-                timestamp,
-                solutions: vec![],
-            });
-        }
-        let mut block = block_in_progress.expect("should have been set above at worst case");
         // Add the solution.
         // If there are performance issues, use statements in `get_solution` directly.
         // See https://github.com/essential-contributions/essential-node/issues/154.
         let solution = get_solution(tx, &solution_addr)?;
         block.solutions.push(solution);
-        block_in_progress = Some(block);
     }
-    Ok(block_in_progress)
+    Ok(Some(block))
 }
 
 /// Fetches the latest finalized block hash.
