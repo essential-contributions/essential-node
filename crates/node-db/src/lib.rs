@@ -694,6 +694,21 @@ where
     Ok(out)
 }
 
+/// Short-hand for constructing a transaction, providing it as an argument to
+/// the given function, then dropping the transaction before returning.
+pub fn with_tx_dropped<T, E>(
+    conn: &mut rusqlite::Connection,
+    f: impl FnOnce(&mut Transaction) -> Result<T, E>,
+) -> Result<T, E>
+where
+    E: From<rusqlite::Error>,
+{
+    let mut tx = conn.transaction()?;
+    let out = f(&mut tx)?;
+    drop(tx);
+    Ok(out)
+}
+
 /// Convert a slice of `Word`s into a blob.
 pub fn blob_from_words(words: &[Word]) -> Vec<u8> {
     words.iter().copied().flat_map(bytes_from_word).collect()
