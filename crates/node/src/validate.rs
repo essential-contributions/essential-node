@@ -18,7 +18,7 @@ use essential_types::{
     Block, ContentAddress, Key, PredicateAddress, Value, Word,
 };
 use futures::FutureExt;
-use std::{collections::HashMap, pin::Pin, sync::Arc, error::Error};
+use std::{collections::HashMap, error::Error, pin::Pin, sync::Arc};
 
 #[cfg(test)]
 mod tests;
@@ -371,7 +371,7 @@ fn query(
 }
 
 impl StateRead for State {
-    type Error = AcquireThenError<StateReadError>;
+    type Error = StateReadError;
 
     type Future =
         Pin<Box<dyn std::future::Future<Output = Result<Vec<Vec<Word>>, Self::Error>> + Send>>;
@@ -419,7 +419,7 @@ impl StateRead for State {
                 Ok(values)
             })
             .await
-            .map_err(Self::Error::Inner)
+            .map_err(StateReadError::from)
         })
     }
 }
