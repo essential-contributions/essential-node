@@ -4,7 +4,7 @@ use crate::{
     db::{
         self,
         finalized::{query_state_exclusive_solution, query_state_inclusive_solution},
-        pool::ConnectionHandle,
+        pool::{AcquireThenError, ConnectionHandle},
         ConnectionPool, QueryError,
     },
     error::{QueryPredicateError, SolutionPredicatesError, StateReadError, ValidationError},
@@ -18,7 +18,7 @@ use essential_types::{
     Block, ContentAddress, Key, PredicateAddress, Value, Word,
 };
 use futures::FutureExt;
-use std::{collections::HashMap, pin::Pin, sync::Arc};
+use std::{collections::HashMap, pin::Pin, sync::Arc, error::Error};
 
 #[cfg(test)]
 mod tests;
@@ -371,7 +371,7 @@ fn query(
 }
 
 impl StateRead for State {
-    type Error = StateReadError;
+    type Error = AcquireThenError<StateReadError>;
 
     type Future =
         Pin<Box<dyn std::future::Future<Output = Result<Vec<Vec<Word>>, Self::Error>> + Send>>;
@@ -389,12 +389,16 @@ impl StateRead for State {
             conn_pool,
         } = self.clone();
 
-        async move {
-            let mut conn = conn_pool.acquire().await?;
+        Box::pin(async move {
+            // Is there a better way to get an instance of a ConnectionPool?
+            let pool = match conn_pool {
+                Db::ConnectionPool(pool) => pool,
+                _ => panic!("Expected a ConnectionPool"),
+            };
 
-            tokio::task::spawn_blocking(move || {
+            pool.acquire_then(move |conn: &mut ConnectionHandle| {
                 let mut values = vec![];
-                let tx = conn.transaction()?;
+                let tx = &Transaction::Handle(conn.transaction()?);
 
                 for _ in 0..num_values {
                     let value = query(&tx, |tx| {
@@ -414,9 +418,9 @@ impl StateRead for State {
                 }
                 Ok(values)
             })
-            .await?
-        }
-        .boxed()
+            .await
+            .map_err(Self::Error::Inner)
+        })
     }
 }
 
