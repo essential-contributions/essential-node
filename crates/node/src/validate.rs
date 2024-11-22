@@ -4,7 +4,7 @@ use crate::{
     db::{
         self,
         finalized::{query_state_exclusive_solution, query_state_inclusive_solution},
-        pool::{AcquireThenError, ConnectionHandle},
+        pool::{ConnectionHandle},
         ConnectionPool, QueryError,
     },
     error::{QueryPredicateError, SolutionPredicatesError, StateReadError, ValidationError},
@@ -17,8 +17,7 @@ use essential_types::{
     convert::bytes_from_word, predicate::Predicate, solution::Solution, solution::SolutionData,
     Block, ContentAddress, Key, PredicateAddress, Value, Word,
 };
-use futures::FutureExt;
-use std::{collections::HashMap, error::Error, pin::Pin, sync::Arc};
+use std::{collections::HashMap, pin::Pin, sync::Arc};
 
 #[cfg(test)]
 mod tests;
@@ -401,7 +400,7 @@ impl StateRead for State {
                 let tx = &Transaction::Handle(conn.transaction()?);
 
                 for _ in 0..num_values {
-                    let value = query(&tx, |tx| {
+                    let value = query(tx, |tx| {
                         query_state(
                             tx,
                             &contract_addr,
