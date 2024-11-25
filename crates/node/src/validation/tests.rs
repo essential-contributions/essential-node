@@ -6,6 +6,7 @@ use crate::{
         test_conn_pool_with_big_bang, test_contract_registry, test_invalid_block_with_contract,
     },
 };
+use essential_node_db as node_db;
 use essential_node_types::{block_notify::BlockTx, BigBang};
 use essential_types::{Block, Word};
 use rusqlite::Connection;
@@ -13,10 +14,13 @@ use std::time::Duration;
 
 // Insert a block to the database and send a notification to the stream
 fn insert_block_and_send_notification(conn: &mut Connection, block: &Block, block_tx: &BlockTx) {
-    let tx = conn.transaction().unwrap();
-    let block_ca = insert_block(&tx, block).unwrap();
-    finalize_block(&tx, &block_ca).unwrap();
-    tx.commit().unwrap();
+    node_db::with_tx::<_, QueryError>(conn, |tx| {
+        let block_ca = insert_block(tx, block)?;
+        finalize_block(tx, &block_ca)?;
+        Ok(())
+    })
+    .unwrap();
+
     block_tx.notify();
 }
 
