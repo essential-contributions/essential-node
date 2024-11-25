@@ -4,6 +4,8 @@ use essential_node::db::{
     ConnectionPool,
 };
 use essential_node_types::block_notify::BlockTx;
+
+use essential_node_db::{self as node_db, QueryError};
 use essential_relayer::{DataSyncError, Relayer};
 use essential_types::{
     contract::Contract,
@@ -31,9 +33,11 @@ async fn test_sync() {
     let source_db = node_server.conn_pool.clone();
 
     let mut test_conn = relayer_conn.acquire().await.unwrap();
-    let tx = test_conn.transaction().unwrap();
-    db::create_tables(&tx).unwrap();
-    tx.commit().unwrap();
+
+    node_db::with_tx::<_, QueryError>(&mut test_conn, |tx| {
+        db::create_tables(tx)?;
+        Ok(())
+    }).unwrap();
 
     let (solutions, blocks) = test_structs();
 
@@ -46,9 +50,13 @@ async fn test_sync() {
     let relayer_handle = relayer.run(relayer_conn.clone(), block_tx.clone()).unwrap();
 
     block_rx.changed().await.unwrap();
-    let tx = test_conn.transaction().unwrap();
-    let result = db::list_blocks(&tx, 0..100).unwrap();
-    drop(tx);
+
+    let mut result = vec![];
+    node_db::with_tx_dropped::<_, QueryError>(&mut test_conn, |block_tx| {
+        result = db::list_blocks(&block_tx, 0..100)?;
+        Ok(())
+    }).unwrap();
+
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].number, 0);
     assert_eq!(result[0].solutions.len(), 1);
@@ -58,9 +66,13 @@ async fn test_sync() {
     source_block_tx.notify();
 
     block_rx.changed().await.unwrap();
-    let tx = test_conn.transaction().unwrap();
-    let result = db::list_blocks(&tx, 0..100).unwrap();
-    drop(tx);
+
+    node_db::with_tx_dropped::<_, QueryError>(&mut test_conn, |block_tx| {
+        result = db::list_blocks(&block_tx, 0..100)?;
+        Ok(())
+    }).unwrap();
+
+
     assert_eq!(result.len(), 2);
     assert_eq!(result[1].number, 1);
     assert_eq!(result[1].solutions.len(), 1);
