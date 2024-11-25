@@ -1,7 +1,7 @@
 //! Tests around state.
 
-use essential_node_db as node_db;
-use essential_types::{Key, Value};
+use essential_node_db::{self as node_db, QueryError};
+use essential_types::{ContentAddress, Key, Value};
 use util::test_conn;
 
 mod util;
@@ -16,13 +16,15 @@ fn test_state_value() {
 
     // Create an in-memory SQLite database.
     let mut conn = test_conn();
-    let tx = conn.transaction().unwrap();
-    node_db::create_tables(&tx).unwrap();
 
-    // Write some state.
-    let contract_ca = essential_hash::content_addr(&contract);
-    node_db::update_state(&tx, &contract_ca, &key, &value).unwrap();
-    tx.commit().unwrap();
+    let mut contract_ca = ContentAddress { 0: [0u8; 32] };
+    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
+        node_db::create_tables(&tx)?;
+        // Write some state.
+        contract_ca = essential_hash::content_addr(&contract);
+        node_db::update_state(&tx, &contract_ca, &key, &value)?;
+        Ok(())
+    }).unwrap();
 
     // Fetch the state value.
     let fetched_value = node_db::query_state(&conn, &contract_ca, &key)
@@ -50,15 +52,17 @@ fn test_state_values_with_deletion() {
 
     // Create an in-memory SQLite database.
     let mut conn = test_conn();
-    let tx = conn.transaction().unwrap();
-
-    // Create tables, contract, insert values.
-    node_db::create_tables(&tx).unwrap();
-    let contract_ca = essential_hash::content_addr(&contract);
-    for (k, v) in keys.iter().zip(&values) {
-        node_db::update_state(&tx, &contract_ca, k, v).unwrap();
-    }
-    tx.commit().unwrap();
+    let mut contract_ca = ContentAddress { 0: [0u8; 32] };
+    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
+        // Create tables, contract, insert values.
+        node_db::create_tables(&tx)?;
+        contract_ca = essential_hash::content_addr(&contract);
+        for (k, v) in keys.iter().zip(&values) {
+            node_db::update_state(&tx, &contract_ca, k, v)?;
+        }
+        Ok(())
+    })
+    .unwrap();
 
     // Fetch the state values.
     let mut fetched = vec![];
