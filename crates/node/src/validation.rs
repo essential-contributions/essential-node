@@ -1,13 +1,14 @@
 use crate::{
     db::{
-        self, get_block_header, get_latest_finalized_block_address, update_validation_progress, ConnectionPool,
+        self, get_block_header, get_latest_finalized_block_address, update_validation_progress,
+        ConnectionPool,
     },
     error::{CriticalError, InternalError, RecoverableError, ValidationError},
     handles::validation::Handle,
     validate::{self, InvalidOutcome, ValidOutcome, ValidateOutcome},
 };
 use essential_hash::content_addr;
-use essential_node_db::{QueryError};
+use essential_node_db::QueryError;
 use essential_node_types::block_notify::BlockRx;
 use essential_types::{Block, ContentAddress};
 use tokio::sync::watch;
@@ -104,31 +105,34 @@ async fn validate_next_block(
         ValidateOutcome::Valid(ValidOutcome {
             total_gas: _total_gas,
         }) => {
-            let mut conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
-            let r: Result<bool, InternalError> = tokio::task::spawn_blocking(move || {
-                // Update validation progress.
-                update_validation_progress(&conn, &block_address).map_err(ValidationError::from)?;
-                let tx = conn.transaction();
-                // Keep validating if there are more blocks awaiting.
-                let latest_finalized_block_number = tx.and_then(|tx| {
-                    get_latest_finalized_block_address(&tx).and_then(|hash| {
-                        hash.and_then(|hash| {
-                            get_block_header(&tx, &hash)
-                                .map(|opt| opt.map(|(number, _ts)| number))
-                                .transpose()
-                        })
-                        .transpose()
-                    })
-                });
-                if let Ok(Some(latest_block_number)) = latest_finalized_block_number {
-                    if latest_block_number > block.number {
-                        return Ok(true);
-                    }
-                }
-                Ok(false)
-            })
-            .await
-            .map_err(RecoverableError::Join)?;
+            let block_address = block_address.clone();
+            let r: Result<bool, InternalError> = conn_pool
+                .acquire_then(move |conn| {
+                    let mut result = || -> Result<bool, ValidationError> {
+                        // Update validation progress.
+                        update_validation_progress(conn, &block_address)?;
+                        let tx = conn.transaction()?;
+                        // Keep validating if there are more blocks awaiting.
+                        let latest_finalized_block_number = {
+                            let hash = get_latest_finalized_block_address(&tx)?;
+                            if let Some(hash) = hash {
+                                let header = get_block_header(&tx, &hash)?;
+                                header.map(|(number, _ts)| number)
+                            } else {
+                                None
+                            }
+                        };
+                        if let Some(latest_block_number) = latest_finalized_block_number {
+                            if latest_block_number > block.number {
+                                return Ok(true);
+                            }
+                        }
+                        Ok(false)
+                    };
+                    result().map_err(ValidationError::from)
+                })
+                .await
+                .map_err(InternalError::from);
             r
         }
         // Validation failed.
