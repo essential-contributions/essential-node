@@ -4,7 +4,7 @@ use crate::{
     db::{
         self,
         finalized::{query_state_exclusive_solution, query_state_inclusive_solution},
-        pool::{ConnectionHandle},
+        pool::ConnectionHandle,
         ConnectionPool, QueryError,
     },
     error::{QueryPredicateError, SolutionPredicatesError, StateReadError, ValidationError},

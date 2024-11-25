@@ -1,14 +1,13 @@
 use crate::{
     db::{
-        self, get_block_header, get_latest_finalized_block_address, update_validation_progress,
-        ConnectionPool,
+        self, get_block_header, get_latest_finalized_block_address, update_validation_progress, ConnectionPool,
     },
     error::{CriticalError, InternalError, RecoverableError, ValidationError},
     handles::validation::Handle,
     validate::{self, InvalidOutcome, ValidOutcome, ValidateOutcome},
 };
 use essential_hash::content_addr;
-use essential_node_db::QueryError;
+use essential_node_db::{QueryError};
 use essential_node_types::block_notify::BlockRx;
 use essential_types::{Block, ContentAddress};
 use tokio::sync::watch;
@@ -144,14 +143,16 @@ async fn validate_next_block(
                     .get(solution_index)
                     .expect("Failed solution must exist."),
             );
-            let conn = conn_pool.acquire().await.map_err(CriticalError::from)?;
-            tokio::task::spawn_blocking(move || {
-                db::insert_failed_block(&conn, &block_address, &failed_solution)
-                    .map_err(ValidationError::from)?;
-                Ok(false)
-            })
-            .await
-            .map_err(RecoverableError::Join)?
+            let block_address = block_address.clone();
+            let r: Result<bool, InternalError> = conn_pool
+                .acquire_then(move |conn| {
+                    db::insert_failed_block(conn, &block_address, &failed_solution)
+                        .map_err(ValidationError::from)
+                        .map(|_| Ok(false))
+                })
+                .await
+                .map_err(InternalError::from)?;
+            r
         }
     }?;
 
