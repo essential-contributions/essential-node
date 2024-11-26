@@ -25,7 +25,8 @@ async fn subscribe_blocks() {
             node_db::insert_block(tx, block).unwrap();
         }
         Ok(())
-    }).unwrap();
+    })
+    .unwrap();
 
     std::mem::drop(conn);
 
@@ -46,7 +47,8 @@ async fn subscribe_blocks() {
             node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
                 node_db::insert_block(&tx, &block).unwrap();
                 Ok(())
-            }).unwrap();
+            })
+            .unwrap();
 
             new_block_tx.notify();
         }

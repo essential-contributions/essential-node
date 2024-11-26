@@ -1,7 +1,7 @@
 //! Basic tests for testing insertion behaviour.
 
 use essential_hash::content_addr;
-use essential_node_db::{self as node_db, words_from_blob};
+use essential_node_db::{self as node_db, words_from_blob, QueryError};
 use essential_types::{ContentAddress, Hash, Key, PredicateAddress, Value, Word};
 use rusqlite::params;
 use std::time::Duration;
@@ -17,13 +17,17 @@ fn test_insert_block() {
     // Create an in-memory SQLite database
     let mut conn = test_conn();
 
-    // Create the necessary tables and insert the block.
-    let tx = conn.transaction().unwrap();
-    node_db::create_tables(&tx).unwrap();
-    for block in &blocks {
-        node_db::insert_block(&tx, block).unwrap();
-    }
-    tx.commit().unwrap();
+    let mut fetched_blocks = vec![];
+    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
+        // Create the necessary tables and insert blocks
+        node_db::create_tables(tx).unwrap();
+        for block in &blocks {
+            node_db::insert_block(tx, block).unwrap();
+        }
+        fetched_blocks = node_db::list_blocks(tx, 0..100).unwrap();
+        Ok(())
+    })
+    .unwrap();
 
     for (block_ix, block) in blocks.iter().enumerate() {
         // Verify that the blocks were inserted correctly
@@ -132,30 +136,31 @@ fn test_finalize_block() {
     // Create an in-memory SQLite database
     let mut conn = test_conn();
 
-    // Create the necessary tables and insert the block.
-    let tx = conn.transaction().unwrap();
-    node_db::create_tables(&tx).unwrap();
-    for block in &blocks {
-        node_db::insert_block(&tx, block).unwrap();
-    }
+    // let mut fetched_blocks = vec![];
+    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
+        // Create the necessary tables and insert blocks
+        node_db::create_tables(tx).unwrap();
+        for block in &blocks {
+            node_db::insert_block(tx, block).unwrap();
+        }
+        let r = node_db::list_blocks(tx, 0..(NUM_BLOCKS + 10)).unwrap();
+        assert_eq!(r.len(), NUM_BLOCKS as usize);
+        for (block, expected_block) in blocks.iter().zip(&r) {
+            assert_eq!(block, expected_block);
+        }
 
-    let r = node_db::list_blocks(&tx, 0..(NUM_BLOCKS + 10)).unwrap();
-    assert_eq!(r.len(), NUM_BLOCKS as usize);
+        // Finalize the blocks.
+        for block in blocks.iter().take(NUM_FINALIZED_BLOCKS as usize) {
+            let block_address = content_addr(block);
+            node_db::finalize_block(tx, &block_address).unwrap();
+        }
 
-    for (block, expected_block) in blocks.iter().zip(&r) {
-        assert_eq!(block, expected_block);
-    }
-
-    // Finalize the blocks.
-    for block in blocks.iter().take(NUM_FINALIZED_BLOCKS as usize) {
-        let block_address = content_addr(block);
-        node_db::finalize_block(&tx, &block_address).unwrap();
-    }
-
-    // Should not change list blocks
-    let r = node_db::list_blocks(&tx, 0..(NUM_BLOCKS + 10)).unwrap();
-    assert_eq!(r.len(), NUM_BLOCKS as usize);
-    tx.commit().unwrap();
+        // Should not change list blocks
+        let r = node_db::list_blocks(tx, 0..(NUM_BLOCKS + 10)).unwrap();
+        assert_eq!(r.len(), NUM_BLOCKS as usize);
+        Ok(())
+    })
+    .unwrap();
 
     // Check the latest finalized block hash.
     let latest_finalized_block_address =
@@ -189,9 +194,12 @@ fn test_finalize_block() {
         NUM_FINALIZED_BLOCKS - 1,
         Duration::from_secs((NUM_FINALIZED_BLOCKS + 1000) as u64),
     );
-    let tx = conn.transaction().unwrap();
-    node_db::insert_block(&tx, &fork).unwrap();
-    tx.commit().unwrap();
+
+    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
+        node_db::insert_block(tx, &fork).unwrap();
+        Ok(())
+    })
+    .unwrap();
 
     let e = node_db::finalize_block(&conn, &content_addr(&fork)).unwrap_err();
     assert!(matches!(
@@ -216,15 +224,18 @@ fn test_failed_block() {
     // Create an in-memory SQLite database
     let mut conn = test_conn();
 
-    // Create the necessary tables and insert the block.
-    let tx = conn.transaction().unwrap();
-    node_db::create_tables(&tx).unwrap();
-    for block in &blocks {
-        node_db::insert_block(&tx, block).unwrap();
-    }
+    let mut r = vec![];
+    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
+        // Create the necessary tables and insert the block.
+        node_db::create_tables(tx).unwrap();
+        for block in &blocks {
+            node_db::insert_block(tx, block).unwrap();
+        }
+        r = node_db::list_blocks(tx, 0..(NUM_BLOCKS + 10)).unwrap();
+        Ok(())
+    })
+    .unwrap();
 
-    let r = node_db::list_blocks(&tx, 0..(NUM_BLOCKS + 10)).unwrap();
-    tx.commit().unwrap();
     assert_eq!(r.len(), 2);
     assert_eq!(&blocks[0], &r[0]);
     assert_eq!(&blocks[1], &r[1]);
@@ -235,14 +246,14 @@ fn test_failed_block() {
     node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
 
     // Check failed blocks.
-    let failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
+    let mut failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
     assert_eq!(failed_blocks.len(), 1);
     assert_eq!(failed_blocks[0].0, blocks[0].number);
     assert_eq!(failed_blocks[0].1, solution_hash);
 
     // Same failed block should not be inserted again.
     node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
-    let failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
+    failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
     assert_eq!(failed_blocks.len(), 1);
     assert_eq!(failed_blocks[0].0, blocks[0].number);
     assert_eq!(failed_blocks[0].1, solution_hash);
@@ -252,14 +263,17 @@ fn test_failed_block() {
     let solution_hash = content_addr(blocks[1].solutions.first().unwrap());
     node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
 
-    let tx = conn.transaction().unwrap();
-    let r = node_db::list_blocks(&tx, 0..(NUM_BLOCKS + 10)).unwrap();
-    assert_eq!(r.len(), 2);
-    assert_eq!(&blocks[1], &r[1]);
+    let mut r = vec![];
+    node_db::with_tx_dropped::<_, QueryError>(&mut conn, |tx| {
+        r = node_db::list_blocks(tx, 0..(NUM_BLOCKS + 10)).unwrap();
+        assert_eq!(r.len(), 2);
+        assert_eq!(&blocks[1], &r[1]);
+        // Check failed blocks.
+        failed_blocks = node_db::list_failed_blocks(tx, 0..(NUM_BLOCKS + 10)).unwrap();
+        Ok(())
+    })
+    .unwrap();
 
-    // Check failed blocks.
-    let failed_blocks = node_db::list_failed_blocks(&tx, 0..(NUM_BLOCKS + 10)).unwrap();
-    drop(tx);
     assert_eq!(failed_blocks.len(), 2);
     assert_eq!(failed_blocks[1].0, blocks[1].number);
     assert_eq!(failed_blocks[1].1, solution_hash);
@@ -274,14 +288,18 @@ fn test_fork_block() {
     // Create an in-memory SQLite database
     let mut conn = test_conn();
 
-    let tx = conn.transaction().unwrap();
-    node_db::create_tables(&tx).unwrap();
-    node_db::insert_block(&tx, &first).unwrap();
-    node_db::insert_block(&tx, &fork_a).unwrap();
-    node_db::insert_block(&tx, &fork_b).unwrap();
+    let mut r = vec![];
+    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
+        // Create the necessary tables and insert the block.
+        node_db::create_tables(tx).unwrap();
+        node_db::insert_block(tx, &first).unwrap();
+        node_db::insert_block(tx, &fork_a).unwrap();
+        node_db::insert_block(tx, &fork_b).unwrap();
+        r = node_db::list_blocks(tx, 0..10).unwrap();
+        Ok(())
+    })
+    .unwrap();
 
-    let r = node_db::list_blocks(&tx, 0..10).unwrap();
-    tx.commit().unwrap();
     assert_eq!(r.len(), 3);
     assert_eq!(r[0], first);
 
@@ -299,14 +317,18 @@ fn test_update_validation_progress() {
     let block_addresses = blocks.iter().map(content_addr).collect::<Vec<_>>();
 
     let mut conn = test_conn();
-    let tx = conn.transaction().unwrap();
-    node_db::create_tables(&tx).unwrap();
-    for block in &blocks {
-        node_db::insert_block(&tx, block).unwrap();
-    }
-    node_db::update_validation_progress(&tx, &block_addresses[0])
-        .expect("Failed to insert validation progress");
-    tx.commit().unwrap();
+
+    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
+        // Create the necessary tables and insert the block.
+        node_db::create_tables(tx).unwrap();
+        for block in &blocks {
+            node_db::insert_block(tx, block).unwrap();
+        }
+        node_db::update_validation_progress(tx, &block_addresses[0])
+            .expect("Failed to insert validation progress");
+        Ok(())
+    })
+    .unwrap();
 
     let mut stmt = conn
         .prepare("SELECT validation_progress.id, block.block_address FROM validation_progress JOIN block ON block.id = validation_progress.block_id")

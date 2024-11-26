@@ -24,7 +24,8 @@ fn test_state_value() {
         contract_ca = essential_hash::content_addr(&contract);
         node_db::update_state(&tx, &contract_ca, &key, &value)?;
         Ok(())
-    }).unwrap();
+    })
+    .unwrap();
 
     // Fetch the state value.
     let fetched_value = node_db::query_state(&conn, &contract_ca, &key)
