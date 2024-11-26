@@ -54,7 +54,7 @@ async fn test_sync() {
 
     let mut result = vec![];
     node_db::with_tx_dropped::<_, QueryError>(&mut test_conn, |block_tx| {
-        result = db::list_blocks(&block_tx, 0..100)?;
+        result = db::list_blocks(block_tx, 0..100)?;
         Ok(())
     })
     .unwrap();
@@ -70,7 +70,7 @@ async fn test_sync() {
     block_rx.changed().await.unwrap();
 
     node_db::with_tx_dropped::<_, QueryError>(&mut test_conn, |block_tx| {
-        result = db::list_blocks(&block_tx, 0..100)?;
+        result = db::list_blocks(block_tx, 0..100)?;
         Ok(())
     })
     .unwrap();

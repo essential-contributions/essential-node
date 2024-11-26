@@ -168,7 +168,7 @@ fn assert_submit_solutions_effects(conn: &mut Connection, expected_blocks: Vec<B
     let mut fetched_blocks = Vec::new();
     node_db::with_tx_dropped::<_, QueryError>(conn, |tx| {
         fetched_blocks = db::list_blocks(
-            &tx,
+            tx,
             expected_blocks[0].number..expected_blocks[expected_blocks.len() - 1].number + 1,
         )?;
         Ok(())

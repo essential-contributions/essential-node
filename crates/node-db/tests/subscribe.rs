@@ -20,7 +20,7 @@ async fn subscribe_blocks() {
     // Write the first 10 blocks to the DB. We'll write the rest later.
     let mut conn = conn_pool.acquire().await.unwrap();
     node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
-        node_db::create_tables(&tx).unwrap();
+        node_db::create_tables(tx).unwrap();
         for block in &blocks[..10] {
             node_db::insert_block(tx, block).unwrap();
         }
@@ -45,7 +45,7 @@ async fn subscribe_blocks() {
         for block in blocks_remaining {
             let mut conn = conn_pool.acquire().await.unwrap();
             node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
-                node_db::insert_block(&tx, &block).unwrap();
+                node_db::insert_block(tx, &block).unwrap();
                 Ok(())
             })
             .unwrap();

@@ -17,12 +17,12 @@ fn test_state_value() {
     // Create an in-memory SQLite database.
     let mut conn = test_conn();
 
-    let mut contract_ca = ContentAddress { 0: [0u8; 32] };
+    let mut contract_ca = ContentAddress([0u8; 32]);
     node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
-        node_db::create_tables(&tx)?;
+        node_db::create_tables(tx)?;
         // Write some state.
         contract_ca = essential_hash::content_addr(&contract);
-        node_db::update_state(&tx, &contract_ca, &key, &value)?;
+        node_db::update_state(tx, &contract_ca, &key, &value)?;
         Ok(())
     })
     .unwrap();
@@ -53,13 +53,13 @@ fn test_state_values_with_deletion() {
 
     // Create an in-memory SQLite database.
     let mut conn = test_conn();
-    let mut contract_ca = ContentAddress { 0: [0u8; 32] };
+    let mut contract_ca = ContentAddress([0u8; 32]);
     node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
         // Create tables, contract, insert values.
-        node_db::create_tables(&tx)?;
+        node_db::create_tables(tx)?;
         contract_ca = essential_hash::content_addr(&contract);
         for (k, v) in keys.iter().zip(&values) {
-            node_db::update_state(&tx, &contract_ca, k, v)?;
+            node_db::update_state(tx, &contract_ca, k, v)?;
         }
         Ok(())
     })
