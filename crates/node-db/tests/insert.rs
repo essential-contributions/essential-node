@@ -192,11 +192,7 @@ fn test_finalize_block() {
         Duration::from_secs((NUM_FINALIZED_BLOCKS + 1000) as u64),
     );
 
-    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
-        node_db::insert_block(tx, &fork).unwrap();
-        Ok(())
-    })
-    .unwrap();
+    node_db::with_tx(&mut conn, |tx| node_db::insert_block(tx, &fork)).unwrap();
 
     let e = node_db::finalize_block(&conn, &content_addr(&fork)).unwrap_err();
     assert!(matches!(
