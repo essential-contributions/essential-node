@@ -217,15 +217,13 @@ fn test_failed_block() {
     // Create an in-memory SQLite database
     let mut conn = test_conn();
 
-    let mut r = vec![];
-    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
-        // Create the necessary tables and insert the block.
+    // Create the necessary tables and insert the block.
+    let r = node_db::with_tx(&mut conn, |tx| {
         node_db::create_tables(tx).unwrap();
         for block in &blocks {
             node_db::insert_block(tx, block).unwrap();
         }
-        r = node_db::list_blocks(tx, 0..(NUM_BLOCKS + 10)).unwrap();
-        Ok(())
+        node_db::list_blocks(tx, 0..(NUM_BLOCKS + 10))
     })
     .unwrap();
 

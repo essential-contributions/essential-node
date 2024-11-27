@@ -14,10 +14,9 @@ use std::time::Duration;
 
 // Insert a block to the database and send a notification to the stream
 fn insert_block_and_send_notification(conn: &mut Connection, block: &Block, block_tx: &BlockTx) {
-    node_db::with_tx::<_, QueryError>(conn, |tx| {
+    node_db::with_tx(conn, |tx| {
         let block_ca = insert_block(tx, block)?;
-        finalize_block(tx, &block_ca)?;
-        Ok(())
+        finalize_block(tx, &block_ca)
     })
     .unwrap();
 

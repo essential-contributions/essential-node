@@ -34,9 +34,8 @@ async fn test_sync() {
 
     let mut test_conn = relayer_conn.acquire().await.unwrap();
 
-    node_db::with_tx::<_, QueryError>(&mut test_conn, |tx| {
-        db::create_tables(tx)?;
-        Ok(())
+    node_db::with_tx(&mut test_conn, |tx| {
+        db::create_tables(tx)
     })
     .unwrap();
 
@@ -112,7 +111,6 @@ async fn test_sync() {
             break;
         }
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        continue;
     }
 
     assert_eq!(num_solutions, 200);

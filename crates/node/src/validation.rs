@@ -147,7 +147,6 @@ async fn validate_next_block(
                     .get(solution_index)
                     .expect("Failed solution must exist."),
             );
-            let block_address = block_address.clone();
             let r: Result<bool, InternalError> = conn_pool
                 .acquire_then(move |conn| {
                     db::insert_failed_block(conn, &block_address, &failed_solution)
