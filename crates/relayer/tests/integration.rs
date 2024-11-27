@@ -34,10 +34,7 @@ async fn test_sync() {
 
     let mut test_conn = relayer_conn.acquire().await.unwrap();
 
-    node_db::with_tx(&mut test_conn, |tx| {
-        db::create_tables(tx)
-    })
-    .unwrap();
+    node_db::with_tx(&mut test_conn, |tx| db::create_tables(tx)).unwrap();
 
     let (solutions, blocks) = test_structs();
 
