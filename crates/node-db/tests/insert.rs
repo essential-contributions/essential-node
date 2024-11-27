@@ -17,15 +17,13 @@ fn test_insert_block() {
     // Create an in-memory SQLite database
     let mut conn = test_conn();
 
-    let mut fetched_blocks = vec![];
-    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
+    let fetched_blocks = node_db::with_tx(&mut conn, |tx| {
         // Create the necessary tables and insert blocks
         node_db::create_tables(tx).unwrap();
         for block in &blocks {
             node_db::insert_block(tx, block).unwrap();
         }
-        fetched_blocks = node_db::list_blocks(tx, 0..100).unwrap();
-        Ok(())
+        node_db::list_blocks(tx, 0..100)
     })
     .unwrap();
 
