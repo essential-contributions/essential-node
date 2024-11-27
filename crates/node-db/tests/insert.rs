@@ -134,7 +134,6 @@ fn test_finalize_block() {
     // Create an in-memory SQLite database
     let mut conn = test_conn();
 
-    // let mut fetched_blocks = vec![];
     node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
         // Create the necessary tables and insert blocks
         node_db::create_tables(tx).unwrap();
