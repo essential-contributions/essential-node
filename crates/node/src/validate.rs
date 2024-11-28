@@ -17,6 +17,7 @@ use essential_types::{
     convert::bytes_from_word, predicate::Predicate, solution::Solution, solution::SolutionData,
     Block, ContentAddress, Key, PredicateAddress, Value, Word,
 };
+use futures::FutureExt;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
 #[cfg(test)]
@@ -388,8 +389,7 @@ impl StateRead for State {
             conn_pool,
         } = self.clone();
 
-        Box::pin(async move {
-            // Is there a better way to get an instance of a ConnectionPool?
+        async move {
             let pool = match conn_pool {
                 Db::ConnectionPool(pool) => pool,
                 _ => panic!("Expected a ConnectionPool"),
@@ -419,7 +419,8 @@ impl StateRead for State {
             })
             .await
             .map_err(StateReadError::from)
-        })
+        }
+        .boxed()
     }
 }
 
