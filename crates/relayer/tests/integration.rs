@@ -5,7 +5,7 @@ use essential_node::db::{
 };
 use essential_node_types::block_notify::BlockTx;
 
-use essential_node_db::{self as node_db, QueryError};
+use essential_node_db::{self as node_db};
 use essential_relayer::{DataSyncError, Relayer};
 use essential_types::{
     contract::Contract,
@@ -48,10 +48,8 @@ async fn test_sync() {
 
     block_rx.changed().await.unwrap();
 
-    let mut result = vec![];
-    node_db::with_tx_dropped::<_, QueryError>(&mut test_conn, |block_tx| {
-        result = db::list_blocks(block_tx, 0..100)?;
-        Ok(())
+    let result = node_db::with_tx_dropped(&mut test_conn, |block_tx| {
+        db::list_blocks(block_tx, 0..100)
     })
     .unwrap();
 
@@ -65,9 +63,8 @@ async fn test_sync() {
 
     block_rx.changed().await.unwrap();
 
-    node_db::with_tx_dropped::<_, QueryError>(&mut test_conn, |block_tx| {
-        result = db::list_blocks(block_tx, 0..100)?;
-        Ok(())
+    let result = node_db::with_tx_dropped(&mut test_conn, |block_tx| {
+        db::list_blocks(block_tx, 0..100)
     })
     .unwrap();
 
