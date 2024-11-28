@@ -108,25 +108,25 @@ async fn validate_next_block(
             let block_address = block_address.clone();
             let r: Result<bool, InternalError> = conn_pool
                 .acquire_then(move |conn| {
-                        // Update validation progress.
-                        update_validation_progress(conn, &block_address)?;
-                        let tx = conn.transaction()?;
-                        // Keep validating if there are more blocks awaiting.
-                        let latest_finalized_block_number = {
-                            let hash = get_latest_finalized_block_address(&tx)?;
-                            if let Some(hash) = hash {
-                                let header = get_block_header(&tx, &hash)?;
-                                header.map(|(number, _ts)| number)
-                            } else {
-                                None
-                            }
-                        };
-                        if let Some(latest_block_number) = latest_finalized_block_number {
-                            if latest_block_number > block.number {
-                                return Ok(true);
-                            }
+                    // Update validation progress.
+                    update_validation_progress(conn, &block_address)?;
+                    let tx = conn.transaction()?;
+                    // Keep validating if there are more blocks awaiting.
+                    let latest_finalized_block_number = {
+                        let hash = get_latest_finalized_block_address(&tx)?;
+                        if let Some(hash) = hash {
+                            let header = get_block_header(&tx, &hash)?;
+                            header.map(|(number, _ts)| number)
+                        } else {
+                            None
                         }
-                        Ok(false)
+                    };
+                    if let Some(latest_block_number) = latest_finalized_block_number {
+                        if latest_block_number > block.number {
+                            return Ok(true);
+                        }
+                    }
+                    Ok(false)
                 })
                 .await
                 .map_err(InternalError::from);

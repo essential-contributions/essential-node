@@ -48,10 +48,9 @@ async fn test_sync() {
 
     block_rx.changed().await.unwrap();
 
-    let result = node_db::with_tx_dropped(&mut test_conn, |block_tx| {
-        db::list_blocks(block_tx, 0..100)
-    })
-    .unwrap();
+    let result =
+        node_db::with_tx_dropped(&mut test_conn, |block_tx| db::list_blocks(block_tx, 0..100))
+            .unwrap();
 
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].number, 0);
@@ -63,10 +62,9 @@ async fn test_sync() {
 
     block_rx.changed().await.unwrap();
 
-    let result = node_db::with_tx_dropped(&mut test_conn, |block_tx| {
-        db::list_blocks(block_tx, 0..100)
-    })
-    .unwrap();
+    let result =
+        node_db::with_tx_dropped(&mut test_conn, |block_tx| db::list_blocks(block_tx, 0..100))
+            .unwrap();
 
     assert_eq!(result.len(), 2);
     assert_eq!(result[1].number, 1);
