@@ -132,7 +132,7 @@ fn test_finalize_block() {
     // Create an in-memory SQLite database
     let mut conn = test_conn();
 
-    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
+    let r = node_db::with_tx(&mut conn, |tx| {
         // Create the necessary tables and insert blocks
         node_db::create_tables(tx).unwrap();
         for block in &blocks {
@@ -151,11 +151,11 @@ fn test_finalize_block() {
         }
 
         // Should not change list blocks
-        let r = node_db::list_blocks(tx, 0..(NUM_BLOCKS + 10)).unwrap();
-        assert_eq!(r.len(), NUM_BLOCKS as usize);
-        Ok(())
+        node_db::list_blocks(tx, 0..(NUM_BLOCKS + 10))
     })
     .unwrap();
+
+    assert_eq!(r.len(), NUM_BLOCKS as usize);
 
     // Check the latest finalized block hash.
     let latest_finalized_block_address =
