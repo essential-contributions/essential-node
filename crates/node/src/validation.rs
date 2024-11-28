@@ -108,7 +108,6 @@ async fn validate_next_block(
             let block_address = block_address.clone();
             let r: Result<bool, InternalError> = conn_pool
                 .acquire_then(move |conn| {
-                    let mut result = || -> Result<bool, ValidationError> {
                         // Update validation progress.
                         update_validation_progress(conn, &block_address)?;
                         let tx = conn.transaction()?;
@@ -128,8 +127,6 @@ async fn validate_next_block(
                             }
                         }
                         Ok(false)
-                    };
-                    result().map_err(ValidationError::from)
                 })
                 .await
                 .map_err(InternalError::from);
