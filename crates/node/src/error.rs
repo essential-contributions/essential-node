@@ -191,22 +191,6 @@ impl From<AcquireThenError<ValidationError>> for InternalError {
     }
 }
 
-impl From<AcquireThenError<StateReadError>> for ValidationError {
-    fn from(error: AcquireThenError<StateReadError>) -> Self {
-        match error {
-            AcquireThenError::Acquire(err) => ValidationError::DbPoolClosed(err),
-            AcquireThenError::Inner(err) => match err {
-                StateReadError::Query(query_err) => ValidationError::Query(query_err),
-                StateReadError::DbPoolClosed(db_err) => ValidationError::DbPoolClosed(db_err),
-                StateReadError::Rusqlite(rusqlite_err) => ValidationError::Rusqlite(rusqlite_err),
-                StateReadError::Join(join_err) => ValidationError::Join(join_err),
-                _ => ValidationError::Query(QueryError::from(rusqlite::Error::InvalidQuery)),
-            },
-            AcquireThenError::Join(err) => ValidationError::Join(err),
-        }
-    }
-}
-
 fn fmt_pred_addr(addr: &PredicateAddress) -> String {
     format!(
         "(contract: {}, predicate: {})",

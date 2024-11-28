@@ -1,5 +1,5 @@
 use essential_hash::content_addr;
-use essential_node_db::{self as node_db, QueryError};
+use essential_node_db::{self as node_db};
 use essential_types::{Block, ContentAddress, Word};
 use std::time::Duration;
 use util::{test_block, test_blocks_with_vars, test_conn};
@@ -115,12 +115,11 @@ fn test_get_validation_progress() {
     // Create an in-memory SQLite database.
     let mut conn = test_conn();
 
-    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
+    node_db::with_tx(&mut conn, |tx| {
         // Create the necessary tables and insert the contract progress.
         node_db::create_tables(tx).unwrap();
         node_db::insert_block(tx, &block).unwrap();
-        node_db::update_validation_progress(tx, &block_address).unwrap();
-        Ok(())
+        node_db::update_validation_progress(tx, &block_address)
     })
     .unwrap();
 
@@ -138,15 +137,13 @@ fn test_list_blocks() {
     // Create an in-memory SQLite database.
     let mut conn = test_conn();
 
-    let mut fetched_blocks = vec![];
-    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
+    let fetched_blocks = node_db::with_tx(&mut conn, |tx| {
         // Create the necessary tables and insert blocks
         node_db::create_tables(tx).unwrap();
         for block in &blocks {
             node_db::insert_block(tx, block).unwrap();
         }
-        fetched_blocks = node_db::list_blocks(tx, 0..100).unwrap();
-        Ok(())
+        node_db::list_blocks(tx, 0..100)
     })
     .unwrap();
     assert_eq!(blocks, fetched_blocks);
@@ -160,23 +157,18 @@ fn test_list_blocks_by_time() {
     // Create an in-memory SQLite database.
     let mut conn = test_conn();
 
-    let mut fetched_blocks = vec![];
-    let mut start_time = Duration::default();
-    let mut end_time = Duration::default();
-    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
-        // Create the necessary tables and insert blocks
-        node_db::create_tables(tx).unwrap();
-        for block in &blocks {
-            node_db::insert_block(tx, block).unwrap();
-        }
-        // List the blocks by time.
-        start_time = Duration::from_secs(3);
-        end_time = Duration::from_secs(6);
+    // Create the necessary tables and insert blocks.
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    for block in &blocks {
+        node_db::insert_block(&tx, block).unwrap();
+    }
 
-        fetched_blocks = node_db::list_blocks_by_time(tx, start_time..end_time, 10, 0).unwrap();
-        Ok(())
-    })
-    .unwrap();
+    // List the blocks by time.
+    let start_time = Duration::from_secs(3);
+    let end_time = Duration::from_secs(6);
+    let fetched_blocks = node_db::list_blocks_by_time(&tx, start_time..end_time, 10, 0).unwrap();
+    tx.commit().unwrap();
 
     // Filter the original blocks to match the time range.
     let expected_blocks: Vec<_> = blocks
@@ -195,15 +187,13 @@ fn get_block_header() {
     // Create an in-memory SQLite database.
     let mut conn = test_conn();
 
-    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
-        // Create the necessary tables and insert blocks
-        node_db::create_tables(tx).unwrap();
-        for block in &blocks {
-            node_db::insert_block(tx, block).unwrap();
-        }
-        Ok(())
-    })
-    .unwrap();
+    // Create the necessary tables and insert blocks.
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    for block in &blocks {
+        node_db::insert_block(&tx, block).unwrap();
+    }
+    tx.commit().unwrap();
 
     // Fetch the headers and check they match.
     let fetched_headers: Vec<_> = blocks
