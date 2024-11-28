@@ -5,7 +5,7 @@ use essential_node::db::{
 };
 use essential_node_types::block_notify::BlockTx;
 
-use essential_node_db::{self as node_db};
+use essential_node_db as node_db;
 use essential_relayer::{DataSyncError, Relayer};
 use essential_types::{
     contract::Contract,

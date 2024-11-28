@@ -1,6 +1,6 @@
 //! Tests around state.
 
-use essential_node_db::{self as node_db};
+use essential_node_db as node_db;
 use essential_types::{Key, Value};
 use util::test_conn;
 

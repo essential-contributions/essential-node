@@ -14,7 +14,7 @@ use essential_node::{
     },
     RunConfig,
 };
-use essential_node_db::{self as node_db};
+use essential_node_db as node_db;
 use essential_node_types::{block_notify::BlockTx, BigBang};
 use essential_types::Block;
 use rusqlite::Connection;
