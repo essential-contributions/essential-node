@@ -1,7 +1,7 @@
 //! Basic tests for testing insertion behaviour.
 
 use essential_hash::content_addr;
-use essential_node_db::{self as node_db, words_from_blob, QueryError};
+use essential_node_db::{self as node_db, words_from_blob};
 use essential_types::{ContentAddress, Hash, Key, PredicateAddress, Value, Word};
 use rusqlite::params;
 use std::time::Duration;
@@ -17,15 +17,13 @@ fn test_insert_block() {
     // Create an in-memory SQLite database
     let mut conn = test_conn();
 
-    // Create the necessary tables and insert blocks
-    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
-        node_db::create_tables(tx).unwrap();
-        for block in &blocks {
-            node_db::insert_block(tx, block)?;
-        }
-        Ok(())
-    })
-    .unwrap();
+    // Create the necessary tables and insert the block.
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    for block in &blocks {
+        node_db::insert_block(&tx, block).unwrap();
+    }
+    tx.commit().unwrap();
 
     for (block_ix, block) in blocks.iter().enumerate() {
         // Verify that the blocks were inserted correctly
