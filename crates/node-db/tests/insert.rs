@@ -254,14 +254,12 @@ fn test_failed_block() {
     let solution_hash = content_addr(blocks[1].solutions.first().unwrap());
     node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
 
-    let mut r = vec![];
-    node_db::with_tx_dropped::<_, QueryError>(&mut conn, |tx| {
-        r = node_db::list_blocks(tx, 0..(NUM_BLOCKS + 10)).unwrap();
+    failed_blocks = node_db::with_tx_dropped(&mut conn, |tx| {
+        let r = node_db::list_blocks(tx, 0..(NUM_BLOCKS + 10)).unwrap();
         assert_eq!(r.len(), 2);
         assert_eq!(&blocks[1], &r[1]);
         // Check failed blocks.
-        failed_blocks = node_db::list_failed_blocks(tx, 0..(NUM_BLOCKS + 10)).unwrap();
-        Ok(())
+        node_db::list_failed_blocks(tx, 0..(NUM_BLOCKS + 10))
     })
     .unwrap();
 
@@ -279,15 +277,14 @@ fn test_fork_block() {
     // Create an in-memory SQLite database
     let mut conn = test_conn();
 
-    let mut r = vec![];
-    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
+    let r = node_db::with_tx(&mut conn, |tx| {
         // Create the necessary tables and insert the block.
         node_db::create_tables(tx).unwrap();
         node_db::insert_block(tx, &first).unwrap();
         node_db::insert_block(tx, &fork_a).unwrap();
         node_db::insert_block(tx, &fork_b).unwrap();
-        r = node_db::list_blocks(tx, 0..10).unwrap();
-        Ok(())
+
+        node_db::list_blocks(tx, 0..10)
     })
     .unwrap();
 
@@ -309,17 +306,14 @@ fn test_update_validation_progress() {
 
     let mut conn = test_conn();
 
-    node_db::with_tx::<_, QueryError>(&mut conn, |tx| {
-        // Create the necessary tables and insert the block.
-        node_db::create_tables(tx).unwrap();
-        for block in &blocks {
-            node_db::insert_block(tx, block).unwrap();
-        }
-        node_db::update_validation_progress(tx, &block_addresses[0])
-            .expect("Failed to insert validation progress");
-        Ok(())
-    })
-    .unwrap();
+    let tx = conn.transaction().unwrap();
+    node_db::create_tables(&tx).unwrap();
+    for block in &blocks {
+        node_db::insert_block(&tx, block).unwrap();
+    }
+    node_db::update_validation_progress(&tx, &block_addresses[0])
+        .expect("Failed to insert validation progress");
+    tx.commit().unwrap();
 
     let mut stmt = conn
         .prepare("SELECT validation_progress.id, block.block_address FROM validation_progress JOIN block ON block.id = validation_progress.block_id")
