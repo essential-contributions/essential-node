@@ -111,6 +111,7 @@ pub fn run(
     conn_pool: db::ConnectionPool,
     conf: RunConfig,
     contract_registry: ContentAddress,
+    program_registry: ContentAddress,
     block_notify: BlockTx,
 ) -> Result<Handle, CriticalError> {
     let RunConfig {
@@ -131,6 +132,7 @@ pub fn run(
         Some(validation_stream(
             conn_pool.clone(),
             contract_registry,
+            program_registry,
             block_notify.new_listener(),
         )?)
     } else {

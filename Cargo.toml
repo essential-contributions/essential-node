@@ -17,12 +17,11 @@ axum = "0.7.7"
 clap = { version = "4.5", features = ["derive"] }
 crossbeam = "0.8"
 dirs = "5"
-essential-check = "0.9.0"
-essential-constraint-asm = "0.6.0"
-essential-hash = "0.7.0"
-essential-sign = "0.7.0"
-essential-state-asm = "0.6.0"
-essential-types = "0.5.0"
+essential-check = { git = "https://github.com/essential-contributions/essential-base.git", branch = "develop" }
+essential-asm = { git = "https://github.com/essential-contributions/essential-base.git", branch = "develop" }
+essential-hash = { git = "https://github.com/essential-contributions/essential-base.git", branch = "develop" }
+essential-sign = { git = "https://github.com/essential-contributions/essential-base.git", branch = "develop" }
+essential-types = { git = "https://github.com/essential-contributions/essential-base.git", branch = "develop" }
 futures = "0.3.30"
 hex = "0.4.3"
 http = "1.1.0"

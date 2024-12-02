@@ -6,7 +6,7 @@
 use essential_types::{
     contract::Contract,
     convert::{word_4_from_u8_32, word_from_bytes_slice},
-    predicate::header::PredicateError,
+    predicate::PredicateEncodeError,
     solution::{Mutation, Solution, SolutionData},
     Block, PredicateAddress, Word,
 };
@@ -61,6 +61,22 @@ pub struct BigBang {
     /// - `[1, <predicate-ca>]` to get the length bytes as `Word` followed by the fully encoded
     ///   word-padded data as `int[]`.
     pub contract_registry: PredicateAddress,
+    /// The address of the contract used to register programs.
+    ///
+    /// ```ignore
+    /// storage {
+    ///     programs: (b256 => Program),
+    /// }
+    /// ```
+    ///
+    /// ## Programs
+    ///
+    /// Program entries contain their length in bytes as a `Word` and their bytecode within a
+    /// `int[]` with padding in the final word if necessary. E.g.
+    ///
+    /// - `[<program-ca>]` to get the bytecode length as `Word` followed by the bytecode as
+    ///   `int[]`.
+    pub program_registry: PredicateAddress,
     /// The `Solution` used to initialize arbitrary state for the big bang block.
     ///
     /// The primary purpose is setting the initial block state and registering the big bang
@@ -134,11 +150,27 @@ pub mod contract_registry {
     }
 }
 
+/// Functions for constructing keys into the "program registry" contract state.
+pub mod program_registry {
+    use crate::padded_words_from_bytes;
+    use essential_types::{ContentAddress, Key};
+
+    /// A key that may be used to retrieve the full `Program` from the program registry state.
+    ///
+    /// When queried, the `Program` data will be preceded by a single word that describes the
+    /// length of the program in bytes.
+    ///
+    /// The returned key is formatted as `[<program-ca>]`
+    pub fn program_key(prog_ca: &ContentAddress) -> Key {
+        padded_words_from_bytes(&prog_ca.0).collect()
+    }
+}
+
 /// Create a solution for registering the given contract at the given
 pub fn register_contract_solution(
     contract_registry: PredicateAddress,
     contract: &Contract,
-) -> Result<SolutionData, PredicateError> {
+) -> Result<SolutionData, PredicateEncodeError> {
     Ok(SolutionData {
         predicate_to_solve: contract_registry,
         decision_variables: vec![],
@@ -150,7 +182,9 @@ pub fn register_contract_solution(
 /// registry" contract. This is useful for constructing contract deployment `Solution`s.
 ///
 /// Learn more about the layout of state within the contract registry
-pub fn register_contract_mutations(contract: &Contract) -> Result<Vec<Mutation>, PredicateError> {
+pub fn register_contract_mutations(
+    contract: &Contract,
+) -> Result<Vec<Mutation>, PredicateEncodeError> {
     let mut muts = vec![];
 
     // Add the mutations that register the contract's salt and length.

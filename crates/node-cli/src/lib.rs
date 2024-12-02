@@ -192,6 +192,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         node_db.clone(),
         run_conf,
         big_bang.contract_registry.contract,
+        big_bang.program_registry.contract,
         block_tx,
     )?;
     let node_future = async move {

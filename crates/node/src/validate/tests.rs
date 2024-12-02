@@ -1,15 +1,12 @@
 use crate::{
     db::{finalize_block, insert_block, with_tx},
     test_utils::{
-        test_block_with_contracts, test_conn_pool, test_conn_pool_with_big_bang,
-        test_contract_registry, test_invalid_block, test_invalid_block_with_contract,
+        test_big_bang, test_block_with_contracts, test_conn_pool, test_conn_pool_with_big_bang,
+        test_invalid_block, test_invalid_block_with_contract,
     },
     validate::{self, InvalidOutcome, ValidOutcome, ValidateFailure, ValidateOutcome},
 };
-use essential_check::{
-    constraint_vm::error::CheckError,
-    solution::{PredicateConstraintsError, PredicateError, PredicatesError},
-};
+use essential_check::solution::{PredicateError, PredicatesError};
 use std::time::Duration;
 
 #[tokio::test]
@@ -25,10 +22,13 @@ async fn valid_block() {
     })
     .unwrap();
 
-    let contract_registry = test_contract_registry().contract;
-    let outcome = validate::validate_dry_run(&conn_pool, &contract_registry, &block)
-        .await
-        .unwrap();
+    let big_bang = test_big_bang();
+    let contract_registry = big_bang.contract_registry.contract;
+    let program_registry = big_bang.program_registry.contract;
+    let outcome =
+        validate::validate_dry_run(&conn_pool, &contract_registry, &program_registry, &block)
+            .await
+            .unwrap();
 
     match outcome {
         ValidateOutcome::Valid(ValidOutcome { total_gas }) => {
@@ -56,10 +56,13 @@ async fn invalid_block() {
     })
     .unwrap();
 
-    let contract_registry = test_contract_registry().contract;
-    let outcome = validate::validate_dry_run(&conn_pool, &contract_registry, &block)
-        .await
-        .unwrap();
+    let big_bang = test_big_bang();
+    let contract_registry = big_bang.contract_registry.contract;
+    let program_registry = big_bang.program_registry.contract;
+    let outcome =
+        validate::validate_dry_run(&conn_pool, &contract_registry, &program_registry, &block)
+            .await
+            .unwrap();
 
     match outcome {
         ValidateOutcome::Invalid(InvalidOutcome {
@@ -74,24 +77,12 @@ async fn invalid_block() {
                         let (solution_data_index, predicate_err) = &errs.0[0];
                         assert_eq!(*solution_data_index, 0);
                         match predicate_err {
-                            PredicateError::Constraints(err) => match err {
-                                PredicateConstraintsError::Check(err) => match err {
-                                    CheckError::ConstraintsUnsatisfied(indices) => {
-                                        assert_eq!(indices.0.len(), 1);
-                                        assert_eq!(indices.0[0], 0);
-                                    }
-                                    _ => panic!(
-                                        "expected CheckError::ConstraintsUnsatisfied, found {:?}",
-                                        predicate_err
-                                    ),
-                                },
-                                _ => panic!(
-                                    "expected PredicateConstraintsError::Check, found {:?}",
-                                    predicate_err
-                                ),
-                            },
+                            PredicateError::ConstraintsUnsatisfied(indices) => {
+                                assert_eq!(indices.0.len(), 1);
+                                assert_eq!(indices.0[0], 0);
+                            }
                             _ => panic!(
-                                "expected PredicateError::Constraints, found {:?}",
+                                "expected PredicateError::ConstraintsUnsatisfied, found {:?}",
                                 predicate_err
                             ),
                         }
@@ -114,8 +105,11 @@ async fn invalid_block() {
 async fn predicate_not_found() {
     let conn_pool = test_conn_pool();
     let (block, _) = test_invalid_block(0, Duration::from_secs(0));
-    let contract_registry = test_contract_registry().contract;
-    let res = validate::validate_dry_run(&conn_pool, &contract_registry, &block).await;
+    let big_bang = test_big_bang();
+    let contract_registry = big_bang.contract_registry.contract;
+    let program_registry = big_bang.program_registry.contract;
+    let res =
+        validate::validate_dry_run(&conn_pool, &contract_registry, &program_registry, &block).await;
     match res {
         Ok(ValidateOutcome::Invalid(InvalidOutcome {
             failure: ValidateFailure::MissingPredicate(addr),
@@ -137,10 +131,13 @@ async fn validate_dry_run() {
     // Insert a valid block with contracts.
     let block = test_block_with_contracts(1, Duration::from_secs(1));
 
-    let contract_registry = test_contract_registry().contract;
-    let outcome = validate::validate_dry_run(&conn_pool, &contract_registry, &block)
-        .await
-        .unwrap();
+    let big_bang = test_big_bang();
+    let contract_registry = big_bang.contract_registry.contract;
+    let program_registry = big_bang.program_registry.contract;
+    let outcome =
+        validate::validate_dry_run(&conn_pool, &contract_registry, &program_registry, &block)
+            .await
+            .unwrap();
 
     match outcome {
         ValidateOutcome::Valid(ValidOutcome { total_gas }) => {

@@ -29,6 +29,7 @@ mod tests;
 pub fn validation_stream(
     conn_pool: ConnectionPool,
     contract_registry: ContentAddress,
+    program_registry: ContentAddress,
     mut block_rx: BlockRx,
 ) -> Result<Handle<CriticalError>, CriticalError> {
     let (shutdown, stream_close) = watch::channel(());
@@ -38,7 +39,13 @@ pub fn validation_stream(
         loop {
             let err = 'wait_next_block: loop {
                 loop {
-                    match validate_next_block(conn_pool.clone(), &contract_registry).await {
+                    match validate_next_block(
+                        conn_pool.clone(),
+                        &contract_registry,
+                        &program_registry,
+                    )
+                    .await
+                    {
                         Err(err) => break 'wait_next_block err,
                         Ok(more_blocks_left) => {
                             if more_blocks_left {
@@ -80,6 +87,7 @@ pub fn validation_stream(
 async fn validate_next_block(
     conn_pool: ConnectionPool,
     contract_registry: &ContentAddress,
+    program_registry: &ContentAddress,
 ) -> Result<bool, InternalError> {
     let progress = get_last_progress(&conn_pool)
         .await?
@@ -98,7 +106,7 @@ async fn validate_next_block(
         block.number
     );
 
-    let res = validate::validate(&conn_pool, contract_registry, &block).await?;
+    let res = validate::validate(&conn_pool, contract_registry, program_registry, &block).await?;
 
     let more_blocks_available = match res {
         // Validation was successful.

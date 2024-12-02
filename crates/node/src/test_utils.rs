@@ -9,12 +9,14 @@ use crate::{
     },
     ensure_big_bang_block,
 };
+use essential_check::vm::asm;
+use essential_hash::content_addr;
 use essential_node_types::{register_contract_solution, BigBang};
 use essential_types::{
     contract::Contract,
-    predicate::{header::PredicateError, Predicate},
+    predicate::{Edge, Node, Predicate, PredicateEncodeError, Program, Reads},
     solution::{Mutation, Solution, SolutionData},
-    Block, ConstraintBytecode, ContentAddress, PredicateAddress, StateReadBytecode, Word,
+    Block, ContentAddress, PredicateAddress, Word,
 };
 use rusqlite::Connection;
 use std::time::Duration;
@@ -39,8 +41,8 @@ pub fn test_db_conf() -> Config {
     }
 }
 
-pub fn test_contract_registry() -> PredicateAddress {
-    BigBang::default().contract_registry
+pub fn test_big_bang() -> BigBang {
+    BigBang::default()
 }
 
 /// The same as test_blocks, but includes solutions for deploying the contracts in their associated
@@ -60,7 +62,7 @@ pub fn test_blocks(n: Word) -> (Vec<Block>, Vec<Contract>) {
 
 pub fn test_block_with_contracts(number: Word, timestamp: Duration) -> Block {
     let (mut block, contracts) = test_block(number, timestamp);
-    let contract_registry = test_contract_registry();
+    let contract_registry = test_big_bang().contract_registry;
     let solution = register_contracts_solution(contract_registry, contracts.iter()).unwrap();
     match block.solutions.get_mut(0) {
         Some(first) => first.data.extend(solution.data),
@@ -87,7 +89,7 @@ pub fn test_block(number: Word, timestamp: Duration) -> (Block, Vec<Contract>) {
 
 pub fn test_invalid_block_with_contract(number: Word, timestamp: Duration) -> Block {
     let (mut block, contract) = test_invalid_block(number, timestamp);
-    let contract_registry = test_contract_registry();
+    let contract_registry = test_big_bang().contract_registry;
     let solution = register_contracts_solution(contract_registry, Some(&contract)).unwrap();
     match block.solutions.get_mut(0) {
         Some(first) => first.data.extend(solution.data),
@@ -99,16 +101,7 @@ pub fn test_invalid_block_with_contract(number: Word, timestamp: Duration) -> Bl
 pub fn test_invalid_block(number: Word, timestamp: Duration) -> (Block, Contract) {
     let seed = number;
 
-    let predicate = Predicate {
-        state_read: test_state_reads(seed),
-        constraints: vec![essential_constraint_asm::to_bytes(vec![
-            essential_constraint_asm::Stack::Push(seed).into(),
-            essential_constraint_asm::Stack::Pop.into(),
-            // This constraint will fail
-            essential_constraint_asm::Stack::Push(0).into(),
-        ])
-        .collect()],
-    };
+    let predicate = test_invalid_predicate(seed);
     let contract = Contract {
         predicates: vec![predicate],
         salt: essential_types::convert::u8_32_from_word_4([seed; 4]),
@@ -138,6 +131,21 @@ pub fn test_invalid_block(number: Word, timestamp: Duration) -> (Block, Contract
         },
         contract,
     )
+}
+
+pub fn test_invalid_predicate(seed: Word) -> Predicate {
+    use essential_asm::short::*;
+
+    let a = Program(asm::to_bytes([PUSH(seed), POP, PUSH(0)]).collect());
+    let a_ca = content_addr(&a);
+
+    let nodes = vec![Node {
+        program_address: a_ca,
+        edge_start: Edge::MAX,
+        reads: Reads::Pre,
+    }];
+    let edges = vec![];
+    Predicate { nodes, edges }
 }
 
 pub fn test_solution(seed: Word) -> (Solution, Contract) {
@@ -181,30 +189,41 @@ pub fn test_contract(seed: Word) -> Contract {
 }
 
 pub fn test_predicate(seed: Word) -> Predicate {
-    Predicate {
-        state_read: test_state_reads(seed),
-        constraints: test_constraints(seed),
-    }
-}
+    use essential_asm::short::*;
 
-// Resulting bytecode is invalid, but this is just for testing DB behaviour, not validation.
-pub fn test_state_reads(seed: Word) -> Vec<StateReadBytecode> {
-    vec![essential_state_asm::to_bytes(vec![
-        essential_state_asm::Stack::Push(seed).into(),
-        essential_state_asm::Stack::Pop.into(),
-        essential_state_asm::TotalControlFlow::Halt.into(),
-    ])
-    .collect()]
-}
+    let a = Program(asm::to_bytes([PUSH(1), PUSH(2), PUSH(3), HLT]).collect());
+    let b = Program(asm::to_bytes([PUSH(seed), HLT]).collect());
+    let c = Program(
+        asm::to_bytes([
+            // Stack should already have `[1, 2, 3, seed]`.
+            PUSH(1),
+            PUSH(2),
+            PUSH(3),
+            PUSH(seed),
+            // a `len` for `EqRange`.
+            PUSH(4), // EqRange len
+            EQRA,
+            HLT,
+        ])
+        .collect(),
+    );
 
-// Resulting bytecode is invalid, but this is just for testing DB behaviour, not validation.
-pub fn test_constraints(seed: Word) -> Vec<ConstraintBytecode> {
-    vec![essential_constraint_asm::to_bytes(vec![
-        essential_constraint_asm::Stack::Push(seed).into(),
-        essential_constraint_asm::Stack::Pop.into(),
-        essential_constraint_asm::Stack::Push(1).into(),
-    ])
-    .collect()]
+    let a_ca = content_addr(&a);
+    let b_ca = content_addr(&b);
+    let c_ca = content_addr(&c);
+
+    let node = |program_address, edge_start| Node {
+        program_address,
+        edge_start,
+        reads: Reads::Pre, // unused for this test.
+    };
+    let nodes = vec![
+        node(a_ca.clone(), 0),
+        node(b_ca.clone(), 1),
+        node(c_ca.clone(), Edge::MAX),
+    ];
+    let edges = vec![2, 2];
+    Predicate { nodes, edges }
 }
 
 // Check that the validation progress in the database is block number and hash
@@ -245,7 +264,7 @@ pub fn assert_multiple_block_mutations(conn: &Connection, blocks: &[&Block]) {
 pub fn register_contracts_solution<'a>(
     contract_registry: PredicateAddress,
     contracts: impl IntoIterator<Item = &'a Contract>,
-) -> Result<Solution, PredicateError> {
+) -> Result<Solution, PredicateEncodeError> {
     let data = contracts
         .into_iter()
         .map(|contract| register_contract_solution(contract_registry.clone(), contract))
@@ -259,7 +278,7 @@ pub fn register_contracts_block<'a>(
     contracts: impl IntoIterator<Item = &'a Contract>,
     block_number: Word,
     block_timestamp: Duration,
-) -> Result<Block, PredicateError> {
+) -> Result<Block, PredicateEncodeError> {
     let solution = register_contracts_solution(contract_registry, contracts)?;
     Ok(Block {
         solutions: vec![solution],

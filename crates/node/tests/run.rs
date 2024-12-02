@@ -47,6 +47,7 @@ async fn test_run() {
         db.clone(),
         run_conf,
         big_bang.contract_registry.contract.clone(),
+        big_bang.program_registry.contract.clone(),
         block_tx,
     )
     .unwrap();

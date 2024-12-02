@@ -221,8 +221,8 @@ async fn tear_down_server(server: NodeServer) {
 // Solutions and blocks structs for testing.
 fn test_structs() -> (Vec<Solution>, Vec<Arc<Block>>) {
     let predicate = Predicate {
-        state_read: vec![],
-        constraints: vec![],
+        nodes: vec![],
+        edges: vec![],
     };
     let contracts: Vec<_> = (0..200)
         .map(|i| {

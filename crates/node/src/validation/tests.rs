@@ -2,8 +2,8 @@ use super::*;
 use crate::{
     db::{self, finalize_block, insert_block},
     test_utils::{
-        assert_validation_progress_is_some, test_blocks_with_contracts,
-        test_conn_pool_with_big_bang, test_contract_registry, test_invalid_block_with_contract,
+        assert_validation_progress_is_some, test_big_bang, test_blocks_with_contracts,
+        test_conn_pool_with_big_bang, test_invalid_block_with_contract,
     },
 };
 use essential_node_db as node_db;
@@ -38,8 +38,16 @@ async fn can_validate() {
     let block_tx = BlockTx::new();
     let block_rx = block_tx.new_listener();
 
-    let contract_registry = test_contract_registry().contract;
-    let handle = validation_stream(conn_pool.clone(), contract_registry, block_rx).unwrap();
+    let big_bang = test_big_bang();
+    let contract_registry = big_bang.contract_registry.contract;
+    let program_registry = big_bang.program_registry.contract;
+    let handle = validation_stream(
+        conn_pool.clone(),
+        contract_registry,
+        program_registry,
+        block_rx,
+    )
+    .unwrap();
 
     // Initially, the validation progress is the big bang block.
     let bbb_ca = essential_hash::content_addr(&BigBang::default().block());
@@ -79,8 +87,16 @@ async fn test_invalid_block_validation() {
     let block_tx = BlockTx::new();
     let block_rx = block_tx.new_listener();
 
-    let contract_registry = test_contract_registry().contract;
-    let handle = validation_stream(conn_pool.clone(), contract_registry, block_rx).unwrap();
+    let big_bang = test_big_bang();
+    let contract_registry = big_bang.contract_registry.contract;
+    let program_registry = big_bang.program_registry.contract;
+    let handle = validation_stream(
+        conn_pool.clone(),
+        contract_registry,
+        program_registry,
+        block_rx,
+    )
+    .unwrap();
 
     // Initially, the validation progress starts from the big bang block.
     let bbb_ca = essential_hash::content_addr(&BigBang::default().block());
@@ -125,8 +141,16 @@ async fn can_process_valid_and_invalid_blocks() {
     let block_tx = BlockTx::new();
     let block_rx = block_tx.new_listener();
 
-    let contract_registry = test_contract_registry().contract;
-    let handle = validation_stream(conn_pool.clone(), contract_registry, block_rx).unwrap();
+    let big_bang = test_big_bang();
+    let contract_registry = big_bang.contract_registry.contract;
+    let program_registry = big_bang.program_registry.contract;
+    let handle = validation_stream(
+        conn_pool.clone(),
+        contract_registry,
+        program_registry,
+        block_rx,
+    )
+    .unwrap();
 
     // Initially, the validation progress is none
     let bbb_ca = essential_hash::content_addr(&BigBang::default().block());

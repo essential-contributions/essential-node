@@ -1,12 +1,14 @@
 #![allow(dead_code)]
 
+use essential_check::vm::asm;
+use essential_hash::content_addr;
 use essential_node_db::{self as db, ConnectionPool};
 use essential_node_types::{register_contract_solution, BigBang};
 use essential_types::{
     contract::Contract,
-    predicate::{header::PredicateError, Predicate},
+    predicate::{Edge, Node, Predicate, PredicateEncodeError, Program, Reads},
     solution::{Mutation, Solution, SolutionData},
-    Block, ConstraintBytecode, ContentAddress, PredicateAddress, StateReadBytecode, Word,
+    Block, ContentAddress, PredicateAddress, Word,
 };
 use rusqlite::Connection;
 use std::time::Duration;
@@ -121,31 +123,48 @@ pub fn test_contract(seed: Word) -> Contract {
 }
 
 pub fn test_predicate(seed: Word) -> Predicate {
-    Predicate {
-        state_read: test_state_reads(seed),
-        constraints: test_constraints(seed),
-    }
-}
+    use essential_asm::short::*;
 
-// Resulting bytecode is invalid, but this is just for testing DB behaviour, not validation.
-pub fn test_state_reads(seed: Word) -> Vec<StateReadBytecode> {
-    let n = (1 + seed % 3) as usize;
-    let b = (seed % u8::MAX as Word) as u8;
-    vec![vec![b; 10]; n]
-}
+    let a = Program(asm::to_bytes([PUSH(1), PUSH(2), PUSH(3), HLT]).collect());
+    let b = Program(asm::to_bytes([PUSH(seed), HLT]).collect());
+    let c = Program(
+        asm::to_bytes([
+            // Stack should already have `[1, 2, 3, seed]`.
+            PUSH(1),
+            PUSH(2),
+            PUSH(3),
+            PUSH(seed),
+            // a `len` for `EqRange`.
+            PUSH(4), // EqRange len
+            EQRA,
+            HLT,
+        ])
+        .collect(),
+    );
 
-// Resulting bytecode is invalid, but this is just for testing DB behaviour, not validation.
-pub fn test_constraints(seed: Word) -> Vec<ConstraintBytecode> {
-    let n = (1 + seed % 3) as usize;
-    let b = (seed % u8::MAX as Word) as u8;
-    vec![vec![b; 10]; n]
+    let a_ca = content_addr(&a);
+    let b_ca = content_addr(&b);
+    let c_ca = content_addr(&c);
+
+    let node = |program_address, edge_start| Node {
+        program_address,
+        edge_start,
+        reads: Reads::Pre, // unused for this test.
+    };
+    let nodes = vec![
+        node(a_ca.clone(), 0),
+        node(b_ca.clone(), 1),
+        node(c_ca.clone(), Edge::MAX),
+    ];
+    let edges = vec![2, 2];
+    Predicate { nodes, edges }
 }
 
 /// A helper for constructing a solution that registers the given set of contracts.
 pub fn register_contracts_solution<'a>(
     contract_registry: PredicateAddress,
     contracts: impl IntoIterator<Item = &'a Contract>,
-) -> Result<Solution, PredicateError> {
+) -> Result<Solution, PredicateEncodeError> {
     let data = contracts
         .into_iter()
         .map(|contract| register_contract_solution(contract_registry.clone(), contract))
@@ -159,7 +178,7 @@ pub fn register_contracts_block<'a>(
     contracts: impl IntoIterator<Item = &'a Contract>,
     block_number: Word,
     block_timestamp: Duration,
-) -> Result<Block, PredicateError> {
+) -> Result<Block, PredicateEncodeError> {
     let solution = register_contracts_solution(contract_registry, contracts)?;
     Ok(Block {
         solutions: vec![solution],

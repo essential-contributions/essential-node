@@ -2,7 +2,7 @@ use crate::db::{
     pool::{AcquireThenError, AcquireThenQueryError, AcquireThenRusqliteError},
     QueryError,
 };
-use essential_types::{predicate, ContentAddress, PredicateAddress};
+use essential_types::{predicate::PredicateDecodeError, ContentAddress, PredicateAddress};
 use thiserror::Error;
 use tokio::sync::AcquireError;
 
@@ -104,6 +104,16 @@ pub enum SolutionPredicatesError {
 }
 
 #[derive(Debug, Error)]
+pub enum PredicatesProgramsError {
+    #[error("failed to acquire a connection from the pool: {0}")]
+    Acquire(#[from] AcquireError),
+    #[error("failed to query program with address {0}: {1}")]
+    QueryProgram(ContentAddress, QueryProgramError),
+    #[error("predicate contains an unregistered program {0}")]
+    MissingProgram(ContentAddress),
+}
+
+#[derive(Debug, Error)]
 pub enum QueryPredicateError {
     #[error(transparent)]
     Query(#[from] QueryError),
@@ -111,8 +121,18 @@ pub enum QueryPredicateError {
     MissingLenBytes,
     #[error("the queried predicate length was invalid")]
     InvalidLenBytes,
-    #[error("failed to decode the queried predicate: {0}")]
-    Decode(#[from] predicate::header::DecodeError),
+    #[error("failed to decode the queried predicate: {0:?}")]
+    Decode(#[from] PredicateDecodeError),
+}
+
+#[derive(Debug, Error)]
+pub enum QueryProgramError {
+    #[error(transparent)]
+    Query(#[from] QueryError),
+    #[error("the queried program is missing the word that encodes its length")]
+    MissingLenBytes,
+    #[error("the queried predicate length was invalid")]
+    InvalidLenBytes,
 }
 
 /// An error occurred while inserting of checking the big bang block.
