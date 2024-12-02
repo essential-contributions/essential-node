@@ -390,17 +390,14 @@ impl StateRead for State {
         } = self.clone();
 
         async move {
-            let pool = match conn_pool {
-                Db::ConnectionPool(pool) => pool,
-                _ => panic!("Expected a ConnectionPool"),
-            };
+            let mut conn = conn_pool.acquire().await?;
 
-            pool.acquire_then(move |conn: &mut ConnectionHandle| {
+            tokio::task::spawn_blocking(move || {
                 let mut values = vec![];
-                let tx = &Transaction::Handle(conn.transaction()?);
+                let tx = conn.transaction()?;
 
                 for _ in 0..num_values {
-                    let value = query(tx, |tx| {
+                    let value = query(&tx, |tx| {
                         query_state(
                             tx,
                             &contract_addr,
@@ -417,8 +414,7 @@ impl StateRead for State {
                 }
                 Ok(values)
             })
-            .await
-            .map_err(StateReadError::from)
+            .await?
         }
         .boxed()
     }
