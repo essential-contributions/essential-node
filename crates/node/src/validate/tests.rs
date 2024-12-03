@@ -1,8 +1,8 @@
 use crate::{
     db::{finalize_block, insert_block, with_tx},
     test_utils::{
-        test_big_bang, test_block_with_contracts, test_conn_pool, test_conn_pool_with_big_bang,
-        test_invalid_block, test_invalid_block_with_contract,
+        register_contracts_block, test_big_bang, test_block_with_contracts, test_conn_pool,
+        test_conn_pool_with_big_bang, test_invalid_block, test_invalid_block_with_contract,
     },
     validate::{self, InvalidOutcome, ValidOutcome, ValidateFailure, ValidateOutcome},
 };
@@ -104,7 +104,7 @@ async fn invalid_block() {
 #[tokio::test]
 async fn predicate_not_found() {
     let conn_pool = test_conn_pool();
-    let (block, _) = test_invalid_block(0, Duration::from_secs(0));
+    let (block, _, _) = test_invalid_block(0, Duration::from_secs(0));
     let big_bang = test_big_bang();
     let contract_registry = big_bang.contract_registry.contract;
     let program_registry = big_bang.program_registry.contract;
@@ -118,9 +118,51 @@ async fn predicate_not_found() {
             assert_eq!(addr, block.solutions[0].data[0].predicate_to_solve)
         }
         _ => panic!(
-            "expected ValidationError::PredicateNotFound, found {:?}",
+            "expected ValidateFailure::MissingPredicate, found {:?}",
             res
         ),
+    }
+}
+
+#[tokio::test]
+async fn program_not_found() {
+    let conn_pool = test_conn_pool_with_big_bang().await;
+    let mut conn = conn_pool.acquire().await.unwrap();
+
+    let (block, contract, _) = test_invalid_block(1, Duration::from_secs(1));
+    let big_bang = test_big_bang();
+    let contract_registry = big_bang.contract_registry;
+    let program_registry = big_bang.program_registry;
+
+    // Register predicate.
+    let register_block = register_contracts_block(
+        contract_registry.clone(),
+        Some(&contract),
+        1,
+        Duration::from_secs(1),
+    )
+    .unwrap();
+    with_tx(&mut conn, |tx| {
+        let block_ca = insert_block(tx, &register_block).unwrap();
+        finalize_block(tx, &block_ca)
+    })
+    .unwrap();
+
+    let res = validate::validate_dry_run(
+        &conn_pool,
+        &contract_registry.contract,
+        &program_registry.contract,
+        &block,
+    )
+    .await;
+    match res {
+        Ok(ValidateOutcome::Invalid(InvalidOutcome {
+            failure: ValidateFailure::MissingProgram(addr),
+            solution_index: 0,
+        })) => {
+            assert_eq!(addr, contract.predicates[0].nodes[0].program_address)
+        }
+        _ => panic!("expected ValidateFailure::MissingProgram, found {:?}", res),
     }
 }
 

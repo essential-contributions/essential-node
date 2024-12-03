@@ -6,7 +6,7 @@
 use essential_types::{
     contract::Contract,
     convert::{word_4_from_u8_32, word_from_bytes_slice},
-    predicate::PredicateEncodeError,
+    predicate::{PredicateEncodeError, Program},
     solution::{Mutation, Solution, SolutionData},
     Block, PredicateAddress, Word,
 };
@@ -166,7 +166,7 @@ pub mod program_registry {
     }
 }
 
-/// Create a solution for registering the given contract at the given
+/// Create a solution for registering the given contract at the given contract registry.
 pub fn register_contract_solution(
     contract_registry: PredicateAddress,
     contract: &Contract,
@@ -181,7 +181,8 @@ pub fn register_contract_solution(
 /// Generate the mutations required to register a given contract within the big bang's "contract
 /// registry" contract. This is useful for constructing contract deployment `Solution`s.
 ///
-/// Learn more about the layout of state within the contract registry
+/// Learn more about the layout of state within the contract registry in
+/// [`BigBang::contract_registry`].
 pub fn register_contract_mutations(
     contract: &Contract,
 ) -> Result<Vec<Mutation>, PredicateEncodeError> {
@@ -231,6 +232,45 @@ pub fn register_contract_mutations(
     Ok(muts)
 }
 
+/// Create a solution for registering the given program at the given program registry.
+pub fn register_program_solution(
+    program_registry: PredicateAddress,
+    program: &Program,
+) -> SolutionData {
+    SolutionData {
+        predicate_to_solve: program_registry,
+        decision_variables: vec![],
+        state_mutations: register_program_mutations(program),
+    }
+}
+
+/// Generate the mutations required to register a given program within the big bang's "program
+/// registry" contract. This is useful for constructing program deployment `Solution`s.
+///
+/// Learn more about the layout of state within the contract registry in
+/// [`BigBang::program_registry`].
+pub fn register_program_mutations(program: &Program) -> Vec<Mutation> {
+    let mut muts = vec![];
+
+    // Register the program.
+    let prog_ca = essential_hash::content_addr(program);
+    let prog_bytes = &program.0;
+    let len_bytes = prog_bytes.len();
+    let len_bytes_w = Word::try_from(len_bytes).expect("enforced by Program::MAX_SIZE");
+
+    // Add to the program `[<program-ca>]`
+    let key = program_registry::program_key(&prog_ca);
+    muts.push(Mutation {
+        key,
+        value: Some(len_bytes_w)
+            .into_iter()
+            .chain(padded_words_from_bytes(prog_bytes))
+            .collect(),
+    });
+
+    muts
+}
+
 /// Generate a solution that sets the block state to the given block number and timestamp.
 pub fn block_state_solution(
     block_state: PredicateAddress,
@@ -245,7 +285,7 @@ pub fn block_state_solution(
 }
 
 /// Generate the mutations required for a solution that sets the block state to the given block
-/// nubmer and timesatmp.
+/// number and timestamp.
 pub fn block_state_mutations(block_number: Word, block_timestamp_secs: Word) -> Vec<Mutation> {
     vec![
         Mutation {

@@ -11,7 +11,7 @@ use crate::{
 };
 use essential_check::vm::asm;
 use essential_hash::content_addr;
-use essential_node_types::{register_contract_solution, BigBang};
+use essential_node_types::{register_contract_solution, register_program_solution, BigBang};
 use essential_types::{
     contract::Contract,
     predicate::{Edge, Node, Predicate, PredicateEncodeError, Program, Reads},
@@ -53,29 +53,53 @@ pub fn test_blocks_with_contracts(start: Word, end: Word) -> Vec<Block> {
         .collect()
 }
 
-pub fn test_blocks(n: Word) -> (Vec<Block>, Vec<Contract>) {
-    let (blocks, contracts) = (0..n)
-        .map(|i| test_block(i, Duration::from_secs(i as _)))
-        .unzip::<_, _, Vec<_>, Vec<_>>();
-    (blocks, contracts.into_iter().flatten().collect())
+pub fn test_blocks(n: Word) -> (Vec<Block>, Vec<Contract>, Vec<Program>) {
+    let mut blocks = vec![];
+    let mut contracts = vec![];
+    let mut programs = vec![];
+    for i in 0..n {
+        let (block, inner_contracts, inner_programs) = test_block(i, Duration::from_secs(i as _));
+        blocks.push(block);
+        contracts.extend(inner_contracts);
+        programs.extend(inner_programs);
+    }
+
+    (blocks, contracts, programs)
 }
 
 pub fn test_block_with_contracts(number: Word, timestamp: Duration) -> Block {
-    let (mut block, contracts) = test_block(number, timestamp);
-    let contract_registry = test_big_bang().contract_registry;
-    let solution = register_contracts_solution(contract_registry, contracts.iter()).unwrap();
+    let (mut block, contracts, programs) = test_block(number, timestamp);
+    let big_bang = test_big_bang();
+    let contract_registry = big_bang.contract_registry;
+    let program_registry = big_bang.program_registry;
+    let contracts_solution =
+        register_contracts_solution(contract_registry, contracts.iter()).unwrap();
+    let programs_solution = register_programs_solution(program_registry, programs.iter());
     match block.solutions.get_mut(0) {
-        Some(first) => first.data.extend(solution.data),
-        None => block.solutions.push(solution),
+        Some(first) => first.data.extend(
+            contracts_solution
+                .data
+                .into_iter()
+                .chain(programs_solution.data),
+        ),
+        None => block
+            .solutions
+            .extend(vec![contracts_solution, programs_solution]),
     }
     block
 }
 
-pub fn test_block(number: Word, timestamp: Duration) -> (Block, Vec<Contract>) {
+pub fn test_block(number: Word, timestamp: Duration) -> (Block, Vec<Contract>, Vec<Program>) {
     let seed = number * 3;
-    let (solutions, contracts) = (0..3)
-        .map(|i| test_solution(seed + i))
-        .unzip::<_, _, Vec<_>, Vec<_>>();
+    let mut solutions = vec![];
+    let mut contracts = vec![];
+    let mut programs = vec![];
+    for i in 0..3 {
+        let (solution, contract, inner_programs) = test_solution(seed + i);
+        solutions.push(solution);
+        contracts.push(contract);
+        programs.extend(inner_programs);
+    }
 
     (
         Block {
@@ -84,24 +108,37 @@ pub fn test_block(number: Word, timestamp: Duration) -> (Block, Vec<Contract>) {
             solutions,
         },
         contracts,
+        programs,
     )
 }
 
 pub fn test_invalid_block_with_contract(number: Word, timestamp: Duration) -> Block {
-    let (mut block, contract) = test_invalid_block(number, timestamp);
-    let contract_registry = test_big_bang().contract_registry;
-    let solution = register_contracts_solution(contract_registry, Some(&contract)).unwrap();
+    let (mut block, contract, program) = test_invalid_block(number, timestamp);
+
+    let big_bang = test_big_bang();
+    let contract_registry = big_bang.contract_registry;
+    let program_registry = big_bang.program_registry;
+    let contract_solution =
+        register_contracts_solution(contract_registry, Some(&contract)).unwrap();
+    let programs_solution = register_programs_solution(program_registry, Some(&program));
     match block.solutions.get_mut(0) {
-        Some(first) => first.data.extend(solution.data),
-        None => block.solutions.push(solution),
+        Some(first) => first.data.extend(
+            contract_solution
+                .data
+                .into_iter()
+                .chain(programs_solution.data),
+        ),
+        None => block
+            .solutions
+            .extend(vec![contract_solution, programs_solution]),
     }
     block
 }
 
-pub fn test_invalid_block(number: Word, timestamp: Duration) -> (Block, Contract) {
+pub fn test_invalid_block(number: Word, timestamp: Duration) -> (Block, Contract, Program) {
     let seed = number;
 
-    let predicate = test_invalid_predicate(seed);
+    let (predicate, program) = test_invalid_predicate(seed);
     let contract = Contract {
         predicates: vec![predicate],
         salt: essential_types::convert::u8_32_from_word_4([seed; 4]),
@@ -130,10 +167,11 @@ pub fn test_invalid_block(number: Word, timestamp: Duration) -> (Block, Contract
             solutions: vec![solution],
         },
         contract,
+        program,
     )
 }
 
-pub fn test_invalid_predicate(seed: Word) -> Predicate {
+pub fn test_invalid_predicate(seed: Word) -> (Predicate, Program) {
     use essential_asm::short::*;
 
     let a = Program(asm::to_bytes([PUSH(seed), POP, PUSH(0)]).collect());
@@ -145,21 +183,22 @@ pub fn test_invalid_predicate(seed: Word) -> Predicate {
         reads: Reads::Pre,
     }];
     let edges = vec![];
-    Predicate { nodes, edges }
+    (Predicate { nodes, edges }, a)
 }
 
-pub fn test_solution(seed: Word) -> (Solution, Contract) {
-    let (solution_data, contract) = test_solution_data(seed);
+pub fn test_solution(seed: Word) -> (Solution, Contract, Vec<Program>) {
+    let (solution_data, contract, programs) = test_solution_data(seed);
     (
         Solution {
             data: vec![solution_data],
         },
         contract,
+        programs,
     )
 }
 
-pub fn test_solution_data(seed: Word) -> (SolutionData, Contract) {
-    let contract = test_contract(seed);
+pub fn test_solution_data(seed: Word) -> (SolutionData, Contract, Vec<Program>) {
+    let (contract, programs) = test_contract(seed);
     let predicate = essential_hash::content_addr(&contract.predicates[0]);
     let contract_address = essential_hash::content_addr(&contract);
     (
@@ -175,20 +214,26 @@ pub fn test_solution_data(seed: Word) -> (SolutionData, Contract) {
             }],
         },
         contract,
+        programs,
     )
 }
 
-pub fn test_contract(seed: Word) -> Contract {
+pub fn test_contract(seed: Word) -> (Contract, Vec<Program>) {
+    // Make sure each predicate is unique, or contract will have a different
+    // number of entries after insertion when multiple predicates have same CA.
     let n = 1 + seed % 2;
-    Contract {
-        // Make sure each predicate is unique, or contract will have a different
-        // number of entries after insertion when multiple predicates have same CA.
-        predicates: (0..n).map(|ix| test_predicate(seed * (2 + ix))).collect(),
+    let (predicates, programs) = (0..n)
+        .map(|ix| test_predicate(seed * (2 + ix)))
+        .collect::<(_, Vec<_>)>();
+    let programs = programs.into_iter().flatten().collect();
+    let contract = Contract {
+        predicates,
         salt: essential_types::convert::u8_32_from_word_4([seed; 4]),
-    }
+    };
+    (contract, programs)
 }
 
-pub fn test_predicate(seed: Word) -> Predicate {
+pub fn test_predicate(seed: Word) -> (Predicate, Vec<Program>) {
     use essential_asm::short::*;
 
     let a = Program(asm::to_bytes([PUSH(1), PUSH(2), PUSH(3), HLT]).collect());
@@ -223,7 +268,7 @@ pub fn test_predicate(seed: Word) -> Predicate {
         node(c_ca.clone(), Edge::MAX),
     ];
     let edges = vec![2, 2];
-    Predicate { nodes, edges }
+    (Predicate { nodes, edges }, vec![a, b, c])
 }
 
 // Check that the validation progress in the database is block number and hash
@@ -270,6 +315,18 @@ pub fn register_contracts_solution<'a>(
         .map(|contract| register_contract_solution(contract_registry.clone(), contract))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(Solution { data })
+}
+
+/// A helper for constructing a solution that registers the given set of programs.
+pub fn register_programs_solution<'a>(
+    program_registry: PredicateAddress,
+    programs: impl IntoIterator<Item = &'a Program>,
+) -> Solution {
+    let data = programs
+        .into_iter()
+        .map(|program| register_program_solution(program_registry.clone(), program))
+        .collect::<Vec<_>>();
+    Solution { data }
 }
 
 /// A helper for constructing a block that solely registers the given set of contracts.

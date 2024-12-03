@@ -37,7 +37,7 @@ async fn test_query_state() {
 
     // Create some test blocks with state mutations.
     let n_blocks = 100;
-    let (blocks, _) = node::test_utils::test_blocks(n_blocks);
+    let (blocks, _, _) = node::test_utils::test_blocks(n_blocks);
 
     let mut mutations = vec![];
     // Insert them into the node's DB.
@@ -101,7 +101,7 @@ async fn test_list_blocks() {
 
     // Create some test blocks.
     let n_blocks = 100;
-    let (blocks, _) = node::test_utils::test_blocks(n_blocks);
+    let (blocks, _, _) = node::test_utils::test_blocks(n_blocks);
 
     // Insert them into the node's DB.
     for block in &blocks {
@@ -136,7 +136,7 @@ async fn test_subscribe_blocks() {
     let db = test_conn_pool();
 
     // The test blocks.
-    let (blocks, _) = node::test_utils::test_blocks(1000);
+    let (blocks, _, _) = node::test_utils::test_blocks(1000);
 
     // A fn for notifying of new blocks.
     let block_tx = BlockTx::new();

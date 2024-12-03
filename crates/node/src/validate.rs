@@ -198,7 +198,7 @@ async fn validate_inner(
 ) -> Result<ValidateOutcome, ValidationError> {
     let mut total_gas: u64 = 0;
 
-    // Check predicates.
+    // Check predicates and programs.
     for (solution_index, solution) in block.solutions.iter().enumerate() {
         let pre_state = State {
             block_number: block.number,
@@ -241,6 +241,7 @@ async fn validate_inner(
             },
         };
 
+        // Create the `programs` map.
         let res = query_predicates_programs(&post_state, program_registry, &predicates).await;
         let programs = match res {
             Ok(programs) => Arc::new(programs),
