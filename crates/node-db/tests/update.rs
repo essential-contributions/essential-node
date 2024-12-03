@@ -16,6 +16,7 @@ fn test_state_value() {
 
     // Create an in-memory SQLite database.
     let mut conn = test_conn();
+
     let tx = conn.transaction().unwrap();
     node_db::create_tables(&tx).unwrap();
 

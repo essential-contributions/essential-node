@@ -4,6 +4,8 @@ use essential_node::db::{
     ConnectionPool,
 };
 use essential_node_types::block_notify::BlockTx;
+
+use essential_node_db as node_db;
 use essential_relayer::{DataSyncError, Relayer};
 use essential_types::{
     contract::Contract,
@@ -31,9 +33,8 @@ async fn test_sync() {
     let source_db = node_server.conn_pool.clone();
 
     let mut test_conn = relayer_conn.acquire().await.unwrap();
-    let tx = test_conn.transaction().unwrap();
-    db::create_tables(&tx).unwrap();
-    tx.commit().unwrap();
+
+    node_db::with_tx(&mut test_conn, |tx| db::create_tables(tx)).unwrap();
 
     let (solutions, blocks) = test_structs();
 
@@ -46,9 +47,11 @@ async fn test_sync() {
     let relayer_handle = relayer.run(relayer_conn.clone(), block_tx.clone()).unwrap();
 
     block_rx.changed().await.unwrap();
-    let tx = test_conn.transaction().unwrap();
-    let result = db::list_blocks(&tx, 0..100).unwrap();
-    drop(tx);
+
+    let result =
+        node_db::with_tx_dropped(&mut test_conn, |block_tx| db::list_blocks(block_tx, 0..100))
+            .unwrap();
+
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].number, 0);
     assert_eq!(result[0].solutions.len(), 1);
@@ -58,9 +61,11 @@ async fn test_sync() {
     source_block_tx.notify();
 
     block_rx.changed().await.unwrap();
-    let tx = test_conn.transaction().unwrap();
-    let result = db::list_blocks(&tx, 0..100).unwrap();
-    drop(tx);
+
+    let result =
+        node_db::with_tx_dropped(&mut test_conn, |block_tx| db::list_blocks(block_tx, 0..100))
+            .unwrap();
+
     assert_eq!(result.len(), 2);
     assert_eq!(result[1].number, 1);
     assert_eq!(result[1].solutions.len(), 1);
@@ -79,16 +84,19 @@ async fn test_sync() {
     let start = tokio::time::Instant::now();
     let mut num_solutions: usize = 0;
     let mut result: Vec<Block> = vec![];
+
     loop {
         if start.elapsed() > tokio::time::Duration::from_secs(10) {
             panic!("timeout num_solutions: {}, {}", num_solutions, result.len());
         }
+
         let tx = test_conn.transaction().unwrap();
         let Ok(r) = db::list_blocks(&tx, 0..203) else {
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             continue;
         };
         drop(tx);
+
         result = r;
         num_solutions = result.iter().map(|b| b.solutions.len()).sum();
         if num_solutions >= 200 {
@@ -96,6 +104,7 @@ async fn test_sync() {
         }
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
+
     assert_eq!(num_solutions, 200);
     assert!(result
         .iter()

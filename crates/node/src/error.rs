@@ -1,5 +1,5 @@
 use crate::db::{
-    pool::{AcquireThenQueryError, AcquireThenRusqliteError},
+    pool::{AcquireThenError, AcquireThenQueryError, AcquireThenRusqliteError},
     QueryError,
 };
 use essential_types::{predicate, ContentAddress, PredicateAddress};
@@ -165,6 +165,28 @@ impl From<ValidationError> for InternalError {
                 InternalError::Recoverable(RecoverableError::Rusqlite(err))
             }
             ValidationError::Join(err) => InternalError::Recoverable(RecoverableError::Join(err)),
+        }
+    }
+}
+
+impl From<AcquireThenError<StateReadError>> for StateReadError {
+    fn from(error: AcquireThenError<StateReadError>) -> Self {
+        match error {
+            AcquireThenError::Acquire(err) => StateReadError::DbPoolClosed(err),
+            AcquireThenError::Inner(err) => err,
+            AcquireThenError::Join(err) => StateReadError::Join(err),
+        }
+    }
+}
+
+impl From<AcquireThenError<ValidationError>> for InternalError {
+    fn from(error: AcquireThenError<ValidationError>) -> Self {
+        match error {
+            AcquireThenError::Acquire(err) => {
+                InternalError::Critical(CriticalError::DbPoolClosed(err))
+            }
+            AcquireThenError::Inner(err) => err.into(),
+            AcquireThenError::Join(err) => InternalError::Recoverable(RecoverableError::Join(err)),
         }
     }
 }

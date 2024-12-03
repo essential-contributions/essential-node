@@ -14,6 +14,7 @@ use essential_node::{
     },
     RunConfig,
 };
+use essential_node_db as node_db;
 use essential_node_types::{block_notify::BlockTx, BigBang};
 use essential_types::Block;
 use rusqlite::Connection;
@@ -164,13 +165,13 @@ async fn test_node() -> (NodeServer, BlockTx) {
 // Assert state mutations in the blocks have been applied to database.
 // Assert validation progress is the latest fetched block.
 fn assert_submit_solutions_effects(conn: &mut Connection, expected_blocks: Vec<Block>) {
-    let tx = conn.transaction().unwrap();
-    let fetched_blocks = &db::list_blocks(
-        &tx,
-        expected_blocks[0].number..expected_blocks[expected_blocks.len() - 1].number + 1,
-    )
+    let fetched_blocks = node_db::with_tx_dropped(conn, |tx| {
+        db::list_blocks(
+            tx,
+            expected_blocks[0].number..expected_blocks[expected_blocks.len() - 1].number + 1,
+        )
+    })
     .unwrap();
-    drop(tx);
 
     for (i, expected_block) in expected_blocks.iter().enumerate() {
         // Check if the block was added to the database

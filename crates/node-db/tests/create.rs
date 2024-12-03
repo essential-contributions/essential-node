@@ -6,9 +6,7 @@ mod util;
 #[test]
 fn create_tables() {
     let mut conn = test_conn();
-    let tx = conn.transaction().unwrap();
-    node_db::create_tables(&tx).unwrap();
-    tx.commit().unwrap();
+    node_db::with_tx(&mut conn, |tx| node_db::create_tables(tx)).unwrap();
 
     // Verify that each table exists by querying the SQLite master table
     for table in node_db::sql::table::ALL {

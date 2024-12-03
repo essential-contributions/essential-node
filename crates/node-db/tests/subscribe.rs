@@ -25,6 +25,7 @@ async fn subscribe_blocks() {
         node_db::insert_block(&tx, block).unwrap();
     }
     tx.commit().unwrap();
+
     std::mem::drop(conn);
 
     // Subscribe to blocks.
@@ -41,9 +42,8 @@ async fn subscribe_blocks() {
     let jh = tokio::spawn(async move {
         for block in blocks_remaining {
             let mut conn = conn_pool.acquire().await.unwrap();
-            let tx = conn.transaction().unwrap();
-            node_db::insert_block(&tx, &block).unwrap();
-            tx.commit().unwrap();
+            node_db::with_tx(&mut conn, |tx| node_db::insert_block(tx, &block)).unwrap();
+
             new_block_tx.notify();
         }
         // After writing, drop the new block tx, closing the stream.

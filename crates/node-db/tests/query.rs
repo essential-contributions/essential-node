@@ -115,12 +115,13 @@ fn test_get_validation_progress() {
     // Create an in-memory SQLite database.
     let mut conn = test_conn();
 
-    // Create the necessary tables and insert the contract progress.
-    let tx = conn.transaction().unwrap();
-    node_db::create_tables(&tx).unwrap();
-    node_db::insert_block(&tx, &block).unwrap();
-    node_db::update_validation_progress(&tx, &block_address).unwrap();
-    tx.commit().unwrap();
+    node_db::with_tx(&mut conn, |tx| {
+        // Create the necessary tables and insert the contract progress.
+        node_db::create_tables(tx).unwrap();
+        node_db::insert_block(tx, &block).unwrap();
+        node_db::update_validation_progress(tx, &block_address)
+    })
+    .unwrap();
 
     // Fetch the state progress.
     let fetched_block_address = node_db::get_validation_progress(&conn).unwrap().unwrap();
@@ -136,16 +137,15 @@ fn test_list_blocks() {
     // Create an in-memory SQLite database.
     let mut conn = test_conn();
 
-    // Create the necessary tables and insert blocks.
-    let tx = conn.transaction().unwrap();
-    node_db::create_tables(&tx).unwrap();
-    for block in &blocks {
-        node_db::insert_block(&tx, block).unwrap();
-    }
-
-    // List the blocks.
-    let fetched_blocks = node_db::list_blocks(&tx, 0..100).unwrap();
-    tx.commit().unwrap();
+    let fetched_blocks = node_db::with_tx(&mut conn, |tx| {
+        // Create the necessary tables and insert blocks
+        node_db::create_tables(tx).unwrap();
+        for block in &blocks {
+            node_db::insert_block(tx, block).unwrap();
+        }
+        node_db::list_blocks(tx, 0..100)
+    })
+    .unwrap();
     assert_eq!(blocks, fetched_blocks);
 }
 
