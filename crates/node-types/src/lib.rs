@@ -74,7 +74,7 @@ pub struct BigBang {
     /// Program entries contain their length in bytes as a `Word` and their bytecode within a
     /// `int[]` with padding in the final word if necessary. E.g.
     ///
-    /// - `[<program-ca>]` to get the bytecode length as `Word` followed by the bytecode as
+    /// - `[0, <program-ca>]` to get the bytecode length as `Word` followed by the bytecode as
     ///   `int[]`.
     pub program_registry: PredicateAddress,
     /// The `Solution` used to initialize arbitrary state for the big bang block.
@@ -153,16 +153,21 @@ pub mod contract_registry {
 /// Functions for constructing keys into the "program registry" contract state.
 pub mod program_registry {
     use crate::padded_words_from_bytes;
-    use essential_types::{ContentAddress, Key};
+    use essential_types::{ContentAddress, Key, Word};
+
+    const PROGRAMS_PREFIX: Word = 0;
 
     /// A key that may be used to retrieve the full `Program` from the program registry state.
     ///
     /// When queried, the `Program` data will be preceded by a single word that describes the
     /// length of the program in bytes.
     ///
-    /// The returned key is formatted as `[<program-ca>]`
+    /// The returned key is formatted as `[0, <program-ca>]`
     pub fn program_key(prog_ca: &ContentAddress) -> Key {
-        padded_words_from_bytes(&prog_ca.0).collect()
+        Some(PROGRAMS_PREFIX)
+            .into_iter()
+            .chain(padded_words_from_bytes(&prog_ca.0))
+            .collect()
     }
 }
 
@@ -256,9 +261,10 @@ pub fn register_program_mutations(program: &Program) -> Vec<Mutation> {
     let prog_ca = essential_hash::content_addr(program);
     let prog_bytes = &program.0;
     let len_bytes = prog_bytes.len();
-    let len_bytes_w = Word::try_from(len_bytes).expect("enforced by Program::MAX_SIZE");
+    // FIXME: relevant issue https://github.com/essential-contributions/essential-base/issues/240
+    let len_bytes_w = Word::try_from(len_bytes).expect("should be enforced by Program::MAX_SIZE");
 
-    // Add to the program `[<program-ca>]`
+    // Add to the program `[0, <program-ca>]`
     let key = program_registry::program_key(&prog_ca);
     muts.push(Mutation {
         key,
