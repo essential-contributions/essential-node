@@ -123,7 +123,7 @@ pub fn test_contract(seed: Word) -> Contract {
 }
 
 pub fn test_predicate(seed: Word) -> Predicate {
-    use essential_asm::short::*;
+    use essential_check::vm::asm::short::*;
 
     let a = Program(asm::to_bytes([PUSH(1), PUSH(2), PUSH(3), HLT]).collect());
     let b = Program(asm::to_bytes([PUSH(seed), HLT]).collect());

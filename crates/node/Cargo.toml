@@ -10,7 +10,6 @@ repository.workspace = true
 
 [dependencies]
 essential-check = { workspace = true }
-essential-asm = { workspace = true, optional = true }
 essential-hash = { workspace = true }
 essential-node-db = { workspace = true }
 essential-node-types = { workspace = true }
@@ -25,7 +24,6 @@ tracing = { workspace = true, optional = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
-essential-asm = { workspace = true }
 essential-node-api = { path = "../node-api" }
 essential-sign = { workspace = true }
 reqwest = { workspace = true }
@@ -35,4 +33,4 @@ tracing-subscriber = { workspace = true }
 [features]
 default = []
 tracing = ["dep:tracing", "essential-relayer/tracing", "essential-check/tracing"]
-test-utils = ["dep:essential-asm"]
+test-utils = []

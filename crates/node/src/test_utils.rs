@@ -138,7 +138,7 @@ pub fn test_invalid_block_with_contract(number: Word, timestamp: Duration) -> Bl
 pub fn test_invalid_block(number: Word, timestamp: Duration) -> (Block, Contract, Program) {
     let seed = number;
 
-    let (predicate, program) = test_invalid_predicate(seed);
+    let (predicate, program) = test_false_predicate(seed);
     let contract = Contract {
         predicates: vec![predicate],
         salt: essential_types::convert::u8_32_from_word_4([seed; 4]),
@@ -171,8 +171,8 @@ pub fn test_invalid_block(number: Word, timestamp: Duration) -> (Block, Contract
     )
 }
 
-pub fn test_invalid_predicate(seed: Word) -> (Predicate, Program) {
-    use essential_asm::short::*;
+pub fn test_false_predicate(seed: Word) -> (Predicate, Program) {
+    use essential_check::vm::asm::short::*;
 
     let a = Program(asm::to_bytes([PUSH(seed), POP, PUSH(0)]).collect());
     let a_ca = content_addr(&a);
@@ -234,7 +234,7 @@ pub fn test_contract(seed: Word) -> (Contract, Vec<Program>) {
 }
 
 pub fn test_predicate(seed: Word) -> (Predicate, Vec<Program>) {
-    use essential_asm::short::*;
+    use essential_check::vm::asm::short::*;
 
     let a = Program(asm::to_bytes([PUSH(1), PUSH(2), PUSH(3), HLT]).collect());
     let b = Program(asm::to_bytes([PUSH(seed), HLT]).collect());

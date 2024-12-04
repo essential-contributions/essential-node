@@ -18,7 +18,6 @@ clap = { version = "4.5", features = ["derive"] }
 crossbeam = "0.8"
 dirs = "5"
 essential-check = { git = "https://github.com/essential-contributions/essential-base.git", branch = "develop" }
-essential-asm = { git = "https://github.com/essential-contributions/essential-base.git", branch = "develop" }
 essential-hash = { git = "https://github.com/essential-contributions/essential-base.git", branch = "develop" }
 essential-sign = { git = "https://github.com/essential-contributions/essential-base.git", branch = "develop" }
 essential-types = { git = "https://github.com/essential-contributions/essential-base.git", branch = "develop" }

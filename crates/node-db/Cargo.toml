@@ -23,7 +23,6 @@ rusqlite-pool = { workspace = true, optional = true }
 
 [dev-dependencies]
 essential-check = { workspace = true }
-essential-asm = { workspace = true }
 essential-node-types = { workspace = true }
 rusqlite-pool = { workspace = true, features = ["tokio"] }
 tempfile = { workspace = true }
