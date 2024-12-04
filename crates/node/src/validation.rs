@@ -161,7 +161,7 @@ async fn validate_next_block(
                 .await
                 .map_err(InternalError::from)?;
             r
-       }
+        }
     }?;
 
     Ok(more_blocks_available)
