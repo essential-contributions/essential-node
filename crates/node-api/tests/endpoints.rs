@@ -43,14 +43,14 @@ async fn test_query_state() {
     // Insert them into the node's DB.
     for block in &blocks {
         let iter = block
-            .solutions
+            .solution_sets
             .iter()
-            .flat_map(|s| s.data.iter())
-            .flat_map(|d| {
-                d.state_mutations
+            .flat_map(|ss| ss.solutions.iter())
+            .flat_map(|s| {
+                s.state_mutations
                     .iter()
                     .cloned()
-                    .map(|m| (d.predicate_to_solve.contract.clone(), m))
+                    .map(|m| (s.predicate_to_solve.contract.clone(), m))
             });
         mutations.extend(iter);
         let block_ca = db

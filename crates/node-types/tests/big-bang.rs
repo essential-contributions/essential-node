@@ -1,6 +1,6 @@
 use essential_node_types::{block_state_solution, register_contract_solution, BigBang};
 use essential_types::{
-    contract::Contract, predicate::Predicate, solution::Solution, PredicateAddress,
+    contract::Contract, predicate::Predicate, solution::SolutionSet, PredicateAddress,
 };
 
 // This function generates the default [`BigBang`].
@@ -54,8 +54,8 @@ fn default_big_bang() -> BigBang {
         predicate: essential_hash::content_addr(&program_registry.predicates[0]),
     };
 
-    let solution = Solution {
-        data: vec![
+    let solution_set = SolutionSet {
+        solutions: vec![
             // A solution that adds the contract registry to itself.
             register_contract_solution(contract_registry_address.clone(), &contract_registry)
                 .expect("big bang contract must be valid"),
@@ -74,7 +74,7 @@ fn default_big_bang() -> BigBang {
         block_state: block_state_address,
         contract_registry: contract_registry_address,
         program_registry: program_registry_address,
-        solution,
+        solution_set,
     }
 }
 

@@ -7,7 +7,7 @@ use essential_node_types::{register_contract_solution, BigBang};
 use essential_types::{
     contract::Contract,
     predicate::{Edge, Node, Predicate, PredicateEncodeError, Program, Reads},
-    solution::{Mutation, Solution, SolutionData},
+    solution::{Mutation, Solution, SolutionSet},
     Block, ContentAddress, PredicateAddress, Word,
 };
 use rusqlite::Connection;
@@ -47,12 +47,12 @@ pub fn test_blocks_with_vars(n: Word) -> (ContentAddress, Vec<Block>) {
     let blocks = test_blocks(n)
         .into_iter()
         .map(|mut block| {
-            for solution in block.solutions.iter_mut() {
-                solution.data.push(test_solution_data(0));
+            for solution_set in block.solution_sets.iter_mut() {
+                solution_set.solutions.push(test_solution(0));
                 let mut keys = 0..Word::MAX;
-                for data in &mut solution.data {
-                    data.predicate_to_solve.contract = contract_addr.clone();
-                    data.state_mutations = values
+                for solution in &mut solution_set.solutions {
+                    solution.predicate_to_solve.contract = contract_addr.clone();
+                    solution.state_mutations = values
                         .by_ref()
                         .take(2)
                         .zip(keys.by_ref())
@@ -61,7 +61,7 @@ pub fn test_blocks_with_vars(n: Word) -> (ContentAddress, Vec<Block>) {
                             value: vec![v],
                         })
                         .collect();
-                    data.decision_variables = values.by_ref().take(2).map(|v| vec![v]).collect();
+                    solution.predicate_data = values.by_ref().take(2).map(|v| vec![v]).collect();
                 }
             }
             block
@@ -81,26 +81,26 @@ pub fn test_block(number: Word, timestamp: Duration) -> Block {
     Block {
         number,
         timestamp,
-        solutions: (0..3).map(|i| test_solution(seed * (1 + i))).collect(),
+        solution_sets: (0..3).map(|i| test_solution_set(seed * (1 + i))).collect(),
+    }
+}
+
+pub fn test_solution_set(seed: Word) -> SolutionSet {
+    SolutionSet {
+        solutions: vec![test_solution(seed)],
     }
 }
 
 pub fn test_solution(seed: Word) -> Solution {
-    Solution {
-        data: vec![test_solution_data(seed)],
-    }
-}
-
-pub fn test_solution_data(seed: Word) -> SolutionData {
     let contract = test_contract(seed);
     let predicate = essential_hash::content_addr(&contract.predicates[0]);
     let contract = essential_hash::content_addr(&contract);
-    SolutionData {
+    Solution {
         predicate_to_solve: PredicateAddress {
             contract,
             predicate,
         },
-        decision_variables: vec![],
+        predicate_data: vec![],
         state_mutations: vec![],
     }
 }
@@ -161,15 +161,15 @@ pub fn test_predicate(seed: Word) -> Predicate {
 }
 
 /// A helper for constructing a solution that registers the given set of contracts.
-pub fn register_contracts_solution<'a>(
+pub fn register_contracts_solution_set<'a>(
     contract_registry: PredicateAddress,
     contracts: impl IntoIterator<Item = &'a Contract>,
-) -> Result<Solution, PredicateEncodeError> {
-    let data = contracts
+) -> Result<SolutionSet, PredicateEncodeError> {
+    let solutions = contracts
         .into_iter()
         .map(|contract| register_contract_solution(contract_registry.clone(), contract))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(Solution { data })
+    Ok(SolutionSet { solutions })
 }
 
 /// A helper for constructing a block that solely registers the given set of contracts.
@@ -179,9 +179,9 @@ pub fn register_contracts_block<'a>(
     block_number: Word,
     block_timestamp: Duration,
 ) -> Result<Block, PredicateEncodeError> {
-    let solution = register_contracts_solution(contract_registry, contracts)?;
+    let solution_set = register_contracts_solution_set(contract_registry, contracts)?;
     Ok(Block {
-        solutions: vec![solution],
+        solution_sets: vec![solution_set],
         number: block_number,
         timestamp: block_timestamp,
     })

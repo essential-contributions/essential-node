@@ -6,7 +6,7 @@
 use crate::{with_tx, AcquireConnection, AwaitNewBlock, QueryError};
 use core::ops::Range;
 use essential_node_types::block_notify::BlockRx;
-use essential_types::{solution::Solution, Block, ContentAddress, Key, Value, Word};
+use essential_types::{solution::SolutionSet, Block, ContentAddress, Key, Value, Word};
 use futures::Stream;
 use rusqlite_pool::tokio::{AsyncConnectionHandle, AsyncConnectionPool};
 use std::{path::PathBuf, sync::Arc, time::Duration};
@@ -160,7 +160,7 @@ impl ConnectionPool {
     }
 
     /// Insert the given block into the `block` table and for each of its
-    /// solutions, add a row into the `solution` and `block_solution` tables.
+    /// solution sets, add a row into the `solution_set` and `block_solution_set` tables.
     pub async fn insert_block(
         &self,
         block: Arc<Block>,
@@ -209,12 +209,12 @@ impl ConnectionPool {
             .await
     }
 
-    /// Fetches a solution by its content address.
-    pub async fn get_solution(
+    /// Fetches a solution set by its content address.
+    pub async fn get_solution_set(
         &self,
         ca: ContentAddress,
-    ) -> Result<Solution, AcquireThenQueryError> {
-        self.acquire_then(move |h| with_tx(h, |tx| crate::get_solution(tx, &ca)))
+    ) -> Result<SolutionSet, AcquireThenQueryError> {
+        self.acquire_then(move |h| with_tx(h, |tx| crate::get_solution_set(tx, &ca)))
             .await
     }
 
@@ -280,42 +280,42 @@ impl ConnectionPool {
     }
 
     /// Fetches the state value for the given contract content address and key pair
-    /// within a range of blocks and solutions inclusive. `..block[..=solution]`.
-    pub async fn query_state_finalized_inclusive_solution(
+    /// within a range of blocks and solution sets inclusive. `..block[..=solution_set]`.
+    pub async fn query_state_finalized_inclusive_solution_set(
         &self,
         contract_ca: ContentAddress,
         key: Key,
         block_number: Word,
-        solution_ix: u64,
+        solution_set_ix: u64,
     ) -> Result<Option<Value>, AcquireThenQueryError> {
         self.acquire_then(move |h| {
-            crate::finalized::query_state_inclusive_solution(
+            crate::finalized::query_state_inclusive_solution_set(
                 h,
                 &contract_ca,
                 &key,
                 block_number,
-                solution_ix,
+                solution_set_ix,
             )
         })
         .await
     }
 
     /// Fetches the state value for the given contract content address and key pair
-    /// within a range of blocks and solutions exclusive. `..=block[..solution]`.
-    pub async fn query_state_finalized_exclusive_solution(
+    /// within a range of blocks and solution sets exclusive. `..=block[..solution_set]`.
+    pub async fn query_state_finalized_exclusive_solution_set(
         &self,
         contract_ca: ContentAddress,
         key: Key,
         block_number: Word,
-        solution_ix: u64,
+        solution_set_ix: u64,
     ) -> Result<Option<Value>, AcquireThenQueryError> {
         self.acquire_then(move |h| {
-            crate::finalized::query_state_exclusive_solution(
+            crate::finalized::query_state_exclusive_solution_set(
                 h,
                 &contract_ca,
                 &key,
                 block_number,
-                solution_ix,
+                solution_set_ix,
             )
         })
         .await
@@ -356,7 +356,7 @@ impl ConnectionPool {
             .await
     }
 
-    /// Lists blocks and their solutions within a specific time range with pagination.
+    /// Lists blocks and their solution sets within a specific time range with pagination.
     pub async fn list_blocks_by_time(
         &self,
         range: Range<Duration>,

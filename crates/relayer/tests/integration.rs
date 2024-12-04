@@ -10,7 +10,7 @@ use essential_relayer::{DataSyncError, Relayer};
 use essential_types::{
     contract::Contract,
     predicate::Predicate,
-    solution::{Mutation, Solution, SolutionData},
+    solution::{Mutation, Solution, SolutionSet},
     Block, PredicateAddress, Word,
 };
 use std::sync::Arc;
@@ -36,7 +36,7 @@ async fn test_sync() {
 
     node_db::with_tx(&mut test_conn, |tx| db::create_tables(tx)).unwrap();
 
-    let (solutions, blocks) = test_structs();
+    let (solution_sets, blocks) = test_structs();
 
     source_db.insert_block(blocks[0].clone()).await.unwrap();
     source_block_tx.notify();
@@ -54,8 +54,8 @@ async fn test_sync() {
 
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].number, 0);
-    assert_eq!(result[0].solutions.len(), 1);
-    assert_eq!(result[0].solutions[0], solutions[0]);
+    assert_eq!(result[0].solution_sets.len(), 1);
+    assert_eq!(result[0].solution_sets[0], solution_sets[0]);
 
     source_db.insert_block(blocks[1].clone()).await.unwrap();
     source_block_tx.notify();
@@ -68,8 +68,8 @@ async fn test_sync() {
 
     assert_eq!(result.len(), 2);
     assert_eq!(result[1].number, 1);
-    assert_eq!(result[1].solutions.len(), 1);
-    assert_eq!(result[1].solutions[0], solutions[1]);
+    assert_eq!(result[1].solution_sets.len(), 1);
+    assert_eq!(result[1].solution_sets[0], solution_sets[1]);
 
     relayer_handle.close().await.unwrap();
 
@@ -82,12 +82,16 @@ async fn test_sync() {
     let relayer_handle = relayer.run(relayer_conn.clone(), block_tx).unwrap();
 
     let start = tokio::time::Instant::now();
-    let mut num_solutions: usize = 0;
+    let mut num_solution_sets: usize = 0;
     let mut result: Vec<Block> = vec![];
 
     loop {
         if start.elapsed() > tokio::time::Duration::from_secs(10) {
-            panic!("timeout num_solutions: {}, {}", num_solutions, result.len());
+            panic!(
+                "timeout num_solution_sets: {}, {}",
+                num_solution_sets,
+                result.len()
+            );
         }
 
         let tx = test_conn.transaction().unwrap();
@@ -98,14 +102,13 @@ async fn test_sync() {
         drop(tx);
 
         result = r;
-        num_solutions = result.iter().map(|b| b.solutions.len()).sum();
-        if num_solutions >= 200 {
+        num_solution_sets = result.iter().map(|b| b.solution_sets.len()).sum();
+        if num_solution_sets >= 200 {
             break;
         }
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
-
-    assert_eq!(num_solutions, 200);
+    assert_eq!(num_solution_sets, 200);
     assert!(result
         .iter()
         .zip(result.iter().skip(1))
@@ -218,8 +221,8 @@ async fn tear_down_server(server: NodeServer) {
     drop(conn_pool);
 }
 
-// Solutions and blocks structs for testing.
-fn test_structs() -> (Vec<Solution>, Vec<Arc<Block>>) {
+// Solution sets and blocks structs for testing.
+fn test_structs() -> (Vec<SolutionSet>, Vec<Arc<Block>>) {
     let predicate = Predicate {
         nodes: vec![],
         edges: vec![],
@@ -232,7 +235,7 @@ fn test_structs() -> (Vec<Solution>, Vec<Arc<Block>>) {
             })
         })
         .collect();
-    let solutions: Vec<_> = contracts
+    let solution_sets: Vec<_> = contracts
         .iter()
         .map(|c| {
             let contract = essential_hash::content_addr::<Contract>(&c.clone());
@@ -241,10 +244,10 @@ fn test_structs() -> (Vec<Solution>, Vec<Arc<Block>>) {
                 contract,
                 predicate,
             };
-            Solution {
-                data: vec![SolutionData {
+            SolutionSet {
+                solutions: vec![Solution {
                     predicate_to_solve: addr,
-                    decision_variables: vec![],
+                    predicate_data: vec![],
                     state_mutations: vec![Mutation {
                         key: vec![1],
                         value: vec![1],
@@ -253,17 +256,17 @@ fn test_structs() -> (Vec<Solution>, Vec<Arc<Block>>) {
             }
         })
         .collect();
-    let blocks: Vec<_> = solutions
+    let blocks: Vec<_> = solution_sets
         .iter()
         .enumerate()
         .map(|(i, s)| {
             Arc::new(Block {
                 number: i as Word,
                 timestamp: std::time::Duration::from_secs(i as u64),
-                solutions: vec![s.clone()],
+                solution_sets: vec![s.clone()],
             })
         })
         .collect();
 
-    (solutions, blocks)
+    (solution_sets, blocks)
 }

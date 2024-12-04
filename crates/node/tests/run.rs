@@ -72,7 +72,7 @@ async fn test_run() {
 
     // Check block, state and validation progress
     let mut conn = db.acquire().await.unwrap();
-    assert_submit_solutions_effects(&mut conn, vec![test_blocks[0].clone()]);
+    assert_submit_block_effects(&mut conn, vec![test_blocks[0].clone()]);
 
     // Insert block 1 and 2 to database and send notification
     node_server
@@ -91,7 +91,7 @@ async fn test_run() {
 
     // Check block, state and validation progress
     let mut conn = db.acquire().await.unwrap();
-    assert_submit_solutions_effects(
+    assert_submit_block_effects(
         &mut conn,
         vec![test_blocks[1].clone(), test_blocks[2].clone()],
     );
@@ -107,7 +107,7 @@ async fn test_run() {
 
     // Check block, state and validation progress
     let mut conn = db.acquire().await.unwrap();
-    assert_submit_solutions_effects(&mut conn, vec![test_blocks[3].clone()]);
+    assert_submit_block_effects(&mut conn, vec![test_blocks[3].clone()]);
 }
 
 pub fn client() -> reqwest::Client {
@@ -162,10 +162,10 @@ async fn test_node() -> (NodeServer, BlockTx) {
     (node_server, source_block_tx)
 }
 
-// Fetch blocks from node database and assert that they contain the same solutions as expected.
+// Fetch blocks from node database and assert that they contain the same solution sets as expected.
 // Assert state mutations in the blocks have been applied to database.
 // Assert validation progress is the latest fetched block.
-fn assert_submit_solutions_effects(conn: &mut Connection, expected_blocks: Vec<Block>) {
+fn assert_submit_block_effects(conn: &mut Connection, expected_blocks: Vec<Block>) {
     let fetched_blocks = node_db::with_tx_dropped(conn, |tx| {
         db::list_blocks(
             tx,
@@ -178,11 +178,14 @@ fn assert_submit_solutions_effects(conn: &mut Connection, expected_blocks: Vec<B
         // Check if the block was added to the database
         assert_eq!(fetched_blocks[i].number, expected_block.number);
         assert_eq!(
-            fetched_blocks[i].solutions.len(),
-            expected_block.solutions.len()
+            fetched_blocks[i].solution_sets.len(),
+            expected_block.solution_sets.len()
         );
-        for (j, fetched_block_solution) in fetched_blocks[i].solutions.iter().enumerate() {
-            assert_eq!(fetched_block_solution, &expected_block.solutions[j].clone())
+        for (j, fetched_block_solution_set) in fetched_blocks[i].solution_sets.iter().enumerate() {
+            assert_eq!(
+                fetched_block_solution_set,
+                &expected_block.solution_sets[j].clone()
+            )
         }
         // Assert mutations in block are in database
         assert_multiple_block_mutations(conn, &[&fetched_blocks[i]]);

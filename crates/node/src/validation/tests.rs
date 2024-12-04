@@ -113,7 +113,7 @@ async fn test_invalid_block_validation() {
     assert_eq!(fetched_failed_blocks[0].0, block.number);
     assert_eq!(
         fetched_failed_blocks[0].1,
-        content_addr(&block.solutions[0])
+        content_addr(&block.solution_sets[0])
     );
 
     handle.close().await.unwrap();
@@ -173,7 +173,7 @@ async fn can_process_valid_and_invalid_blocks() {
     assert_eq!(fetched_failed_blocks[0].0, invalid_block.number);
     assert_eq!(
         fetched_failed_blocks[0].1,
-        content_addr(&invalid_block.solutions[0])
+        content_addr(&invalid_block.solution_sets[0])
     );
 
     // Process block 1

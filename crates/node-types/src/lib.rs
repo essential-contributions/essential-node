@@ -7,7 +7,7 @@ use essential_types::{
     contract::Contract,
     convert::{word_4_from_u8_32, word_from_bytes_slice},
     predicate::{PredicateEncodeError, Program},
-    solution::{Mutation, Solution, SolutionData},
+    solution::{Mutation, Solution, SolutionSet},
     Block, PredicateAddress, Word,
 };
 use serde::{Deserialize, Serialize};
@@ -77,14 +77,14 @@ pub struct BigBang {
     /// - `[0, <program-ca>]` to get the bytecode length as `Word` followed by the bytecode as
     ///   `int[]`.
     pub program_registry: PredicateAddress,
-    /// The `Solution` used to initialize arbitrary state for the big bang block.
+    /// The `SolutionSet` used to initialize arbitrary state for the big bang block.
     ///
     /// The primary purpose is setting the initial block state and registering the big bang
     /// contracts.
     ///
     /// If constructing a custom `BigBang` configuration, care must be taken to ensure that this
-    /// `Solution` does actually register the aforementioned contracts correctly.
-    pub solution: Solution,
+    /// `SolutionSet` does actually register the aforementioned contracts correctly.
+    pub solution_set: SolutionSet,
 }
 
 impl BigBang {
@@ -93,7 +93,7 @@ impl BigBang {
         Block {
             number: 0,
             timestamp: std::time::Duration::from_secs(0),
-            solutions: vec![self.solution.clone()],
+            solution_sets: vec![self.solution_set.clone()],
         }
     }
 }
@@ -175,10 +175,10 @@ pub mod program_registry {
 pub fn register_contract_solution(
     contract_registry: PredicateAddress,
     contract: &Contract,
-) -> Result<SolutionData, PredicateEncodeError> {
-    Ok(SolutionData {
+) -> Result<Solution, PredicateEncodeError> {
+    Ok(Solution {
         predicate_to_solve: contract_registry,
-        decision_variables: vec![],
+        predicate_data: vec![],
         state_mutations: register_contract_mutations(contract)?,
     })
 }
@@ -241,10 +241,10 @@ pub fn register_contract_mutations(
 pub fn register_program_solution(
     program_registry: PredicateAddress,
     program: &Program,
-) -> SolutionData {
-    SolutionData {
+) -> Solution {
+    Solution {
         predicate_to_solve: program_registry,
-        decision_variables: vec![],
+        predicate_data: vec![],
         state_mutations: register_program_mutations(program),
     }
 }
@@ -282,10 +282,10 @@ pub fn block_state_solution(
     block_state: PredicateAddress,
     block_number: Word,
     block_timestamp_secs: Word,
-) -> SolutionData {
-    SolutionData {
+) -> Solution {
+    Solution {
         predicate_to_solve: block_state,
-        decision_variables: vec![],
+        predicate_data: vec![],
         state_mutations: block_state_mutations(block_number, block_timestamp_secs),
     }
 }

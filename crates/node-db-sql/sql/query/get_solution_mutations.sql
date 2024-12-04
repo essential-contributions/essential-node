@@ -2,10 +2,10 @@ SELECT
     mutation.key,
     mutation.value
 FROM
-    solution
-    JOIN solution_data ON solution_data.solution_id = solution.id
-    JOIN mutation ON mutation.data_id = solution_data.id
+    solution_set
+    JOIN solution ON solution.solution_set_id = solution_set.id
+    JOIN mutation ON mutation.solution_id = solution.id
 WHERE
-    solution.content_hash = :content_hash AND solution_data.data_index = :data_index;
+    solution_set.content_hash = :content_hash AND solution.solution_index = :solution_index;
 ORDER BY
     mutation.mutation_index ASC

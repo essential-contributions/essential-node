@@ -50,7 +50,7 @@ pub enum RecoverableError {
 #[derive(Debug, Error)]
 pub enum ValidationError {
     #[error(transparent)]
-    SolutionPredicates(#[from] SolutionPredicatesError),
+    SolutionSetPredicates(#[from] SolutionSetPredicatesError),
     #[error(transparent)]
     Query(#[from] QueryError),
     #[error("database connection pool closed")]
@@ -94,7 +94,7 @@ pub enum StateReadError {
 }
 
 #[derive(Debug, Error)]
-pub enum SolutionPredicatesError {
+pub enum SolutionSetPredicatesError {
     #[error("failed to acquire a connection from the pool: {0}")]
     Acquire(#[from] AcquireError),
     #[error("failed to query predicate with address `{}`: {1}", fmt_pred_addr(.0))]
@@ -157,16 +157,16 @@ pub enum BigBangError {
     },
 }
 
-impl From<SolutionPredicatesError> for InternalError {
-    fn from(e: SolutionPredicatesError) -> Self {
+impl From<SolutionSetPredicatesError> for InternalError {
+    fn from(e: SolutionSetPredicatesError) -> Self {
         match e {
-            SolutionPredicatesError::Acquire(err) => {
+            SolutionSetPredicatesError::Acquire(err) => {
                 InternalError::Critical(CriticalError::DbPoolClosed(err))
             }
-            SolutionPredicatesError::MissingPredicate(addr) => {
+            SolutionSetPredicatesError::MissingPredicate(addr) => {
                 InternalError::Recoverable(RecoverableError::PredicateNotFound(addr))
             }
-            SolutionPredicatesError::QueryPredicate(addr, err) => {
+            SolutionSetPredicatesError::QueryPredicate(addr, err) => {
                 InternalError::Recoverable(RecoverableError::QueryPredicate(addr, err))
             }
         }
@@ -176,7 +176,7 @@ impl From<SolutionPredicatesError> for InternalError {
 impl From<ValidationError> for InternalError {
     fn from(e: ValidationError) -> Self {
         match e {
-            ValidationError::SolutionPredicates(err) => err.into(),
+            ValidationError::SolutionSetPredicates(err) => err.into(),
             ValidationError::Query(err) => InternalError::Recoverable(RecoverableError::Query(err)),
             ValidationError::DbPoolClosed(err) => {
                 InternalError::Critical(CriticalError::DbPoolClosed(err))

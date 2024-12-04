@@ -9,12 +9,12 @@ contract_registry:
 program_registry:
   contract: 6B40E62E003B0DED86FF647854E9AA64F0844AD75068C33B478AE29170D9498D
   predicate: DF3F619804A92FDB4057192DC43DD748EA778ADC52BC498CE80524C014B81119
-solution:
-  data:
+solution_set:
+  solutions:
   - predicate_to_solve:
       contract: 38EDB9EEEB0B64CEED2019481F9DFF5E02978F4DFA8013758B1D2B47949A9A11
       predicate: DF3F619804A92FDB4057192DC43DD748EA778ADC52BC498CE80524C014B81119
-    decision_variables: []
+    predicate_data: []
     state_mutations:
     - key:
       - 0
@@ -52,7 +52,7 @@ solution:
   - predicate_to_solve:
       contract: 38EDB9EEEB0B64CEED2019481F9DFF5E02978F4DFA8013758B1D2B47949A9A11
       predicate: DF3F619804A92FDB4057192DC43DD748EA778ADC52BC498CE80524C014B81119
-    decision_variables: []
+    predicate_data: []
     state_mutations:
     - key:
       - 0
@@ -90,7 +90,7 @@ solution:
   - predicate_to_solve:
       contract: 38EDB9EEEB0B64CEED2019481F9DFF5E02978F4DFA8013758B1D2B47949A9A11
       predicate: DF3F619804A92FDB4057192DC43DD748EA778ADC52BC498CE80524C014B81119
-    decision_variables: []
+    predicate_data: []
     state_mutations:
     - key:
       - 0
@@ -128,7 +128,7 @@ solution:
   - predicate_to_solve:
       contract: 18B181B7986AA9B7A221487BD95E25A2FDB863561C00D7C13913FC9422A8F53A
       predicate: DF3F619804A92FDB4057192DC43DD748EA778ADC52BC498CE80524C014B81119
-    decision_variables: []
+    predicate_data: []
     state_mutations:
     - key:
       - 0

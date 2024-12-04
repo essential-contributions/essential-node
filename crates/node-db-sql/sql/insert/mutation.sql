@@ -1,6 +1,6 @@
 INSERT
     OR IGNORE INTO mutation (
-        data_id,
+        solution_id,
         mutation_index,
         key,
         value
@@ -9,12 +9,12 @@ VALUES
     (
        (
             SELECT
-                solution_data.id
+                solution.id
             FROM
-                solution_data
-                JOIN solution ON solution.id = solution_data.solution_id
+                solution
+                JOIN solution_set ON solution_set.id = solution.solution_set_id
             WHERE
-                solution.content_hash = :solution_hash AND solution_data.data_index = :data_index
+                solution_set.content_hash = :solution_set_hash AND solution.solution_index = :solution_index
             LIMIT
                 1
         ), :mutation_index, :key, :value

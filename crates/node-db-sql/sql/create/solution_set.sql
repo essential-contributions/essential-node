@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS solution_set (
+    id INTEGER PRIMARY KEY,
+    content_hash BLOB NOT NULL UNIQUE
+);

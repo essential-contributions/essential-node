@@ -143,25 +143,25 @@ async fn validate_next_block(
         // Validation failed.
         ValidateOutcome::Invalid(InvalidOutcome {
             failure: _failure,
-            solution_index,
+            solution_set_index,
         }) => {
-            // Insert the failed solution into the database.
-            let failed_solution = content_addr(
+            // Insert the failed solution set into the database.
+            let failed_solution_set = content_addr(
                 block
-                    .solutions
-                    .get(solution_index)
-                    .expect("Failed solution must exist."),
+                    .solution_sets
+                    .get(solution_set_index)
+                    .expect("Failed solution set must exist."),
             );
             let r: Result<bool, InternalError> = conn_pool
                 .acquire_then(move |conn| {
-                    db::insert_failed_block(conn, &block_address, &failed_solution)
+                    db::insert_failed_block(conn, &block_address, &failed_solution_set)
                         .map_err(ValidationError::from)
                         .map(|_| Ok(false))
                 })
                 .await
                 .map_err(InternalError::from)?;
             r
-        }
+       }
     }?;
 
     Ok(more_blocks_available)

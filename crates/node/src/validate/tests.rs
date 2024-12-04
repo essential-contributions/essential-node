@@ -67,15 +67,15 @@ async fn invalid_block() {
     match outcome {
         ValidateOutcome::Invalid(InvalidOutcome {
             failure,
-            solution_index,
+            solution_set_index,
         }) => {
-            assert_eq!(solution_index, 0);
+            assert_eq!(solution_set_index, 0);
             match failure {
                 ValidateFailure::PredicatesError(err) => match err {
                     PredicatesError::Failed(errs) => {
                         assert_eq!(errs.0.len(), 1);
-                        let (solution_data_index, predicate_err) = &errs.0[0];
-                        assert_eq!(*solution_data_index, 0);
+                        let (solution_index, predicate_err) = &errs.0[0];
+                        assert_eq!(*solution_index, 0);
                         match predicate_err {
                             PredicateError::ConstraintsUnsatisfied(indices) => {
                                 assert_eq!(indices.0.len(), 1);
@@ -113,9 +113,9 @@ async fn predicate_not_found() {
     match res {
         Ok(ValidateOutcome::Invalid(InvalidOutcome {
             failure: ValidateFailure::MissingPredicate(addr),
-            solution_index: 0,
+            solution_set_index: 0,
         })) => {
-            assert_eq!(addr, block.solutions[0].data[0].predicate_to_solve)
+            assert_eq!(addr, block.solution_sets[0].solutions[0].predicate_to_solve)
         }
         _ => panic!(
             "expected ValidateFailure::MissingPredicate, found {:?}",
@@ -158,7 +158,7 @@ async fn program_not_found() {
     match res {
         Ok(ValidateOutcome::Invalid(InvalidOutcome {
             failure: ValidateFailure::MissingProgram(addr),
-            solution_index: 0,
+            solution_set_index: 0,
         })) => {
             assert_eq!(addr, contract.predicates[0].nodes[0].program_address)
         }

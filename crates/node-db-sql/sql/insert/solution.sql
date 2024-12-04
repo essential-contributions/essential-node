@@ -1,4 +1,15 @@
 INSERT
-    OR IGNORE INTO solution (content_hash)
+    OR IGNORE INTO solution (solution_set_id, solution_index, contract_addr, predicate_addr)
 VALUES
-    (:content_hash)
+    (
+        (
+            SELECT
+                id
+            FROM
+                solution_set
+            WHERE
+                content_hash = :solution_set_hash
+            LIMIT
+                1
+        ), :solution_index, :contract_addr, :predicate_addr
+    )

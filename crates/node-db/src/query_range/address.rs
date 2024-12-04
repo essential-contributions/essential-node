@@ -1,5 +1,5 @@
 //! Addressed queries query for the most recent version of a key less than or equal to a
-//! given block address or solution index. This is useful for querying un-finalized blocks
+//! given block address or solution set index. This is useful for querying un-finalized blocks
 //! where forks may exist. These queries fall back to finalized queries if the value is not found.
 
 use essential_node_db_sql as sql;
@@ -25,7 +25,7 @@ pub fn query_state_inclusive_block(
                 ":contract_ca": contract_ca.0,
                 ":key": blob_from_words(key),
                 ":block_address": block_address.0,
-                ":solution_index": None::<u64>,
+                ":solution_set_index": None::<u64>,
             },
             |row| {
                 let value = row.get("found_value")?;
@@ -61,16 +61,16 @@ pub fn query_state_exclusive_block(
 
 /// Query for the most recent version value of a key in a contracts state
 /// that was set at or before the given block address and
-/// solution index (within that block).
+/// solution set index (within that block).
 ///
 /// This is inclusive of the solution's state mutations
-/// `..=block_address[..=solution_index]`
-pub fn query_state_inclusive_solution(
+/// `..=block_address[..=solution_set_index]`
+pub fn query_state_inclusive_solution_set(
     conn: &Connection,
     contract_ca: &ContentAddress,
     key: &Key,
     block_address: &ContentAddress,
-    solution_index: u64,
+    solution_set_index: u64,
 ) -> Result<Option<Value>, QueryError> {
     let mut stmt = conn.prepare(sql::query::QUERY_STATE_BLOCK_ADDRESS)?;
     let value_blob: Option<(Option<Vec<u8>>, Word)> = stmt
@@ -79,7 +79,7 @@ pub fn query_state_inclusive_solution(
                 ":contract_ca": contract_ca.0,
                 ":key": blob_from_words(key),
                 ":block_address": block_address.0,
-                ":solution_index": Some(solution_index),
+                ":solution_set_index": Some(solution_set_index),
             },
             |row| {
                 let value = row.get("found_value")?;
@@ -99,20 +99,24 @@ pub fn query_state_inclusive_solution(
 
 /// Query for the most recent version value of a key in a contracts state
 /// that was set at or before the given block address and before the
-/// solution index (within that block).
+/// solution set index (within that block).
 ///
-/// This is exclusive of the solution's state `..=block_address[..solution_index]`.
-pub fn query_state_exclusive_solution(
+/// This is exclusive of the solution set's state `..=block_address[..solution_set_index]`.
+pub fn query_state_exclusive_solution_set(
     tx: &Transaction,
     contract_ca: &ContentAddress,
     key: &Key,
     block_address: &ContentAddress,
-    solution_index: u64,
+    solution_set_index: u64,
 ) -> Result<Option<Value>, QueryError> {
-    match solution_index.checked_sub(1) {
-        Some(solution_index) => {
-            query_state_inclusive_solution(tx, contract_ca, key, block_address, solution_index)
-        }
+    match solution_set_index.checked_sub(1) {
+        Some(solution_set_index) => query_state_inclusive_solution_set(
+            tx,
+            contract_ca,
+            key,
+            block_address,
+            solution_set_index,
+        ),
         None => query_state_exclusive_block(tx, contract_ca, key, block_address),
     }
 }

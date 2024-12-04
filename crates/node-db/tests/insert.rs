@@ -40,25 +40,25 @@ fn test_insert_block() {
         assert_eq!(id, block.number);
         assert_eq!(timestamp, block.timestamp);
 
-        // Verify that the solutions were inserted correctly
-        for solution in block.solutions.iter() {
-            // Verify solution were inserted
-            let solution_address = &content_addr(solution);
-            let query = "SELECT 1 FROM solution WHERE content_hash = ?";
+        // Verify that the solution sets were inserted correctly
+        for solution_set in block.solution_sets.iter() {
+            // Verify solution set was inserted
+            let solution_set_address = &content_addr(solution_set);
+            let query = "SELECT 1 FROM solution_set WHERE content_hash = ?";
             let mut stmt = conn.prepare(query).unwrap();
-            let mut rows = stmt.query([&solution_address.0]).unwrap();
+            let mut rows = stmt.query([&solution_set_address.0]).unwrap();
             let row = rows.next().unwrap().unwrap();
-            let solution_data: Option<bool> = row.get(0).unwrap();
-            assert!(solution_data.is_some());
+            let solution: Option<bool> = row.get(0).unwrap();
+            assert!(solution.is_some());
 
-            for (data_ix, data) in solution.data.iter().enumerate() {
-                // Verify solution data was inserted corectly
-                let query = "SELECT solution_data.contract_addr, solution_data.predicate_addr
-                    FROM solution_data JOIN solution ON solution_data.solution_id = solution.id
-                    WHERE solution.content_hash = ? AND solution_data.data_index = ?";
+            for (solution_ix, solution) in solution_set.solutions.iter().enumerate() {
+                // Verify solution was inserted corectly
+                let query = "SELECT solution.contract_addr, solution.predicate_addr
+                    FROM solution JOIN solution_set ON solution.solution_set_id = solution_set.id
+                    WHERE solution_set.content_hash = ? AND solution.solution_index = ?";
                 let mut stmt = conn.prepare(query).unwrap();
                 let mut rows = stmt
-                    .query(params![solution_address.0, data_ix as i64])
+                    .query(params![solution_set_address.0, solution_ix as i64])
                     .unwrap();
                 let row = rows.next().unwrap().unwrap();
                 let contract_addr: Hash = row.get(0).unwrap();
@@ -68,21 +68,25 @@ fn test_insert_block() {
                         contract: ContentAddress(contract_addr),
                         predicate: ContentAddress(predicate_addr)
                     },
-                    data.predicate_to_solve
+                    solution.predicate_to_solve
                 );
 
                 // Verify contract to mutation mappings were inserted correctly
-                for (mutation_ix, mutation) in data.state_mutations.iter().enumerate() {
+                for (mutation_ix, mutation) in solution.state_mutations.iter().enumerate() {
                     // Query deployed contract
                     let query = "SELECT mutation.key FROM mutation
-                    JOIN solution_data ON solution_data.id = mutation.data_id
-                    JOIN solution ON solution_data.solution_id = solution.id
-                    WHERE solution.content_hash = ? AND mutation.mutation_index = ? AND solution_data.data_index = ?
+                    JOIN solution ON solution.id = mutation.solution_id
+                    JOIN solution_set ON solution.solution_set_id = solution_set.id
+                    WHERE solution_set.content_hash = ? AND mutation.mutation_index = ? AND solution.solution_index = ?
                     ORDER BY mutation.mutation_index ASC";
                     let mut stmt = conn.prepare(query).unwrap();
                     let mut result = stmt
                         .query_map(
-                            params![solution_address.0, mutation_ix as i64, data_ix as i64],
+                            params![
+                                solution_set_address.0,
+                                mutation_ix as i64,
+                                solution_ix as i64
+                            ],
                             |row| row.get::<_, Vec<u8>>("key"),
                         )
                         .unwrap();
@@ -92,15 +96,15 @@ fn test_insert_block() {
                 }
 
                 // Verify dec vars were inserted correctly
-                for (dvi, dec_var) in data.decision_variables.iter().enumerate() {
+                for (dvi, dec_var) in solution.predicate_data.iter().enumerate() {
                     // Query dec vars
                     let query = "SELECT dec_var.value FROM dec_var
-                        JOIN solution_data ON solution_data.id = dec_var.data_id
-                        JOIN solution ON solution_data.solution_id = solution.id
-                        WHERE solution_data.data_index = ? AND dec_var.dec_var_index = ? AND solution.content_hash = ?";
+                        JOIN solution ON solution.id = dec_var.solution_id
+                        JOIN solution_set ON solution.solution_set_id = solution_set.id
+                        WHERE solution.solution_index = ? AND dec_var.dec_var_index = ? AND solution_set.content_hash = ?";
                     let mut stmt = conn.prepare(query).unwrap();
                     let mut dec_var_result = stmt
-                        .query_map(params![data_ix, dvi, solution_address.0], |row| {
+                        .query_map(params![solution_ix, dvi, solution_set_address.0], |row| {
                             row.get::<_, Vec<u8>>("value")
                         })
                         .unwrap();
@@ -231,26 +235,26 @@ fn test_failed_block() {
 
     // Insert failed block.
     let block_address = content_addr(&blocks[0]);
-    let solution_hash = content_addr(blocks[0].solutions.first().unwrap());
-    node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
+    let solution_set_hash = content_addr(blocks[0].solution_sets.first().unwrap());
+    node_db::insert_failed_block(&conn, &block_address, &solution_set_hash).unwrap();
 
     // Check failed blocks.
     let failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
     assert_eq!(failed_blocks.len(), 1);
     assert_eq!(failed_blocks[0].0, blocks[0].number);
-    assert_eq!(failed_blocks[0].1, solution_hash);
+    assert_eq!(failed_blocks[0].1, solution_set_hash);
 
     // Same failed block should not be inserted again.
-    node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
+    node_db::insert_failed_block(&conn, &block_address, &solution_set_hash).unwrap();
     let failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
     assert_eq!(failed_blocks.len(), 1);
     assert_eq!(failed_blocks[0].0, blocks[0].number);
-    assert_eq!(failed_blocks[0].1, solution_hash);
+    assert_eq!(failed_blocks[0].1, solution_set_hash);
 
     // Insert another failed block.
     let block_address = content_addr(&blocks[1]);
-    let solution_hash = content_addr(blocks[1].solutions.first().unwrap());
-    node_db::insert_failed_block(&conn, &block_address, &solution_hash).unwrap();
+    let solution_set_hash = content_addr(blocks[1].solution_sets.first().unwrap());
+    node_db::insert_failed_block(&conn, &block_address, &solution_set_hash).unwrap();
 
     let failed_blocks = node_db::with_tx_dropped(&mut conn, |tx| {
         let r = node_db::list_blocks(tx, 0..(NUM_BLOCKS + 10)).unwrap();
@@ -263,7 +267,7 @@ fn test_failed_block() {
 
     assert_eq!(failed_blocks.len(), 2);
     assert_eq!(failed_blocks[1].0, blocks[1].number);
-    assert_eq!(failed_blocks[1].1, solution_hash);
+    assert_eq!(failed_blocks[1].1, solution_set_hash);
 }
 
 #[test]
