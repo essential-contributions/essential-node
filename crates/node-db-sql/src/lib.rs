@@ -21,10 +21,10 @@ macro_rules! decl_const_sql_str {
 pub mod create {
     decl_const_sql_str!(BLOCK, "create/block.sql");
     decl_const_sql_str!(BLOCK_SOLUTION_SET, "create/block_solution_set.sql");
-    decl_const_sql_str!(DEC_VAR, "create/dec_var.sql");
     decl_const_sql_str!(FAILED_BLOCK, "create/failed_block.sql");
     decl_const_sql_str!(FINALIZED_BLOCK, "create/finalized_block.sql");
     decl_const_sql_str!(MUTATION, "create/mutation.sql");
+    decl_const_sql_str!(PRED_DATA, "create/pred_data.sql");
     decl_const_sql_str!(SOLUTION, "create/solution.sql");
     decl_const_sql_str!(SOLUTION_SET, "create/solution_set.sql");
     decl_const_sql_str!(STATE, "create/state.sql");
@@ -35,10 +35,10 @@ pub mod create {
 pub mod insert {
     decl_const_sql_str!(BLOCK, "insert/block.sql");
     decl_const_sql_str!(BLOCK_SOLUTION_SET, "insert/block_solution_set.sql");
-    decl_const_sql_str!(DEC_VAR, "insert/dec_var.sql");
     decl_const_sql_str!(FAILED_BLOCK, "insert/failed_block.sql");
     decl_const_sql_str!(FINALIZE_BLOCK, "insert/finalize_block.sql");
     decl_const_sql_str!(MUTATION, "insert/mutation.sql");
+    decl_const_sql_str!(PRED_DATA, "insert/pred_data.sql");
     decl_const_sql_str!(SOLUTION, "insert/solution.sql");
     decl_const_sql_str!(SOLUTION_SET, "insert/solution_set.sql");
     decl_const_sql_str!(VALIDATION_PROGRESS, "insert/validation_progress.sql");
@@ -62,8 +62,8 @@ pub mod query {
         "query/get_parent_block_address.sql"
     );
     decl_const_sql_str!(GET_SOLUTION, "query/get_solution.sql");
-    decl_const_sql_str!(GET_SOLUTION_DEC_VARS, "query/get_solution_dec_vars.sql");
     decl_const_sql_str!(GET_SOLUTION_MUTATIONS, "query/get_solution_mutations.sql");
+    decl_const_sql_str!(GET_SOLUTION_PRED_DATA, "query/get_solution_pred_data.sql");
     decl_const_sql_str!(GET_STATE, "query/get_state.sql");
     decl_const_sql_str!(GET_VALIDATION_PROGRESS, "query/get_validation_progress.sql");
     decl_const_sql_str!(LIST_BLOCKS, "query/list_blocks.sql");
@@ -111,7 +111,7 @@ pub mod table {
     pub const BLOCK: Table = Table::new("block", create::BLOCK);
     pub const BLOCK_SOLUTION_SET: Table =
         Table::new("block_solution_set", create::BLOCK_SOLUTION_SET);
-    pub const DEC_VAR: Table = Table::new("dec_var", create::DEC_VAR);
+    pub const PRED_DATA: Table = Table::new("pred_data", create::PRED_DATA);
     pub const FAILED_BLOCK: Table = Table::new("failed_block", create::FAILED_BLOCK);
     pub const FINALIZED_BLOCK: Table = Table::new("finalized_block", create::FINALIZED_BLOCK);
     pub const MUTATION: Table = Table::new("mutation", create::MUTATION);
@@ -124,9 +124,9 @@ pub mod table {
     /// All tables in a list. Useful for initialisation and testing.
     pub const ALL: &[Table] = &[
         BLOCK,
-        DEC_VAR,
         FINALIZED_BLOCK,
         MUTATION,
+        PRED_DATA,
         SOLUTION,
         SOLUTION_SET,
         BLOCK_SOLUTION_SET,

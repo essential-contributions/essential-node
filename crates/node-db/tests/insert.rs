@@ -95,23 +95,23 @@ fn test_insert_block() {
                     assert_eq!(mutation.key, key);
                 }
 
-                // Verify dec vars were inserted correctly
-                for (dvi, dec_var) in solution.predicate_data.iter().enumerate() {
-                    // Query dec vars
-                    let query = "SELECT dec_var.value FROM dec_var
-                        JOIN solution ON solution.id = dec_var.solution_id
+                // Verify predicate data were inserted correctly
+                for (pdi, pred_data) in solution.predicate_data.iter().enumerate() {
+                    // Query predicate data
+                    let query = "SELECT pred_data.value FROM pred_data
+                        JOIN solution ON solution.id = pred_data.solution_id
                         JOIN solution_set ON solution.solution_set_id = solution_set.id
-                        WHERE solution.solution_index = ? AND dec_var.dec_var_index = ? AND solution_set.content_hash = ?";
+                        WHERE solution.solution_index = ? AND pred_data.pred_data_index = ? AND solution_set.content_hash = ?";
                     let mut stmt = conn.prepare(query).unwrap();
-                    let mut dec_var_result = stmt
-                        .query_map(params![solution_ix, dvi, solution_set_address.0], |row| {
+                    let mut pred_data_result = stmt
+                        .query_map(params![solution_ix, pdi, solution_set_address.0], |row| {
                             row.get::<_, Vec<u8>>("value")
                         })
                         .unwrap();
 
-                    let value_blob = dec_var_result.next().unwrap().unwrap();
+                    let value_blob = pred_data_result.next().unwrap().unwrap();
                     let value: Value = words_from_blob(&value_blob);
-                    assert_eq!(value, *dec_var);
+                    assert_eq!(value, *pred_data);
                 }
             }
         }

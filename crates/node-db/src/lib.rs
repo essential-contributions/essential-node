@@ -99,7 +99,7 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<Content
     let mut stmt_block_solution_set = tx.prepare(sql::insert::BLOCK_SOLUTION_SET)?;
     let mut stmt_solution = tx.prepare(sql::insert::SOLUTION)?;
     let mut stmt_mutation = tx.prepare(sql::insert::MUTATION)?;
-    let mut stmt_dec_var = tx.prepare(sql::insert::DEC_VAR)?;
+    let mut stmt_pred_data = tx.prepare(sql::insert::PRED_DATA)?;
 
     for (ix, (solution_set, ca)) in block
         .solution_sets
@@ -136,12 +136,12 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<Content
                     ":value": blob_from_words(&mutation.value),
                 })?;
             }
-            for (dec_var_ix, dec_var) in solution.predicate_data.iter().enumerate() {
-                stmt_dec_var.execute(named_params! {
+            for (pred_data_ix, pred_data) in solution.predicate_data.iter().enumerate() {
+                stmt_pred_data.execute(named_params! {
                     ":solution_set_hash": ca.0,
                     ":solution_index": solution_ix,
-                    ":dec_var_index": dec_var_ix,
-                    ":value": blob_from_words(dec_var)
+                    ":pred_data_index": pred_data_ix,
+                    ":value": blob_from_words(pred_data)
                 })?;
             }
         }
@@ -150,7 +150,7 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<Content
     stmt_block_solution_set.finalize()?;
     stmt_solution.finalize()?;
     stmt_mutation.finalize()?;
-    stmt_dec_var.finalize()?;
+    stmt_pred_data.finalize()?;
 
     Ok(block_address)
 }
@@ -250,7 +250,7 @@ pub fn get_solution_set(tx: &Transaction, ca: &ContentAddress) -> Result<Solutio
         .collect::<Result<Vec<_>, _>>()?;
     solution_stmt.finalize()?;
 
-    let mut dec_vars_stmt = tx.prepare(sql::query::GET_SOLUTION_DEC_VARS)?;
+    let mut pred_data_stmt = tx.prepare(sql::query::GET_SOLUTION_PRED_DATA)?;
     let mut mutations_stmt = tx.prepare(sql::query::GET_SOLUTION_MUTATIONS)?;
 
     for (solution_ix, solution) in solutions.iter_mut().enumerate() {
@@ -267,20 +267,20 @@ pub fn get_solution_set(tx: &Transaction, ca: &ContentAddress) -> Result<Solutio
             solution.state_mutations.push(Mutation { key, value });
         }
 
-        // Fetch the decision variables.
-        let mut dec_var_rows = dec_vars_stmt.query(named_params! {
+        // Fetch the predicate data.
+        let mut pred_data_rows = pred_data_stmt.query(named_params! {
             ":content_hash": ca.0,
             ":solution_index": solution_ix,
         })?;
-        while let Some(dec_var_row) = dec_var_rows.next()? {
-            let value_blob: Vec<u8> = dec_var_row.get("value")?;
+        while let Some(pred_data_row) = pred_data_rows.next()? {
+            let value_blob: Vec<u8> = pred_data_row.get("value")?;
             let value: Value = words_from_blob(&value_blob);
             solution.predicate_data.push(value);
         }
     }
 
     mutations_stmt.finalize()?;
-    dec_vars_stmt.finalize()?;
+    pred_data_stmt.finalize()?;
 
     Ok(SolutionSet { solutions })
 }

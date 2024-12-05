@@ -1,7 +1,7 @@
 INSERT
-    OR IGNORE INTO dec_var (
+    OR IGNORE INTO pred_data (
         solution_id,
-        dec_var_index,
+        pred_data_index,
         value
     )
 VALUES
@@ -16,5 +16,5 @@ VALUES
                 solution_set.content_hash = :solution_set_hash AND solution.solution_index = :solution_index
             LIMIT
                 1
-        ), :dec_var_index, :value
+        ), :pred_data_index, :value
     );
