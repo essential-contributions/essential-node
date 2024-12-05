@@ -111,10 +111,10 @@ pub mod table {
     pub const BLOCK: Table = Table::new("block", create::BLOCK);
     pub const BLOCK_SOLUTION_SET: Table =
         Table::new("block_solution_set", create::BLOCK_SOLUTION_SET);
-    pub const PRED_DATA: Table = Table::new("pred_data", create::PRED_DATA);
     pub const FAILED_BLOCK: Table = Table::new("failed_block", create::FAILED_BLOCK);
     pub const FINALIZED_BLOCK: Table = Table::new("finalized_block", create::FINALIZED_BLOCK);
     pub const MUTATION: Table = Table::new("mutation", create::MUTATION);
+    pub const PRED_DATA: Table = Table::new("pred_data", create::PRED_DATA);
     pub const SOLUTION: Table = Table::new("solution", create::SOLUTION);
     pub const SOLUTION_SET: Table = Table::new("solution_set", create::SOLUTION_SET);
     pub const STATE: Table = Table::new("state", create::STATE);

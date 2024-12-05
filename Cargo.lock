@@ -563,8 +563,8 @@ dependencies = [
 
 [[package]]
 name = "essential-asm"
-version = "0.6.0"
-source = "git+https://github.com/essential-contributions/essential-base.git?branch=develop#2428ac4814f5df40f8ae31cdcf64b406f0232236"
+version = "0.7.0"
+source = "git+https://github.com/essential-contributions/essential-base.git?branch=main#aa1afbceedd2751b5ac5563da62fd4dd96875131"
 dependencies = [
  "bitflags",
  "essential-asm-gen",
@@ -574,8 +574,8 @@ dependencies = [
 
 [[package]]
 name = "essential-asm-gen"
-version = "0.6.0"
-source = "git+https://github.com/essential-contributions/essential-base.git?branch=develop#2428ac4814f5df40f8ae31cdcf64b406f0232236"
+version = "0.7.0"
+source = "git+https://github.com/essential-contributions/essential-base.git?branch=main#aa1afbceedd2751b5ac5563da62fd4dd96875131"
 dependencies = [
  "essential-asm-spec",
  "essential-types",
@@ -586,8 +586,8 @@ dependencies = [
 
 [[package]]
 name = "essential-asm-spec"
-version = "0.5.0"
-source = "git+https://github.com/essential-contributions/essential-base.git?branch=develop#2428ac4814f5df40f8ae31cdcf64b406f0232236"
+version = "0.6.0"
+source = "git+https://github.com/essential-contributions/essential-base.git?branch=main#aa1afbceedd2751b5ac5563da62fd4dd96875131"
 dependencies = [
  "serde",
  "serde_yaml",
@@ -595,8 +595,8 @@ dependencies = [
 
 [[package]]
 name = "essential-check"
-version = "0.9.0"
-source = "git+https://github.com/essential-contributions/essential-base.git?branch=develop#2428ac4814f5df40f8ae31cdcf64b406f0232236"
+version = "0.10.0"
+source = "git+https://github.com/essential-contributions/essential-base.git?branch=main#aa1afbceedd2751b5ac5563da62fd4dd96875131"
 dependencies = [
  "essential-hash",
  "essential-sign",
@@ -609,8 +609,8 @@ dependencies = [
 
 [[package]]
 name = "essential-hash"
-version = "0.7.0"
-source = "git+https://github.com/essential-contributions/essential-base.git?branch=develop#2428ac4814f5df40f8ae31cdcf64b406f0232236"
+version = "0.8.0"
+source = "git+https://github.com/essential-contributions/essential-base.git?branch=main#aa1afbceedd2751b5ac5563da62fd4dd96875131"
 dependencies = [
  "essential-types",
  "postcard",
@@ -749,8 +749,8 @@ dependencies = [
 
 [[package]]
 name = "essential-sign"
-version = "0.7.0"
-source = "git+https://github.com/essential-contributions/essential-base.git?branch=develop#2428ac4814f5df40f8ae31cdcf64b406f0232236"
+version = "0.8.0"
+source = "git+https://github.com/essential-contributions/essential-base.git?branch=main#aa1afbceedd2751b5ac5563da62fd4dd96875131"
 dependencies = [
  "essential-hash",
  "essential-types",
@@ -759,8 +759,8 @@ dependencies = [
 
 [[package]]
 name = "essential-types"
-version = "0.5.0"
-source = "git+https://github.com/essential-contributions/essential-base.git?branch=develop#2428ac4814f5df40f8ae31cdcf64b406f0232236"
+version = "0.6.0"
+source = "git+https://github.com/essential-contributions/essential-base.git?branch=main#aa1afbceedd2751b5ac5563da62fd4dd96875131"
 dependencies = [
  "hex",
  "serde",
@@ -768,8 +768,8 @@ dependencies = [
 
 [[package]]
 name = "essential-vm"
-version = "0.7.0"
-source = "git+https://github.com/essential-contributions/essential-base.git?branch=develop#2428ac4814f5df40f8ae31cdcf64b406f0232236"
+version = "0.8.0"
+source = "git+https://github.com/essential-contributions/essential-base.git?branch=main#aa1afbceedd2751b5ac5563da62fd4dd96875131"
 dependencies = [
  "ed25519-dalek",
  "essential-asm",
