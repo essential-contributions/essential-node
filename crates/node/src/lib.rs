@@ -15,7 +15,7 @@ use essential_relayer::Relayer;
 use essential_types::ContentAddress;
 pub use handles::node::Handle;
 pub use validate::validate_dry_run;
-pub use validate::validate_solution_dry_run;
+pub use validate::validate_solution_set_dry_run;
 use validation::validation_stream;
 
 mod error;
@@ -111,6 +111,7 @@ pub fn run(
     conn_pool: db::ConnectionPool,
     conf: RunConfig,
     contract_registry: ContentAddress,
+    program_registry: ContentAddress,
     block_notify: BlockTx,
 ) -> Result<Handle, CriticalError> {
     let RunConfig {
@@ -131,6 +132,7 @@ pub fn run(
         Some(validation_stream(
             conn_pool.clone(),
             contract_registry,
+            program_registry,
             block_notify.new_listener(),
         )?)
     } else {

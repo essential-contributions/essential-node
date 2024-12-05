@@ -1,5 +1,5 @@
 //! Finalized queries query for the most recent version of a key less than or equal to a
-//! given block number or solution index for blocks that have been finalized.
+//! given block number or solution set index for blocks that have been finalized.
 
 use crate::{blob_from_words, words_from_blob, QueryError};
 use essential_node_db_sql as sql;
@@ -48,25 +48,25 @@ pub fn query_state_exclusive_block(
 
 /// Query for the most recent version value of a key in a contracts state
 /// that was set at or before the given block number and
-/// solution index (within that block).
+/// solution set index (within that block).
 ///
-/// This is inclusive of the solution's state mutations
-/// `..=block_number[..=solution_index]`
-pub fn query_state_inclusive_solution(
+/// This is inclusive of the solution set's state mutations
+/// `..=block_number[..=solution_set_index]`
+pub fn query_state_inclusive_solution_set(
     conn: &Connection,
     contract_ca: &ContentAddress,
     key: &Key,
     block_number: Word,
-    solution_index: u64,
+    solution_set_index: u64,
 ) -> Result<Option<Value>, QueryError> {
-    let mut stmt = conn.prepare(sql::query::QUERY_STATE_AT_SOLUTION_FINALIZED)?;
+    let mut stmt = conn.prepare(sql::query::QUERY_STATE_AT_SOLUTION_SET_FINALIZED)?;
     let value_blob: Option<Vec<u8>> = stmt
         .query_row(
             named_params! {
                 ":contract_ca": contract_ca.0,
                 ":key": blob_from_words(key),
                 ":block_number": block_number,
-                ":solution_index": solution_index,
+                ":solution_set_index": solution_set_index,
             },
             |row| row.get("value"),
         )
@@ -76,20 +76,24 @@ pub fn query_state_inclusive_solution(
 
 /// Query for the most recent version value of a key in a contracts state
 /// that was set at or before the given block number and before the
-/// solution index (within that block).
+/// solution set index (within that block).
 ///
-/// This is exclusive of the solution's state `..=block_number[..solution_index]`.
-pub fn query_state_exclusive_solution(
+/// This is exclusive of the solution set's state `..=block_number[..solution_set_index]`.
+pub fn query_state_exclusive_solution_set(
     conn: &Connection,
     contract_ca: &ContentAddress,
     key: &Key,
     block_number: Word,
-    solution_index: u64,
+    solution_set_index: u64,
 ) -> Result<Option<Value>, QueryError> {
-    match solution_index.checked_sub(1) {
-        Some(solution_index) => {
-            query_state_inclusive_solution(conn, contract_ca, key, block_number, solution_index)
-        }
+    match solution_set_index.checked_sub(1) {
+        Some(solution_set_index) => query_state_inclusive_solution_set(
+            conn,
+            contract_ca,
+            key,
+            block_number,
+            solution_set_index,
+        ),
         None => query_state_exclusive_block(conn, contract_ca, key, block_number),
     }
 }

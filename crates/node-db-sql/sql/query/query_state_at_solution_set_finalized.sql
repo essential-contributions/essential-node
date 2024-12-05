@@ -8,7 +8,10 @@ FROM
 WHERE
     solution.contract_addr = :contract_ca
     AND mutation.key = :key
-    AND finalized_block.block_number <= :block_number
+    AND (
+        finalized_block.block_number,
+        block_solution_set.solution_set_index
+    ) <= (:block_number, :solution_set_index)
 ORDER BY
     finalized_block.block_number DESC,
     block_solution_set.solution_set_index DESC

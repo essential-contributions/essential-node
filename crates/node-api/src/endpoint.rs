@@ -194,7 +194,12 @@ The query parameters must be empty or one of the following combinations:
             } => {
                 state
                     .conn_pool
-                    .query_state_finalized_inclusive_solution(contract_ca, key, block, solution_ix)
+                    .query_state_finalized_inclusive_solution_set(
+                        contract_ca,
+                        key,
+                        block,
+                        solution_ix,
+                    )
                     .await?
             }
             QueryStateParams {
@@ -205,7 +210,12 @@ The query parameters must be empty or one of the following combinations:
             } => {
                 state
                     .conn_pool
-                    .query_state_finalized_exclusive_solution(contract_ca, key, block, solution_ix)
+                    .query_state_finalized_exclusive_solution_set(
+                        contract_ca,
+                        key,
+                        block,
+                        solution_ix,
+                    )
                     .await?
             }
             QueryStateParams {

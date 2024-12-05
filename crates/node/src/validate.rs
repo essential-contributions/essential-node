@@ -3,18 +3,23 @@
 use crate::{
     db::{
         self,
-        finalized::{query_state_exclusive_solution, query_state_inclusive_solution},
+        finalized::{query_state_exclusive_solution_set, query_state_inclusive_solution_set},
         pool::ConnectionHandle,
         ConnectionPool, QueryError,
     },
-    error::{QueryPredicateError, SolutionPredicatesError, StateReadError, ValidationError},
+    error::{
+        PredicatesProgramsError, QueryPredicateError, QueryProgramError,
+        SolutionSetPredicatesError, StateReadError, ValidationError,
+    },
 };
 use essential_check::{
-    solution::{check_predicates, CheckPredicateConfig, PredicatesError},
-    state_read_vm::{Gas, StateRead},
+    solution::{check_set_predicates, CheckPredicateConfig, PredicatesError},
+    vm::{Gas, StateRead},
 };
 use essential_types::{
-    convert::bytes_from_word, predicate::Predicate, solution::Solution, solution::SolutionData,
+    convert::bytes_from_word,
+    predicate::{Predicate, Program},
+    solution::{Solution, SolutionSet},
     Block, ContentAddress, Key, PredicateAddress, Value, Word,
 };
 use futures::FutureExt;
@@ -26,7 +31,7 @@ mod tests;
 #[derive(Clone)]
 struct State {
     block_number: Word,
-    solution_index: u64,
+    solution_set_index: u64,
     pre_state: bool,
     conn_pool: Db,
 }
@@ -98,8 +103,8 @@ pub struct ValidOutcome {
 pub struct InvalidOutcome {
     /// The reason for the block to be invalid.
     pub failure: ValidateFailure,
-    /// The index of the solution that caused the failure.
-    pub solution_index: usize,
+    /// The index of the solution set that caused the failure.
+    pub solution_set_index: usize,
 }
 
 /// Reasons for a block to be invalid.
@@ -110,6 +115,10 @@ pub enum ValidateFailure {
     MissingPredicate(PredicateAddress),
     /// A predicate was present in the registry, but failed to decode.
     InvalidPredicate(PredicateAddress),
+    /// A predicate specified a program that does not exist within the program registry.
+    MissingProgram(ContentAddress),
+    /// A program was present in the registry, but has an invalid format.
+    InvalidProgram(ContentAddress),
     #[allow(dead_code)]
     /// A predicate failed to validate.
     PredicatesError(PredicatesError<StateReadError>),
@@ -118,15 +127,16 @@ pub enum ValidateFailure {
 }
 
 /// Validates a solution without adding it to the database.
-/// Creates a block at the next block number and current timestamp with the given solution
+/// Creates a block at the next block number and current timestamp with the given solution set
 /// and validates it.
 ///
-/// Returns a `ValidationResult` if no `ValidationError` occurred that prevented the solution from being validated.
+/// Returns a `ValidationResult` if no `ValidationError` occurred that prevented the solution set from being validated.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-pub async fn validate_solution_dry_run(
+pub async fn validate_solution_set_dry_run(
     conn_pool: &ConnectionPool,
     contract_registry: &ContentAddress,
-    solution: Solution,
+    program_registry: &ContentAddress,
+    solution_set: SolutionSet,
 ) -> Result<ValidateOutcome, ValidationError> {
     let mut conn = conn_pool.acquire().await?;
     let tx = conn.transaction()?;
@@ -141,10 +151,10 @@ pub async fn validate_solution_dry_run(
         timestamp: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("time must be valid"),
-        solutions: vec![solution],
+        solution_sets: vec![solution_set],
     };
     drop(tx);
-    validate_dry_run(conn_pool, contract_registry, &block).await
+    validate_dry_run(conn_pool, contract_registry, program_registry, &block).await
 }
 
 /// Validates a block without adding the block to the database.
@@ -154,11 +164,12 @@ pub async fn validate_solution_dry_run(
 pub async fn validate_dry_run(
     conn_pool: &ConnectionPool,
     contract_registry: &ContentAddress,
+    program_registry: &ContentAddress,
     block: &Block,
 ) -> Result<ValidateOutcome, ValidationError> {
     let dry_run = DryRun::new(conn_pool.clone(), block).await?;
     let db_type = Db::DryRun(dry_run);
-    validate_inner(db_type, contract_registry, block).await
+    validate_inner(db_type, contract_registry, program_registry, block).await
 }
 
 /// Validates a block.
@@ -168,10 +179,11 @@ pub async fn validate_dry_run(
 pub(crate) async fn validate(
     conn_pool: &ConnectionPool,
     contract_registry: &ContentAddress,
+    program_registry: &ContentAddress,
     block: &Block,
 ) -> Result<ValidateOutcome, ValidationError> {
     let db_type = Db::ConnectionPool(conn_pool.clone());
-    validate_inner(db_type, contract_registry, block).await
+    validate_inner(db_type, contract_registry, program_registry, block).await
 }
 
 /// Validates a block.
@@ -181,48 +193,77 @@ pub(crate) async fn validate(
 async fn validate_inner(
     conn: Db,
     contract_registry: &ContentAddress,
+    program_registry: &ContentAddress,
     block: &Block,
 ) -> Result<ValidateOutcome, ValidationError> {
     let mut total_gas: u64 = 0;
 
-    // Check predicates.
-    for (solution_index, solution) in block.solutions.iter().enumerate() {
+    // Check predicates and programs.
+    for (solution_set_index, solution_set) in block.solution_sets.iter().enumerate() {
         let pre_state = State {
             block_number: block.number,
-            solution_index: solution_index as u64,
+            solution_set_index: solution_set_index as u64,
             pre_state: true,
             conn_pool: conn.clone(),
         };
         let post_state = State {
             block_number: block.number,
-            solution_index: solution_index as u64,
+            solution_set_index: solution_set_index as u64,
             pre_state: false,
             conn_pool: conn.clone(),
         };
 
         // Create the `predicates` map.
-        let res = query_solution_predicates(&post_state, contract_registry, &solution.data).await;
+        let res =
+            query_solution_set_predicates(&post_state, contract_registry, &solution_set.solutions)
+                .await;
         let predicates = match res {
             Ok(predicates) => Arc::new(predicates),
             Err(err) => match err {
-                SolutionPredicatesError::Acquire(err) => {
+                SolutionSetPredicatesError::Acquire(err) => {
                     return Err(ValidationError::DbPoolClosed(err))
                 }
-                SolutionPredicatesError::QueryPredicate(addr, err) => match err {
+                SolutionSetPredicatesError::QueryPredicate(addr, err) => match err {
                     QueryPredicateError::Query(err) => return Err(ValidationError::Query(err)),
                     QueryPredicateError::Decode(_)
                     | QueryPredicateError::MissingLenBytes
                     | QueryPredicateError::InvalidLenBytes => {
                         return Ok(ValidateOutcome::Invalid(InvalidOutcome {
                             failure: ValidateFailure::InvalidPredicate(addr),
-                            solution_index,
+                            solution_set_index,
                         }));
                     }
                 },
-                SolutionPredicatesError::MissingPredicate(addr) => {
+                SolutionSetPredicatesError::MissingPredicate(addr) => {
                     return Ok(ValidateOutcome::Invalid(InvalidOutcome {
                         failure: ValidateFailure::MissingPredicate(addr),
-                        solution_index,
+                        solution_set_index,
+                    }));
+                }
+            },
+        };
+
+        // Create the `programs` map.
+        let res = query_predicates_programs(&post_state, program_registry, &predicates).await;
+        let programs = match res {
+            Ok(programs) => Arc::new(programs),
+            Err(err) => match err {
+                PredicatesProgramsError::Acquire(err) => {
+                    return Err(ValidationError::DbPoolClosed(err))
+                }
+                PredicatesProgramsError::QueryProgram(addr, err) => match err {
+                    QueryProgramError::Query(err) => return Err(ValidationError::Query(err)),
+                    QueryProgramError::MissingLenBytes | QueryProgramError::InvalidLenBytes => {
+                        return Ok(ValidateOutcome::Invalid(InvalidOutcome {
+                            failure: ValidateFailure::InvalidProgram(addr),
+                            solution_set_index,
+                        }));
+                    }
+                },
+                PredicatesProgramsError::MissingProgram(addr) => {
+                    return Ok(ValidateOutcome::Invalid(InvalidOutcome {
+                        failure: ValidateFailure::MissingProgram(addr),
+                        solution_set_index,
                     }));
                 }
             },
@@ -234,11 +275,20 @@ async fn validate_inner(
                 .cloned()
                 .expect("predicate must have been fetched in the previous step")
         };
-        match check_predicates(
+
+        let get_program = move |addr: &ContentAddress| {
+            programs
+                .get(addr)
+                .cloned()
+                .expect("program must have been fetched in the previous step")
+        };
+
+        match check_set_predicates(
             &pre_state,
             &post_state,
-            Arc::new(solution.clone()),
+            Arc::new(solution_set.clone()),
             get_predicate,
+            get_program,
             Arc::new(CheckPredicateConfig::default()),
         )
         .await
@@ -249,22 +299,22 @@ async fn validate_inner(
                 } else {
                     return Ok(ValidateOutcome::Invalid(InvalidOutcome {
                         failure: ValidateFailure::GasOverflow,
-                        solution_index,
+                        solution_set_index,
                     }));
                 }
             }
             Err(err) => {
                 #[cfg(feature = "tracing")]
                 tracing::debug!(
-                    "Validation failed for block with number {} and address {} at solution index {} with error {}",
+                    "Validation failed for block with number {} and address {} at solution set index {} with error {}",
                     block.number,
                     essential_hash::content_addr(block),
-                    solution_index,
+                    solution_set_index,
                     err
                 );
                 return Ok(ValidateOutcome::Invalid(InvalidOutcome {
                     failure: ValidateFailure::PredicatesError(err),
-                    solution_index,
+                    solution_set_index,
                 }));
             }
         }
@@ -384,7 +434,7 @@ impl StateRead for State {
     ) -> Self::Future {
         let Self {
             block_number,
-            solution_index,
+            solution_set_index,
             pre_state,
             conn_pool,
         } = self.clone();
@@ -403,7 +453,7 @@ impl StateRead for State {
                             &contract_addr,
                             &key,
                             block_number,
-                            solution_index,
+                            solution_set_index,
                             pre_state,
                         )
                     })?;
@@ -420,27 +470,29 @@ impl StateRead for State {
     }
 }
 
-/// Retrieve all predicates required by the solution.
+/// Retrieve all predicates required by the solution set.
 // TODO: Make proper use of `State`'s connection pool and query predicates in parallel.
-async fn query_solution_predicates(
+async fn query_solution_set_predicates(
     state: &State,
     contract_registry: &ContentAddress,
-    solution_data: &[SolutionData],
-) -> Result<HashMap<PredicateAddress, Arc<Predicate>>, SolutionPredicatesError> {
+    solutions: &[Solution],
+) -> Result<HashMap<PredicateAddress, Arc<Predicate>>, SolutionSetPredicatesError> {
     let mut predicates = HashMap::default();
     let mut conn = state.conn_pool.acquire().await?;
-    for data in solution_data {
-        let pred_addr = data.predicate_to_solve.clone();
+    for solution in solutions {
+        let pred_addr = solution.predicate_to_solve.clone();
         let Some(pred) = query_predicate(
             &mut conn,
             contract_registry,
             &pred_addr,
             state.block_number,
-            state.solution_index,
+            state.solution_set_index,
         )
-        .map_err(|e| SolutionPredicatesError::QueryPredicate(pred_addr.clone(), e))?
+        .map_err(|e| SolutionSetPredicatesError::QueryPredicate(pred_addr.clone(), e))?
         else {
-            return Err(SolutionPredicatesError::MissingPredicate(pred_addr.clone()));
+            return Err(SolutionSetPredicatesError::MissingPredicate(
+                pred_addr.clone(),
+            ));
         };
         predicates.insert(pred_addr, Arc::new(pred));
     }
@@ -449,7 +501,7 @@ async fn query_solution_predicates(
 
 /// Query for the predicate with the given address within state.
 ///
-/// Note that `query_predicate` will always query *inclusive* of the given solution index.
+/// Note that `query_predicate` will always query *inclusive* of the given solution set index.
 // TODO: Take a connection pool and perform these queries in parallel.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, err))]
 fn query_predicate(
@@ -457,7 +509,7 @@ fn query_predicate(
     contract_registry: &ContentAddress,
     pred_addr: &PredicateAddress,
     block_number: Word,
-    solution_ix: u64,
+    solution_set_ix: u64,
 ) -> Result<Option<Predicate>, QueryPredicateError> {
     use essential_node_types::contract_registry;
     let pre_state = false;
@@ -474,7 +526,7 @@ fn query_predicate(
             contract_registry,
             &contract_predicate_key,
             block_number,
-            solution_ix,
+            solution_set_ix,
             pre_state,
         )
     })?
@@ -492,7 +544,7 @@ fn query_predicate(
             contract_registry,
             &predicate_key,
             block_number,
-            solution_ix,
+            solution_set_ix,
             pre_state,
         )
     })?
@@ -520,18 +572,101 @@ fn query_predicate(
     Ok(Some(predicate))
 }
 
+/// Retrieve all programs required by the predicates.
+// TODO: Make proper use of `State`'s connection pool and query programs in parallel.
+async fn query_predicates_programs(
+    state: &State,
+    program_registry: &ContentAddress,
+    predicates: &HashMap<PredicateAddress, Arc<Predicate>>,
+) -> Result<HashMap<ContentAddress, Arc<Program>>, PredicatesProgramsError> {
+    let mut programs = HashMap::default();
+    let mut conn = state.conn_pool.acquire().await?;
+    for predicate in predicates.values() {
+        for node in &predicate.nodes {
+            let prog_addr = node.program_address.clone();
+            let Some(prog) = query_program(
+                &mut conn,
+                program_registry,
+                &prog_addr,
+                state.block_number,
+                state.solution_set_index,
+            )
+            .map_err(|e| PredicatesProgramsError::QueryProgram(prog_addr.clone(), e))?
+            else {
+                return Err(PredicatesProgramsError::MissingProgram(prog_addr.clone()));
+            };
+            programs.insert(prog_addr, Arc::new(prog));
+        }
+    }
+    Ok(programs)
+}
+
+/// Query for the program with the given address within state.
+///
+/// Note that `query_program` will always query *inclusive* of the given solution set index.
+// TODO: Take a connection pool and perform these queries in parallel.
+fn query_program(
+    conn: &mut Conn,
+    program_registry: &ContentAddress,
+    prog_addr: &ContentAddress,
+    block_number: Word,
+    solution_set_ix: u64,
+) -> Result<Option<Program>, QueryProgramError> {
+    use essential_node_types::program_registry;
+    let pre_state = false;
+
+    #[cfg(feature = "tracing")]
+    tracing::trace!("{}", prog_addr);
+
+    // Check whether the program is registered within the program registry.
+    let program_key = program_registry::program_key(prog_addr);
+    let tx = conn.transaction().map_err(QueryError::Rusqlite)?;
+    let Some(prog_words) = query(&tx, |tx| {
+        query_state(
+            tx,
+            program_registry,
+            &program_key,
+            block_number,
+            solution_set_ix,
+            pre_state,
+        )
+    })?
+    else {
+        // If no entry for the program, return `None`.
+        return Ok(None);
+    };
+
+    // Read the length from the front.
+    let Some(&prog_len_bytes) = prog_words.first() else {
+        return Err(QueryProgramError::MissingLenBytes);
+    };
+    let prog_len_bytes: usize = prog_len_bytes
+        .try_into()
+        .map_err(|_| QueryProgramError::InvalidLenBytes)?;
+    let prog_words = &prog_words[1..];
+    let prog_bytes: Vec<u8> = prog_words
+        .iter()
+        .copied()
+        .flat_map(bytes_from_word)
+        .take(prog_len_bytes)
+        .collect();
+
+    let program = Program(prog_bytes);
+    Ok(Some(program))
+}
+
 fn query_state(
     conn: &rusqlite::Connection,
     contract_ca: &ContentAddress,
     key: &Key,
     block_number: Word,
-    solution_ix: u64,
+    solution_set_ix: u64,
     pre_state: bool,
 ) -> Result<Option<Value>, QueryError> {
     if pre_state {
-        query_state_exclusive_solution(conn, contract_ca, key, block_number, solution_ix)
+        query_state_exclusive_solution_set(conn, contract_ca, key, block_number, solution_set_ix)
     } else {
-        query_state_inclusive_solution(conn, contract_ca, key, block_number, solution_ix)
+        query_state_inclusive_solution_set(conn, contract_ca, key, block_number, solution_set_ix)
     }
 }
 

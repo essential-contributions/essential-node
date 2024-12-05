@@ -1,10 +1,10 @@
 SELECT
-    solution.content_hash
+    solution_set.content_hash
 FROM
     block
-    LEFT JOIN block_solution ON block.id = block_solution.block_id
-    LEFT JOIN solution ON block_solution.solution_id = solution.id
+    LEFT JOIN block_solution_set ON block.id = block_solution_set.block_id
+    LEFT JOIN solution_set ON block_solution_set.solution_set_id = solution_set.id
 WHERE
     block.block_address = :block_address
 ORDER BY
-    block_solution.solution_index ASC
+    block_solution_set.solution_set_index ASC

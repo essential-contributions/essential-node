@@ -10,9 +10,9 @@ WITH RECURSIVE chain AS (
         0 AS depth
     FROM
         block b
-        LEFT JOIN block_solution bs ON bs.block_id = b.id
-        LEFT JOIN solution_data ON solution_data.solution_id = bs.solution_id AND solution_data.contract_addr = :contract_ca
-        LEFT JOIN mutation m ON m.data_id = solution_data.id
+        LEFT JOIN block_solution_set bs ON bs.block_id = b.id
+        LEFT JOIN solution ON solution.solution_set_id = bs.solution_set_id AND solution.contract_addr = :contract_ca
+        LEFT JOIN mutation m ON m.solution_id = solution.id
         AND m.key = :key
     WHERE
         b.block_address = :block_address
@@ -28,8 +28,8 @@ WITH RECURSIVE chain AS (
     FROM
         chain c
         JOIN block b ON b.id = c.parent_block_id
-        LEFT JOIN solution_data ON solution_data.solution_id = b.id AND solution_data.contract_addr = :contract_ca
-        LEFT JOIN mutation m ON m.data_id = solution_data.id
+        LEFT JOIN solution ON solution.solution_set_id = b.id AND solution.contract_addr = :contract_ca
+        LEFT JOIN mutation m ON m.solution_id = solution.id
         AND m.key = :key
     WHERE
         c.found_value IS NULL -- Stop recursing if we found a value
@@ -50,18 +50,18 @@ SELECT
         SELECT
             value
         FROM
-            block_solution bs
-            JOIN solution_data ON solution_data.solution_id = bs.solution_id AND solution_data.contract_addr = :contract_ca
-            JOIN mutation m ON m.data_id = solution_data.id
+            block_solution_set bs
+            JOIN solution ON solution.solution_set_id = bs.solution_set_id AND solution.contract_addr = :contract_ca
+            JOIN mutation m ON m.solution_id = solution.id
         WHERE
             bs.block_id = chain.block_id
             AND m.key = :key
             AND (
-                :solution_index IS NULL
-                OR bs.solution_index <= :solution_index
+                :solution_set_index IS NULL
+                OR bs.solution_set_index <= :solution_set_index
             )
         ORDER BY
-            bs.solution_index DESC
+            bs.solution_set_index DESC
     ) AS found_value,
     number
 FROM

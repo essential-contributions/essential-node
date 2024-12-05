@@ -1,8 +1,7 @@
 INSERT
-    OR IGNORE INTO mutation (
+    OR IGNORE INTO pred_data (
         solution_id,
-        mutation_index,
-        key,
+        pred_data_index,
         value
     )
 VALUES
@@ -17,5 +16,5 @@ VALUES
                 solution_set.content_hash = :solution_set_hash AND solution.solution_index = :solution_index
             LIMIT
                 1
-        ), :mutation_index, :key, :value
+        ), :pred_data_index, :value
     );

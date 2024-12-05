@@ -6,8 +6,8 @@
 use essential_types::{
     contract::Contract,
     convert::{word_4_from_u8_32, word_from_bytes_slice},
-    predicate::header::PredicateError,
-    solution::{Mutation, Solution, SolutionData},
+    predicate::{PredicateEncodeError, Program},
+    solution::{Mutation, Solution, SolutionSet},
     Block, PredicateAddress, Word,
 };
 use serde::{Deserialize, Serialize};
@@ -61,14 +61,30 @@ pub struct BigBang {
     /// - `[1, <predicate-ca>]` to get the length bytes as `Word` followed by the fully encoded
     ///   word-padded data as `int[]`.
     pub contract_registry: PredicateAddress,
-    /// The `Solution` used to initialize arbitrary state for the big bang block.
+    /// The address of the contract used to register programs.
+    ///
+    /// ```ignore
+    /// storage {
+    ///     programs: (b256 => Program),
+    /// }
+    /// ```
+    ///
+    /// ## Programs
+    ///
+    /// Program entries contain their length in bytes as a `Word` and their bytecode within a
+    /// `int[]` with padding in the final word if necessary. E.g.
+    ///
+    /// - `[0, <program-ca>]` to get the bytecode length as `Word` followed by the bytecode as
+    ///   `int[]`.
+    pub program_registry: PredicateAddress,
+    /// The `SolutionSet` used to initialize arbitrary state for the big bang block.
     ///
     /// The primary purpose is setting the initial block state and registering the big bang
     /// contracts.
     ///
     /// If constructing a custom `BigBang` configuration, care must be taken to ensure that this
-    /// `Solution` does actually register the aforementioned contracts correctly.
-    pub solution: Solution,
+    /// `SolutionSet` does actually register the aforementioned contracts correctly.
+    pub solution_set: SolutionSet,
 }
 
 impl BigBang {
@@ -77,7 +93,7 @@ impl BigBang {
         Block {
             number: 0,
             timestamp: std::time::Duration::from_secs(0),
-            solutions: vec![self.solution.clone()],
+            solution_sets: vec![self.solution_set.clone()],
         }
     }
 }
@@ -134,14 +150,35 @@ pub mod contract_registry {
     }
 }
 
-/// Create a solution for registering the given contract at the given
+/// Functions for constructing keys into the "program registry" contract state.
+pub mod program_registry {
+    use crate::padded_words_from_bytes;
+    use essential_types::{ContentAddress, Key, Word};
+
+    const PROGRAMS_PREFIX: Word = 0;
+
+    /// A key that may be used to retrieve the full `Program` from the program registry state.
+    ///
+    /// When queried, the `Program` data will be preceded by a single word that describes the
+    /// length of the program in bytes.
+    ///
+    /// The returned key is formatted as `[0, <program-ca>]`
+    pub fn program_key(prog_ca: &ContentAddress) -> Key {
+        Some(PROGRAMS_PREFIX)
+            .into_iter()
+            .chain(padded_words_from_bytes(&prog_ca.0))
+            .collect()
+    }
+}
+
+/// Create a solution for registering the given contract at the given contract registry.
 pub fn register_contract_solution(
     contract_registry: PredicateAddress,
     contract: &Contract,
-) -> Result<SolutionData, PredicateError> {
-    Ok(SolutionData {
+) -> Result<Solution, PredicateEncodeError> {
+    Ok(Solution {
         predicate_to_solve: contract_registry,
-        decision_variables: vec![],
+        predicate_data: vec![],
         state_mutations: register_contract_mutations(contract)?,
     })
 }
@@ -149,8 +186,11 @@ pub fn register_contract_solution(
 /// Generate the mutations required to register a given contract within the big bang's "contract
 /// registry" contract. This is useful for constructing contract deployment `Solution`s.
 ///
-/// Learn more about the layout of state within the contract registry
-pub fn register_contract_mutations(contract: &Contract) -> Result<Vec<Mutation>, PredicateError> {
+/// Learn more about the layout of state within the contract registry in
+/// [`BigBang::contract_registry`].
+pub fn register_contract_mutations(
+    contract: &Contract,
+) -> Result<Vec<Mutation>, PredicateEncodeError> {
     let mut muts = vec![];
 
     // Add the mutations that register the contract's salt and length.
@@ -197,21 +237,61 @@ pub fn register_contract_mutations(contract: &Contract) -> Result<Vec<Mutation>,
     Ok(muts)
 }
 
+/// Create a solution for registering the given program at the given program registry.
+pub fn register_program_solution(
+    program_registry: PredicateAddress,
+    program: &Program,
+) -> Solution {
+    Solution {
+        predicate_to_solve: program_registry,
+        predicate_data: vec![],
+        state_mutations: register_program_mutations(program),
+    }
+}
+
+/// Generate the mutations required to register a given program within the big bang's "program
+/// registry" contract. This is useful for constructing program deployment `Solution`s.
+///
+/// Learn more about the layout of state within the contract registry in
+/// [`BigBang::program_registry`].
+pub fn register_program_mutations(program: &Program) -> Vec<Mutation> {
+    let mut muts = vec![];
+
+    // Register the program.
+    let prog_ca = essential_hash::content_addr(program);
+    let prog_bytes = &program.0;
+    let len_bytes = prog_bytes.len();
+    // FIXME: relevant issue https://github.com/essential-contributions/essential-base/issues/240
+    let len_bytes_w = Word::try_from(len_bytes).expect("should be enforced by Program::MAX_SIZE");
+
+    // Add to the program `[0, <program-ca>]`
+    let key = program_registry::program_key(&prog_ca);
+    muts.push(Mutation {
+        key,
+        value: Some(len_bytes_w)
+            .into_iter()
+            .chain(padded_words_from_bytes(prog_bytes))
+            .collect(),
+    });
+
+    muts
+}
+
 /// Generate a solution that sets the block state to the given block number and timestamp.
 pub fn block_state_solution(
     block_state: PredicateAddress,
     block_number: Word,
     block_timestamp_secs: Word,
-) -> SolutionData {
-    SolutionData {
+) -> Solution {
+    Solution {
         predicate_to_solve: block_state,
-        decision_variables: vec![],
+        predicate_data: vec![],
         state_mutations: block_state_mutations(block_number, block_timestamp_secs),
     }
 }
 
 /// Generate the mutations required for a solution that sets the block state to the given block
-/// nubmer and timesatmp.
+/// number and timestamp.
 pub fn block_state_mutations(block_number: Word, block_timestamp_secs: Word) -> Vec<Mutation> {
     vec![
         Mutation {
