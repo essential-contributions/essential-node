@@ -73,14 +73,14 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<Content
     // Insert the header.
     let secs = block.timestamp.as_secs();
     let nanos = block.timestamp.subsec_nanos() as u64;
-    let solution_set_hashes: Vec<ContentAddress> =
+    let solution_set_addrs: Vec<ContentAddress> =
         block.solution_sets.iter().map(content_addr).collect();
     let block_address = essential_hash::block_addr::from_block_and_solution_set_addrs_slice(
         block,
-        &solution_set_hashes,
+        &solution_set_addrs,
     );
 
-    // TODO: Use real parent block address once blocks have parent hashes.
+    // TODO: Use real parent block address once blocks have parent addresses.
     let parent_block_address = ContentAddress([0; 32]);
 
     tx.execute(
@@ -104,32 +104,32 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<Content
     for (ix, (solution_set, ca)) in block
         .solution_sets
         .iter()
-        .zip(solution_set_hashes)
+        .zip(solution_set_addrs)
         .enumerate()
     {
         // Insert the solution set.
         stmt_solution_set.execute(named_params! {
-            ":content_hash": ca.0,
+            ":content_addr": ca.0,
         })?;
 
         // Create a mapping between the block and the solution set.
         stmt_block_solution_set.execute(named_params! {
             ":block_address": block_address.0,
-            ":solution_set_hash": &ca.0,
+            ":solution_set_addr": &ca.0,
             ":solution_set_index": ix,
         })?;
 
         // Insert solutions.
         for (solution_ix, solution) in solution_set.solutions.iter().enumerate() {
             stmt_solution.execute(named_params! {
-                ":solution_set_hash": ca.0,
+                ":solution_set_addr": ca.0,
                 ":solution_index": solution_ix,
                 ":contract_addr": solution.predicate_to_solve.contract.0,
                 ":predicate_addr": solution.predicate_to_solve.predicate.0,
             })?;
             for (mutation_ix, mutation) in solution.state_mutations.iter().enumerate() {
                 stmt_mutation.execute(named_params! {
-                    ":solution_set_hash": ca.0,
+                    ":solution_set_addr": ca.0,
                     ":solution_index": solution_ix,
                     ":mutation_index": mutation_ix,
                     ":key": blob_from_words(&mutation.key),
@@ -138,7 +138,7 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<Content
             }
             for (pred_data_ix, pred_data) in solution.predicate_data.iter().enumerate() {
                 stmt_pred_data.execute(named_params! {
-                    ":solution_set_hash": ca.0,
+                    ":solution_set_addr": ca.0,
                     ":solution_index": solution_ix,
                     ":pred_data_index": pred_data_ix,
                     ":value": blob_from_words(pred_data)
@@ -171,13 +171,13 @@ pub fn finalize_block(conn: &Connection, block_address: &ContentAddress) -> rusq
 pub fn insert_failed_block(
     conn: &Connection,
     block_address: &ContentAddress,
-    solution_set_hash: &ContentAddress,
+    solution_set_addr: &ContentAddress,
 ) -> rusqlite::Result<()> {
     conn.execute(
         sql::insert::FAILED_BLOCK,
         named_params! {
             ":block_address": block_address.0,
-            ":solution_set_hash": solution_set_hash.0,
+            ":solution_set_addr": solution_set_addr.0,
         },
     )?;
     Ok(())
@@ -256,7 +256,7 @@ pub fn get_solution_set(tx: &Transaction, ca: &ContentAddress) -> Result<Solutio
     for (solution_ix, solution) in solutions.iter_mut().enumerate() {
         // Fetch the mutations.
         let mut mutation_rows = mutations_stmt.query(named_params! {
-            ":content_hash": ca.0,
+            ":content_addr": ca.0,
             ":solution_index": solution_ix,
         })?;
         while let Some(mutation_row) = mutation_rows.next()? {
@@ -269,7 +269,7 @@ pub fn get_solution_set(tx: &Transaction, ca: &ContentAddress) -> Result<Solutio
 
         // Fetch the predicate data.
         let mut pred_data_rows = pred_data_stmt.query(named_params! {
-            ":content_hash": ca.0,
+            ":content_addr": ca.0,
             ":solution_index": solution_ix,
         })?;
         while let Some(pred_data_row) = pred_data_rows.next()? {
@@ -338,8 +338,8 @@ pub fn get_block(
             ":block_address": block_address.0,
         },
         |row| {
-            let solution_hash: Hash = row.get("content_hash")?;
-            Ok(ContentAddress(solution_hash))
+            let solution_addr: Hash = row.get("content_addr")?;
+            Ok(ContentAddress(solution_addr))
         },
     )?;
 
@@ -433,13 +433,13 @@ pub fn list_blocks(tx: &Transaction, block_range: Range<Word>) -> Result<Vec<Blo
             let block_number: Word = row.get("number")?;
             let timestamp_secs: u64 = row.get("timestamp_secs")?;
             let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
-            let solution_set_hash: Hash = row.get("content_hash")?;
+            let solution_set_addr: Hash = row.get("content_addr")?;
             let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
             Ok((
                 block_address,
                 block_number,
                 timestamp,
-                ContentAddress(solution_set_hash),
+                ContentAddress(solution_set_addr),
             ))
         },
     )?;
@@ -500,13 +500,13 @@ pub fn list_blocks_by_time(
             let block_number: Word = row.get("number")?;
             let timestamp_secs: u64 = row.get("timestamp_secs")?;
             let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
-            let solution_set_hash: Hash = row.get("content_hash")?;
+            let solution_set_addr: Hash = row.get("content_addr")?;
             let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
             Ok((
                 block_address,
                 block_number,
                 timestamp,
-                ContentAddress(solution_set_hash),
+                ContentAddress(solution_set_addr),
             ))
         },
     )?;
@@ -558,15 +558,15 @@ pub fn list_failed_blocks(
         },
         |row| {
             let block_number: Word = row.get("number")?;
-            let solution_set_hash: Hash = row.get("content_hash")?;
-            Ok((block_number, ContentAddress(solution_set_hash)))
+            let solution_set_addr: Hash = row.get("content_addr")?;
+            Ok((block_number, ContentAddress(solution_set_addr)))
         },
     )?;
 
     let mut failed_blocks = vec![];
     for res in rows {
-        let (block_number, solution_set_hash) = res?;
-        failed_blocks.push((block_number, solution_set_hash));
+        let (block_number, solution_set_addr) = res?;
+        failed_blocks.push((block_number, solution_set_addr));
     }
     Ok(failed_blocks)
 }
@@ -587,7 +587,7 @@ pub fn list_unchecked_blocks(
             let block_number: Word = row.get("number")?;
             let timestamp_secs: u64 = row.get("timestamp_secs")?;
             let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
-            let solution_set_addr: Hash = row.get("content_hash")?;
+            let solution_set_addr: Hash = row.get("content_addr")?;
             let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
             Ok((
                 block_address,

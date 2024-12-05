@@ -5,6 +5,6 @@ FROM
     solution_set
     JOIN solution ON solution.solution_set_id = solution_set.id
 WHERE
-    solution_set.content_hash = ?
+    solution_set.content_addr = ?
 ORDER BY
     solution.solution_index ASC;

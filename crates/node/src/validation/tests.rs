@@ -33,7 +33,7 @@ async fn can_validate() {
 
     const NUM_TEST_BLOCKS: Word = 4;
     let blocks = test_blocks_with_contracts(1, 1 + NUM_TEST_BLOCKS);
-    let hashes = blocks.iter().map(content_addr).collect::<Vec<_>>();
+    let block_addrs = blocks.iter().map(content_addr).collect::<Vec<_>>();
 
     let block_tx = BlockTx::new();
     let block_rx = block_tx.new_listener();
@@ -57,7 +57,7 @@ async fn can_validate() {
     insert_block_and_send_notification(&mut conn, &blocks[0], &block_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
     // Assert validation progress is block 0
-    assert_validation_progress_is_some(&conn, &hashes[0]);
+    assert_validation_progress_is_some(&conn, &block_addrs[0]);
 
     // Process block 1
     insert_block_and_send_notification(&mut conn, &blocks[1], &block_tx);
@@ -66,13 +66,13 @@ async fn can_validate() {
     insert_block_and_send_notification(&mut conn, &blocks[2], &block_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
     // Assert validation progress is block 2
-    assert_validation_progress_is_some(&conn, &hashes[2]);
+    assert_validation_progress_is_some(&conn, &block_addrs[2]);
 
     // Process block 3
     insert_block_and_send_notification(&mut conn, &blocks[3], &block_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
     // Assert validation progress is block 3
-    assert_validation_progress_is_some(&conn, &hashes[3]);
+    assert_validation_progress_is_some(&conn, &block_addrs[3]);
 
     handle.close().await.unwrap();
 }
@@ -136,7 +136,7 @@ async fn can_process_valid_and_invalid_blocks() {
     let invalid_block = test_invalid_block_with_contract(2, Duration::from_secs(2));
 
     let blocks = test_blocks;
-    let hashes = blocks.iter().map(content_addr).collect::<Vec<_>>();
+    let block_addrs = blocks.iter().map(content_addr).collect::<Vec<_>>();
 
     let block_tx = BlockTx::new();
     let block_rx = block_tx.new_listener();
@@ -160,13 +160,13 @@ async fn can_process_valid_and_invalid_blocks() {
     insert_block_and_send_notification(&mut conn, &blocks[0], &block_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
     // Assert validation progress is block 0
-    assert_validation_progress_is_some(&conn, &hashes[0]);
+    assert_validation_progress_is_some(&conn, &block_addrs[0]);
 
     // Process invalid block
     insert_block_and_send_notification(&mut conn, &invalid_block, &block_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
     // Assert validation progress is still block 0
-    assert_validation_progress_is_some(&conn, &hashes[0]);
+    assert_validation_progress_is_some(&conn, &block_addrs[0]);
     // Assert block is in failed blocks table
     let fetched_failed_blocks = db::list_failed_blocks(&conn, 0..10).unwrap();
     assert_eq!(fetched_failed_blocks.len(), 1);
@@ -180,7 +180,7 @@ async fn can_process_valid_and_invalid_blocks() {
     insert_block_and_send_notification(&mut conn, &blocks[1], &block_tx);
     tokio::time::sleep(Duration::from_millis(100)).await;
     // Assert validation progress is block 1
-    assert_validation_progress_is_some(&conn, &hashes[1]);
+    assert_validation_progress_is_some(&conn, &block_addrs[1]);
 
     handle.close().await.unwrap();
 }
