@@ -1,4 +1,4 @@
 INSERT
-    OR IGNORE INTO solution_set (content_hash)
+    OR IGNORE INTO solution_set (content_addr)
 VALUES
-    (:content_hash)
+    (:content_addr)

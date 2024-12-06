@@ -3,7 +3,7 @@ SELECT
     block.number,
     block.timestamp_secs,
     block.timestamp_nanos,
-    solution_set.content_hash
+    solution_set.content_addr
 
 FROM
     block

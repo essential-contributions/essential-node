@@ -8,7 +8,7 @@ VALUES
             FROM
                 solution_set
             WHERE
-                content_hash = :solution_set_hash
+                content_addr = :solution_set_addr
             LIMIT
                 1
         ), :solution_index, :contract_addr, :predicate_addr

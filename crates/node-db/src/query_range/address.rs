@@ -53,10 +53,10 @@ pub fn query_state_exclusive_block(
     key: &Key,
     block_address: &ContentAddress,
 ) -> Result<Option<Value>, QueryError> {
-    let Some(parent_hash) = crate::get_parent_block_address(tx, block_address)? else {
+    let Some(parent_addr) = crate::get_parent_block_address(tx, block_address)? else {
         return Ok(None);
     };
-    query_state_inclusive_block(tx, contract_ca, key, &parent_hash)
+    query_state_inclusive_block(tx, contract_ca, key, &parent_addr)
 }
 
 /// Query for the most recent version value of a key in a contracts state

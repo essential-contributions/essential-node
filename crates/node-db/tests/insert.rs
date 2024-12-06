@@ -44,7 +44,7 @@ fn test_insert_block() {
         for solution_set in block.solution_sets.iter() {
             // Verify solution set was inserted
             let solution_set_address = &content_addr(solution_set);
-            let query = "SELECT 1 FROM solution_set WHERE content_hash = ?";
+            let query = "SELECT 1 FROM solution_set WHERE content_addr = ?";
             let mut stmt = conn.prepare(query).unwrap();
             let mut rows = stmt.query([&solution_set_address.0]).unwrap();
             let row = rows.next().unwrap().unwrap();
@@ -55,7 +55,7 @@ fn test_insert_block() {
                 // Verify solution was inserted corectly
                 let query = "SELECT solution.contract_addr, solution.predicate_addr
                     FROM solution JOIN solution_set ON solution.solution_set_id = solution_set.id
-                    WHERE solution_set.content_hash = ? AND solution.solution_index = ?";
+                    WHERE solution_set.content_addr = ? AND solution.solution_index = ?";
                 let mut stmt = conn.prepare(query).unwrap();
                 let mut rows = stmt
                     .query(params![solution_set_address.0, solution_ix as i64])
@@ -77,7 +77,7 @@ fn test_insert_block() {
                     let query = "SELECT mutation.key FROM mutation
                     JOIN solution ON solution.id = mutation.solution_id
                     JOIN solution_set ON solution.solution_set_id = solution_set.id
-                    WHERE solution_set.content_hash = ? AND mutation.mutation_index = ? AND solution.solution_index = ?
+                    WHERE solution_set.content_addr = ? AND mutation.mutation_index = ? AND solution.solution_index = ?
                     ORDER BY mutation.mutation_index ASC";
                     let mut stmt = conn.prepare(query).unwrap();
                     let mut result = stmt
@@ -101,7 +101,7 @@ fn test_insert_block() {
                     let query = "SELECT pred_data.value FROM pred_data
                         JOIN solution ON solution.id = pred_data.solution_id
                         JOIN solution_set ON solution.solution_set_id = solution_set.id
-                        WHERE solution.solution_index = ? AND pred_data.pred_data_index = ? AND solution_set.content_hash = ?";
+                        WHERE solution.solution_index = ? AND pred_data.pred_data_index = ? AND solution_set.content_addr = ?";
                     let mut stmt = conn.prepare(query).unwrap();
                     let mut pred_data_result = stmt
                         .query_map(params![solution_ix, pdi, solution_set_address.0], |row| {
@@ -235,26 +235,26 @@ fn test_failed_block() {
 
     // Insert failed block.
     let block_address = content_addr(&blocks[0]);
-    let solution_set_hash = content_addr(blocks[0].solution_sets.first().unwrap());
-    node_db::insert_failed_block(&conn, &block_address, &solution_set_hash).unwrap();
+    let solution_set_addr = content_addr(blocks[0].solution_sets.first().unwrap());
+    node_db::insert_failed_block(&conn, &block_address, &solution_set_addr).unwrap();
 
     // Check failed blocks.
     let failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
     assert_eq!(failed_blocks.len(), 1);
     assert_eq!(failed_blocks[0].0, blocks[0].number);
-    assert_eq!(failed_blocks[0].1, solution_set_hash);
+    assert_eq!(failed_blocks[0].1, solution_set_addr);
 
     // Same failed block should not be inserted again.
-    node_db::insert_failed_block(&conn, &block_address, &solution_set_hash).unwrap();
+    node_db::insert_failed_block(&conn, &block_address, &solution_set_addr).unwrap();
     let failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
     assert_eq!(failed_blocks.len(), 1);
     assert_eq!(failed_blocks[0].0, blocks[0].number);
-    assert_eq!(failed_blocks[0].1, solution_set_hash);
+    assert_eq!(failed_blocks[0].1, solution_set_addr);
 
     // Insert another failed block.
     let block_address = content_addr(&blocks[1]);
-    let solution_set_hash = content_addr(blocks[1].solution_sets.first().unwrap());
-    node_db::insert_failed_block(&conn, &block_address, &solution_set_hash).unwrap();
+    let solution_set_addr = content_addr(blocks[1].solution_sets.first().unwrap());
+    node_db::insert_failed_block(&conn, &block_address, &solution_set_addr).unwrap();
 
     let failed_blocks = node_db::with_tx_dropped(&mut conn, |tx| {
         let r = node_db::list_blocks(tx, 0..(NUM_BLOCKS + 10)).unwrap();
@@ -267,7 +267,7 @@ fn test_failed_block() {
 
     assert_eq!(failed_blocks.len(), 2);
     assert_eq!(failed_blocks[1].0, blocks[1].number);
-    assert_eq!(failed_blocks[1].1, solution_set_hash);
+    assert_eq!(failed_blocks[1].1, solution_set_addr);
 }
 
 #[test]

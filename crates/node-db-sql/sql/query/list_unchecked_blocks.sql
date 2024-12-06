@@ -3,7 +3,7 @@ SELECT
     block.number,
     block.timestamp_secs,
     block.timestamp_nanos,
-    solution_set.content_hash
+    solution_set.content_addr
 FROM
     block
     LEFT JOIN block_solution_set ON block.id = block_solution_set.block_id

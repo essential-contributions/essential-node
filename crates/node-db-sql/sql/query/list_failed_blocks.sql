@@ -1,6 +1,6 @@
 SELECT
     block.number,
-    solution_set.content_hash
+    solution_set.content_addr
 FROM
     failed_block
     JOIN block ON failed_block.block_id = block.id
@@ -10,4 +10,4 @@ WHERE
 ORDER BY
     block.number ASC,
     block.block_address ASC,
-    solution_set.content_hash ASC;
+    solution_set.content_addr ASC;

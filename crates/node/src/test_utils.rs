@@ -272,11 +272,11 @@ pub fn test_predicate(seed: Word) -> (Predicate, Vec<Program>) {
 }
 
 // Check that the validation progress in the database is block number and hash
-pub fn assert_validation_progress_is_some(conn: &Connection, hash: &ContentAddress) {
-    let progress_hash = get_validation_progress(conn)
+pub fn assert_validation_progress_is_some(conn: &Connection, addr: &ContentAddress) {
+    let progress_addr = get_validation_progress(conn)
         .unwrap()
         .expect("validation progress should be some");
-    assert_eq!(progress_hash, *hash);
+    assert_eq!(progress_addr, *addr);
 }
 
 // Check that the validation in the database is none
