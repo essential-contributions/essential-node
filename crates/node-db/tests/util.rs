@@ -3,12 +3,12 @@
 use essential_check::vm::asm;
 use essential_hash::content_addr;
 use essential_node_db::{self as db, ConnectionPool};
-use essential_node_types::{register_contract_solution, BigBang};
+use essential_node_types::{register_contract_solution, BigBang, Block, BlockHeader};
 use essential_types::{
     contract::Contract,
     predicate::{Edge, Node, Predicate, PredicateEncodeError, Program, Reads},
     solution::{Mutation, Solution, SolutionSet},
-    Block, ContentAddress, PredicateAddress, Word,
+    ContentAddress, PredicateAddress, Word,
 };
 use rusqlite::Connection;
 use std::time::Duration;
@@ -79,8 +79,10 @@ pub fn test_blocks(n: Word) -> Vec<Block> {
 pub fn test_block(number: Word, timestamp: Duration) -> Block {
     let seed = number * 79;
     Block {
-        number,
-        timestamp,
+        header: BlockHeader {
+            number,
+            timestamp,
+        },
         solution_sets: (0..3).map(|i| test_solution_set(seed * (1 + i))).collect(),
     }
 }
@@ -181,8 +183,10 @@ pub fn register_contracts_block<'a>(
 ) -> Result<Block, PredicateEncodeError> {
     let solution_set = register_contracts_solution_set(contract_registry, contracts)?;
     Ok(Block {
+        header: BlockHeader {
+            number: block_number,
+            timestamp: block_timestamp,
+        },
         solution_sets: vec![solution_set],
-        number: block_number,
-        timestamp: block_timestamp,
     })
 }

@@ -3,14 +3,18 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+#[doc(inline)]
+pub use block::{Block, Header as BlockHeader};
 use essential_types::{
     contract::Contract,
     convert::{word_4_from_u8_32, word_from_bytes_slice},
     predicate::{PredicateEncodeError, Program},
     solution::{Mutation, Solution, SolutionSet},
-    Block, PredicateAddress, Word,
+    PredicateAddress, Word,
 };
 use serde::{Deserialize, Serialize};
+
+pub mod block;
 
 /// Wrappers around tokio's `watch` channel for notifying of new blocks.
 #[cfg(feature = "block-notify")]
@@ -91,8 +95,10 @@ impl BigBang {
     /// Produce the big bang [`Block`].
     pub fn block(&self) -> Block {
         Block {
-            number: 0,
-            timestamp: std::time::Duration::from_secs(0),
+            header: BlockHeader {
+                number: 0,
+                timestamp: std::time::Duration::from_secs(0),
+            },
             solution_sets: vec![self.solution_set.clone()],
         }
     }

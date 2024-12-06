@@ -1,8 +1,6 @@
 use essential_node_db::{self as db, with_tx, ConnectionPool};
-use essential_node_types::block_notify::BlockTx;
-use essential_types::Block;
-use essential_types::ContentAddress;
-use essential_types::Word;
+use essential_node_types::{block_notify::BlockTx, Block};
+use essential_types::{ContentAddress, Word};
 use futures::stream::TryStreamExt;
 use futures::Stream;
 
@@ -32,11 +30,11 @@ pub async fn get_block_progress(
             let Some(block_address) = db::get_latest_finalized_block_address(tx)? else {
                 return Ok(None);
             };
-            let Some((block_number, _ts)) = db::get_block_header(tx, &block_address)? else {
+            let Some(header) = db::get_block_header(tx, &block_address)? else {
                 return Ok(None);
             };
             Ok(Some(BlockProgress {
-                last_block_number: block_number,
+                last_block_number: header.number,
                 last_block_address: block_address,
             }))
         })
@@ -86,23 +84,25 @@ where
     stream
         .try_for_each(move |block| {
             // Check this block is the expect `N + 1`.
-            let sequential_block = block.number == block_number;
+            let sequential_block = block.header.number == block_number;
 
             // Increment the block number for the next block.
-            block_number = block.number.saturating_add(1);
+            block_number = block.header.number.saturating_add(1);
 
             let notify = notify.clone();
             let pool = pool.clone();
             async move {
                 // If the block is not sequential, return an error.
                 if !sequential_block {
-                    return Err(
-                        RecoverableError::NonSequentialBlock(block_number, block.number).into(),
-                    );
+                    return Err(RecoverableError::NonSequentialBlock(
+                        block_number,
+                        block.header.number,
+                    )
+                    .into());
                 }
 
                 #[cfg(feature = "tracing")]
-                tracing::debug!("Writing block number {} to database", block.number);
+                tracing::debug!("Writing block number {} to database", block.header.number);
 
                 // Write the block to the database.
                 write_block(&pool, block)

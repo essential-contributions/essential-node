@@ -5,8 +5,8 @@
 
 use crate::{with_tx, AcquireConnection, AwaitNewBlock, QueryError};
 use core::ops::Range;
-use essential_node_types::block_notify::BlockRx;
-use essential_types::{solution::SolutionSet, Block, ContentAddress, Key, Value, Word};
+use essential_node_types::{block_notify::BlockRx, Block};
+use essential_types::{solution::SolutionSet, ContentAddress, Key, Value, Word};
 use futures::Stream;
 use rusqlite_pool::tokio::{AsyncConnectionHandle, AsyncConnectionPool};
 use std::{path::PathBuf, sync::Arc, time::Duration};
@@ -240,11 +240,15 @@ impl ConnectionPool {
             let Some(addr) = crate::get_latest_finalized_block_address(&tx)? else {
                 return Ok(None);
             };
-            let Some((number, _)) = crate::get_block_header(&tx, &addr)? else {
+            let Some(header) = crate::get_block_header(&tx, &addr)? else {
                 return Ok(None);
             };
-            let value =
-                crate::finalized::query_state_inclusive_block(&tx, &contract_ca, &key, number)?;
+            let value = crate::finalized::query_state_inclusive_block(
+                &tx,
+                &contract_ca,
+                &key,
+                header.number,
+            )?;
             tx.finish()?;
             Ok(value)
         })
