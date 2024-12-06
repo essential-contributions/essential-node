@@ -15,10 +15,11 @@ pub use error::QueryError;
 use essential_hash::content_addr;
 #[doc(inline)]
 pub use essential_node_db_sql as sql;
+use essential_node_types::{block, Block, BlockHeader};
 use essential_types::{
     convert::{bytes_from_word, word_from_bytes},
     solution::{Mutation, Solution, SolutionSet},
-    Block, ContentAddress, Hash, Key, PredicateAddress, Value, Word,
+    ContentAddress, Hash, Key, PredicateAddress, Value, Word,
 };
 use futures::Stream;
 #[cfg(feature = "pool")]
@@ -71,14 +72,12 @@ pub fn create_tables(tx: &Transaction) -> rusqlite::Result<()> {
 /// Returns the `ContentAddress` of the inserted block.
 pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<ContentAddress> {
     // Insert the header.
-    let secs = block.timestamp.as_secs();
-    let nanos = block.timestamp.subsec_nanos() as u64;
+    let secs = block.header.timestamp.as_secs();
+    let nanos = block.header.timestamp.subsec_nanos() as u64;
     let solution_set_addrs: Vec<ContentAddress> =
         block.solution_sets.iter().map(content_addr).collect();
-    let block_address = essential_hash::block_addr::from_block_and_solution_set_addrs_slice(
-        block,
-        &solution_set_addrs,
-    );
+    let block_address =
+        block::addr::from_header_and_solution_set_addrs_slice(&block.header, &solution_set_addrs);
 
     // TODO: Use real parent block address once blocks have parent addresses.
     let parent_block_address = ContentAddress([0; 32]);
@@ -88,7 +87,7 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<Content
         named_params! {
             ":block_address": block_address.0,
             ":parent_block_address": parent_block_address.0,
-            ":number": block.number,
+            ":number": block.header.number,
             ":timestamp_secs": secs,
             ":timestamp_nanos": nanos,
         },
@@ -307,7 +306,7 @@ pub fn query_state(
 pub fn get_block_header(
     conn: &Connection,
     block_address: &ContentAddress,
-) -> rusqlite::Result<Option<(Word, Duration)>> {
+) -> rusqlite::Result<Option<BlockHeader>> {
     conn.query_row(
         sql::query::GET_BLOCK_HEADER,
         named_params! {
@@ -318,7 +317,7 @@ pub fn get_block_header(
             let timestamp_secs: u64 = row.get("timestamp_secs")?;
             let timestamp_nanos: u32 = row.get("timestamp_nanos")?;
             let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
-            Ok((number, timestamp))
+            Ok(BlockHeader { number, timestamp })
         },
     )
     .optional()
@@ -329,7 +328,7 @@ pub fn get_block(
     tx: &Transaction,
     block_address: &ContentAddress,
 ) -> Result<Option<Block>, QueryError> {
-    let Some((block_number, timestamp)) = get_block_header(tx, block_address)? else {
+    let Some(header) = get_block_header(tx, block_address)? else {
         return Ok(None);
     };
     let mut stmt = tx.prepare(sql::query::GET_BLOCK)?;
@@ -344,8 +343,7 @@ pub fn get_block(
     )?;
 
     let mut block = Block {
-        number: block_number,
-        timestamp,
+        header,
         solution_sets: vec![],
     };
     for res in rows {
@@ -461,8 +459,10 @@ pub fn list_blocks(tx: &Transaction, block_range: Range<Word>) -> Result<Vec<Blo
             _ => {
                 last_block_address = Some(block_address);
                 blocks.push(Block {
-                    number: block_number,
-                    timestamp,
+                    header: BlockHeader {
+                        number: block_number,
+                        timestamp,
+                    },
                     solution_sets: vec![],
                 });
                 blocks.last_mut().expect("last block must exist")
@@ -528,8 +528,10 @@ pub fn list_blocks_by_time(
             _ => {
                 last_block_address = Some(block_address);
                 blocks.push(Block {
-                    number: block_number,
-                    timestamp,
+                    header: BlockHeader {
+                        number: block_number,
+                        timestamp,
+                    },
                     solution_sets: vec![],
                 });
                 blocks.last_mut().expect("last block must exist")
@@ -615,8 +617,10 @@ pub fn list_unchecked_blocks(
             _ => {
                 last_block_address = Some(block_address);
                 blocks.push(Block {
-                    number: block_number,
-                    timestamp,
+                    header: BlockHeader {
+                        number: block_number,
+                        timestamp,
+                    },
                     solution_sets: vec![],
                 });
                 blocks.last_mut().expect("last block must exist")

@@ -7,7 +7,7 @@
 
 use super::BlockProgress;
 use crate::error::{CriticalError, InternalError, InternalResult, RecoverableError};
-use essential_types::Block;
+use essential_node_types::Block;
 use futures::{Stream, TryStreamExt};
 use reqwest::{Client, Url};
 use std::marker::PhantomData;

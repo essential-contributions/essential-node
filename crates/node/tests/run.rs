@@ -15,8 +15,7 @@ use essential_node::{
     RunConfig,
 };
 use essential_node_db as node_db;
-use essential_node_types::{block_notify::BlockTx, BigBang};
-use essential_types::Block;
+use essential_node_types::{block_notify::BlockTx, BigBang, Block};
 use rusqlite::Connection;
 
 const LOCALHOST: &str = "127.0.0.1";
@@ -169,14 +168,18 @@ fn assert_submit_block_effects(conn: &mut Connection, expected_blocks: Vec<Block
     let fetched_blocks = node_db::with_tx_dropped(conn, |tx| {
         db::list_blocks(
             tx,
-            expected_blocks[0].number..expected_blocks[expected_blocks.len() - 1].number + 1,
+            expected_blocks[0].header.number
+                ..expected_blocks[expected_blocks.len() - 1].header.number + 1,
         )
     })
     .unwrap();
 
     for (i, expected_block) in expected_blocks.iter().enumerate() {
         // Check if the block was added to the database
-        assert_eq!(fetched_blocks[i].number, expected_block.number);
+        assert_eq!(
+            fetched_blocks[i].header.number,
+            expected_block.header.number
+        );
         assert_eq!(
             fetched_blocks[i].solution_sets.len(),
             expected_block.solution_sets.len()

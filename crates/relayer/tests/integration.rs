@@ -3,15 +3,14 @@ use essential_node::db::{
     pool::{Config, Source},
     ConnectionPool,
 };
-use essential_node_types::block_notify::BlockTx;
-
 use essential_node_db as node_db;
+use essential_node_types::{block_notify::BlockTx, Block, BlockHeader};
 use essential_relayer::{DataSyncError, Relayer};
 use essential_types::{
     contract::Contract,
     predicate::Predicate,
     solution::{Mutation, Solution, SolutionSet},
-    Block, PredicateAddress, Word,
+    PredicateAddress, Word,
 };
 use std::sync::Arc;
 use tokio::{sync::oneshot::Sender, task::JoinHandle};
@@ -53,7 +52,7 @@ async fn test_sync() {
             .unwrap();
 
     assert_eq!(result.len(), 1);
-    assert_eq!(result[0].number, 0);
+    assert_eq!(result[0].header.number, 0);
     assert_eq!(result[0].solution_sets.len(), 1);
     assert_eq!(result[0].solution_sets[0], solution_sets[0]);
 
@@ -67,7 +66,7 @@ async fn test_sync() {
             .unwrap();
 
     assert_eq!(result.len(), 2);
-    assert_eq!(result[1].number, 1);
+    assert_eq!(result[1].header.number, 1);
     assert_eq!(result[1].solution_sets.len(), 1);
     assert_eq!(result[1].solution_sets[0], solution_sets[1]);
 
@@ -112,7 +111,7 @@ async fn test_sync() {
     assert!(result
         .iter()
         .zip(result.iter().skip(1))
-        .all(|(a, b)| a.number + 1 == b.number));
+        .all(|(a, b)| a.header.number + 1 == b.header.number));
 
     let num_blocks = result.len();
 
@@ -261,8 +260,10 @@ fn test_structs() -> (Vec<SolutionSet>, Vec<Arc<Block>>) {
         .enumerate()
         .map(|(i, s)| {
             Arc::new(Block {
-                number: i as Word,
-                timestamp: std::time::Duration::from_secs(i as u64),
+                header: BlockHeader {
+                    number: i as Word,
+                    timestamp: std::time::Duration::from_secs(i as u64),
+                },
                 solution_sets: vec![s.clone()],
             })
         })

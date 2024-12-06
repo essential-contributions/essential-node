@@ -9,8 +9,8 @@ use axum::{
     Json,
 };
 use essential_node::db;
-use essential_node_types::block_notify::BlockRx;
-use essential_types::{convert::word_from_bytes, Block, ContentAddress, Value, Word};
+use essential_node_types::{block_notify::BlockRx, Block};
+use essential_types::{convert::word_from_bytes, ContentAddress, Value, Word};
 use futures::{Stream, StreamExt};
 use serde::Deserialize;
 use thiserror::Error;

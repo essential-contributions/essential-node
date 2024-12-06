@@ -1,6 +1,7 @@
 use essential_hash::content_addr;
 use essential_node_db::{self as node_db};
-use essential_types::{Block, ContentAddress, Word};
+use essential_node_types::{Block, BlockHeader};
+use essential_types::{ContentAddress, Word};
 use std::time::Duration;
 use util::{test_block, test_blocks_with_vars, test_conn};
 
@@ -32,13 +33,17 @@ fn test_get_repeated_solution_set() {
     // The test solution set and blocks.
     let solution_set = util::test_solution_set(42);
     let block = Block {
-        number: 1,
-        timestamp: Duration::from_secs(1),
+        header: BlockHeader {
+            number: 1,
+            timestamp: Duration::from_secs(1),
+        },
         solution_sets: vec![solution_set.clone()],
     };
     let block2 = Block {
-        number: 2,
-        timestamp: Duration::from_secs(2),
+        header: BlockHeader {
+            number: 2,
+            timestamp: Duration::from_secs(2),
+        },
         solution_sets: vec![solution_set.clone()],
     };
 
@@ -72,13 +77,17 @@ fn test_block_solution_set_ordering() {
     let solution_set = util::test_solution_set(42);
     let solution_set2 = util::test_solution_set(43);
     let block = Block {
-        number: 1,
-        timestamp: Duration::from_secs(1),
+        header: BlockHeader {
+            number: 1,
+            timestamp: Duration::from_secs(1),
+        },
         solution_sets: vec![solution_set.clone()],
     };
     let block2 = Block {
-        number: 2,
-        timestamp: Duration::from_secs(2),
+        header: BlockHeader {
+            number: 2,
+            timestamp: Duration::from_secs(2),
+        },
         solution_sets: vec![solution_set2.clone(), solution_set.clone()],
     };
 
@@ -176,7 +185,7 @@ fn test_list_blocks_by_time() {
     // Filter the original blocks to match the time range.
     let expected_blocks: Vec<_> = blocks
         .into_iter()
-        .filter(|block| block.timestamp >= start_time && block.timestamp < end_time)
+        .filter(|block| block.header.timestamp >= start_time && block.header.timestamp < end_time)
         .collect();
 
     assert_eq!(expected_blocks, fetched_blocks);
@@ -185,7 +194,7 @@ fn test_list_blocks_by_time() {
 #[test]
 fn get_block_header() {
     let blocks = util::test_blocks(10);
-    let headers: Vec<_> = blocks.iter().map(|b| (b.number, b.timestamp)).collect();
+    let headers: Vec<_> = blocks.iter().map(|b| b.header.clone()).collect();
 
     // Create an in-memory SQLite database.
     let mut conn = test_conn();
@@ -232,30 +241,31 @@ fn test_query_at_finalized() {
                         &tx,
                         &contract_addr,
                         &mutation.key,
-                        block.number,
+                        block.header.number,
                     )
                     .unwrap()
                     .unwrap();
                     assert_eq!(
                         state, block.solution_sets[2].solutions[si].state_mutations[mi].value,
                         "block: {}, sol_set: {}, sol, {}, mut: {}, k: {:?}, v: {:?}",
-                        block.number, ssi, si, mi, mutation.key, mutation.value
+                        block.header.number, ssi, si, mi, mutation.key, mutation.value
                     );
 
                     let state = node_db::finalized::query_state_exclusive_block(
                         &tx,
                         &contract_addr,
                         &mutation.key,
-                        block.number,
+                        block.header.number,
                     )
                     .unwrap();
 
-                    if block.number == 0 {
+                    if block.header.number == 0 {
                         assert_eq!(state, None);
                     } else {
                         assert_eq!(
                             state.unwrap(),
-                            blocks[(block.number - 1) as usize].solution_sets[2].solutions[si]
+                            blocks[(block.header.number - 1) as usize].solution_sets[2].solutions
+                                [si]
                                 .state_mutations[mi]
                                 .value
                         );
@@ -265,7 +275,7 @@ fn test_query_at_finalized() {
                         &tx,
                         &contract_addr,
                         &mutation.key,
-                        block.number,
+                        block.header.number,
                         ssi as u64,
                     )
                     .unwrap()
@@ -273,24 +283,25 @@ fn test_query_at_finalized() {
                     assert_eq!(
                         state, mutation.value,
                         "block: {}, sol_set: {}, sol, {}, mut: {}, k: {:?}, v: {:?}",
-                        block.number, ssi, si, mi, mutation.key, mutation.value
+                        block.header.number, ssi, si, mi, mutation.key, mutation.value
                     );
 
                     let state = node_db::finalized::query_state_exclusive_solution_set(
                         &tx,
                         &contract_addr,
                         &mutation.key,
-                        block.number,
+                        block.header.number,
                         ssi as u64,
                     )
                     .unwrap();
 
-                    if block.number == 0 && ssi == 0 {
+                    if block.header.number == 0 && ssi == 0 {
                         assert_eq!(state, None);
                     } else if ssi == 0 {
                         assert_eq!(
                             state.unwrap(),
-                            blocks[(block.number - 1) as usize].solution_sets[2].solutions[si]
+                            blocks[(block.header.number - 1) as usize].solution_sets[2].solutions
+                                [si]
                                 .state_mutations[mi]
                                 .value
                         );
@@ -477,7 +488,7 @@ fn test_query_state_block_address() {
 
     for fork in forks {
         let block_address = node_db::insert_block(&tx, &fork).unwrap();
-        let prev_addr = content_addr(&blocks[fork.number as usize - 1]);
+        let prev_addr = content_addr(&blocks[fork.header.number as usize - 1]);
         tx.execute(
             "UPDATE block SET parent_block_id = (SELECT id FROM block WHERE block_address = ?) WHERE block_address = ?",
             [prev_addr.0, block_address.0],
@@ -501,7 +512,7 @@ fn test_query_state_block_address() {
                     assert_eq!(
                         state, block.solution_sets[2].solutions[si].state_mutations[mi].value,
                         "block: {}, sol_set: {}, sol: {}, mut: {}, k: {:?}, v: {:?}",
-                        block.number, ssi, si, mi, mutation.key, mutation.value
+                        block.header.number, ssi, si, mi, mutation.key, mutation.value
                     );
 
                     let state = node_db::address::query_state_exclusive_block(
@@ -512,12 +523,13 @@ fn test_query_state_block_address() {
                     )
                     .unwrap();
 
-                    if block.number == 0 {
+                    if block.header.number == 0 {
                         assert_eq!(state, None);
                     } else {
                         assert_eq!(
                             state.unwrap(),
-                            blocks[(block.number - 1) as usize].solution_sets[2].solutions[si]
+                            blocks[(block.header.number - 1) as usize].solution_sets[2].solutions
+                                [si]
                                 .state_mutations[mi]
                                 .value
                         );
@@ -535,7 +547,7 @@ fn test_query_state_block_address() {
                     assert_eq!(
                         state, mutation.value,
                         "block: {}, sol_set: {}, sol: {}, mut: {}, k: {:?}, v: {:?}",
-                        block.number, ssi, si, mi, mutation.key, mutation.value
+                        block.header.number, ssi, si, mi, mutation.key, mutation.value
                     );
 
                     let state = node_db::address::query_state_exclusive_solution_set(
@@ -547,12 +559,13 @@ fn test_query_state_block_address() {
                     )
                     .unwrap();
 
-                    if block.number == 0 && ssi == 0 {
+                    if block.header.number == 0 && ssi == 0 {
                         assert_eq!(state, None);
                     } else if ssi == 0 {
                         assert_eq!(
                             state.unwrap(),
-                            blocks[(block.number - 1) as usize].solution_sets[2].solutions[si]
+                            blocks[(block.header.number - 1) as usize].solution_sets[2].solutions
+                                [si]
                                 .state_mutations[mi]
                                 .value
                         );

@@ -16,11 +16,12 @@ use essential_check::{
     solution::{check_set_predicates, CheckPredicateConfig, PredicatesError},
     vm::{Gas, StateRead},
 };
+use essential_node_types::{Block, BlockHeader};
 use essential_types::{
     convert::bytes_from_word,
     predicate::{Predicate, Program},
     solution::{Solution, SolutionSet},
-    Block, ContentAddress, Key, PredicateAddress, Value, Word,
+    ContentAddress, Key, PredicateAddress, Value, Word,
 };
 use futures::FutureExt;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
@@ -142,15 +143,17 @@ pub async fn validate_solution_set_dry_run(
     let tx = conn.transaction()?;
     let number = match db::get_latest_finalized_block_address(&tx)? {
         Some(address) => db::get_block_header(&tx, &address)?
-            .map(|(number, _ts)| number)
+            .map(|header| header.number)
             .unwrap_or(1),
         None => 1,
     };
     let block = Block {
-        number,
-        timestamp: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("time must be valid"),
+        header: BlockHeader {
+            number,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time must be valid"),
+        },
         solution_sets: vec![solution_set],
     };
     drop(tx);
@@ -201,13 +204,13 @@ async fn validate_inner(
     // Check predicates and programs.
     for (solution_set_index, solution_set) in block.solution_sets.iter().enumerate() {
         let pre_state = State {
-            block_number: block.number,
+            block_number: block.header.number,
             solution_set_index: solution_set_index as u64,
             pre_state: true,
             conn_pool: conn.clone(),
         };
         let post_state = State {
-            block_number: block.number,
+            block_number: block.header.number,
             solution_set_index: solution_set_index as u64,
             pre_state: false,
             conn_pool: conn.clone(),
@@ -307,7 +310,7 @@ async fn validate_inner(
                 #[cfg(feature = "tracing")]
                 tracing::debug!(
                     "Validation failed for block with number {} and address {} at solution set index {} with error {}",
-                    block.number,
+                    block.header.number,
                     essential_hash::content_addr(block),
                     solution_set_index,
                     err
@@ -323,7 +326,7 @@ async fn validate_inner(
     #[cfg(feature = "tracing")]
     tracing::debug!(
         "Validation successful for block with number {} and address {}. Gas: {}",
-        block.number,
+        block.header.number,
         essential_hash::content_addr(block),
         total_gas
     );

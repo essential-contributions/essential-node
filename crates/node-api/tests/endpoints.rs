@@ -1,7 +1,7 @@
 use essential_node::{self as node};
 use essential_node_api as node_api;
-use essential_node_types::block_notify::BlockTx;
-use essential_types::{convert::bytes_from_word, Block, Value};
+use essential_node_types::{block_notify::BlockTx, Block};
+use essential_types::{convert::bytes_from_word, Value};
 use futures::{StreamExt, TryStreamExt};
 use tokio_util::{
     bytes::{self, Buf},

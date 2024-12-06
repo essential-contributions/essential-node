@@ -11,12 +11,14 @@ use crate::{
 };
 use essential_check::vm::asm;
 use essential_hash::content_addr;
-use essential_node_types::{register_contract_solution, register_program_solution, BigBang};
+use essential_node_types::{
+    register_contract_solution, register_program_solution, BigBang, Block, BlockHeader,
+};
 use essential_types::{
     contract::Contract,
     predicate::{Edge, Node, Predicate, PredicateEncodeError, Program, Reads},
     solution::{Mutation, Solution, SolutionSet},
-    Block, ContentAddress, PredicateAddress, Word,
+    ContentAddress, PredicateAddress, Word,
 };
 use rusqlite::Connection;
 use std::time::Duration;
@@ -103,8 +105,7 @@ pub fn test_block(number: Word, timestamp: Duration) -> (Block, Vec<Contract>, V
 
     (
         Block {
-            number,
-            timestamp,
+            header: BlockHeader { number, timestamp },
             solution_sets,
         },
         contracts,
@@ -162,8 +163,7 @@ pub fn test_invalid_block(number: Word, timestamp: Duration) -> (Block, Contract
 
     (
         Block {
-            number,
-            timestamp,
+            header: BlockHeader { number, timestamp },
             solution_sets: vec![solution_set],
         },
         contract,
@@ -294,7 +294,7 @@ pub fn assert_multiple_block_mutations(conn: &Connection, blocks: &[&Block]) {
                         conn,
                         &solution.predicate_to_solve.contract,
                         &mutation.key,
-                        block.number,
+                        block.header.number,
                     )
                     .unwrap()
                     .unwrap();
@@ -338,8 +338,10 @@ pub fn register_contracts_block<'a>(
 ) -> Result<Block, PredicateEncodeError> {
     let solution_set = register_contracts_solution_set(contract_registry, contracts)?;
     Ok(Block {
+        header: BlockHeader {
+            number: block_number,
+            timestamp: block_timestamp,
+        },
         solution_sets: vec![solution_set],
-        number: block_number,
-        timestamp: block_timestamp,
     })
 }
