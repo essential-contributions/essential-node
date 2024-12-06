@@ -7,8 +7,8 @@ use crate::{
     },
 };
 use essential_node_db as node_db;
-use essential_node_types::{block_notify::BlockTx, BigBang};
-use essential_types::{Block, Word};
+use essential_node_types::{block_notify::BlockTx, BigBang, Block};
+use essential_types::Word;
 use rusqlite::Connection;
 use std::time::Duration;
 
@@ -110,7 +110,7 @@ async fn test_invalid_block_validation() {
     // Assert block is in failed blocks table
     let fetched_failed_blocks = db::list_failed_blocks(&conn, 0..10).unwrap();
     assert_eq!(fetched_failed_blocks.len(), 1);
-    assert_eq!(fetched_failed_blocks[0].0, block.number);
+    assert_eq!(fetched_failed_blocks[0].0, block.header.number);
     assert_eq!(
         fetched_failed_blocks[0].1,
         content_addr(&block.solution_sets[0])
@@ -170,7 +170,7 @@ async fn can_process_valid_and_invalid_blocks() {
     // Assert block is in failed blocks table
     let fetched_failed_blocks = db::list_failed_blocks(&conn, 0..10).unwrap();
     assert_eq!(fetched_failed_blocks.len(), 1);
-    assert_eq!(fetched_failed_blocks[0].0, invalid_block.number);
+    assert_eq!(fetched_failed_blocks[0].0, invalid_block.header.number);
     assert_eq!(
         fetched_failed_blocks[0].1,
         content_addr(&invalid_block.solution_sets[0])

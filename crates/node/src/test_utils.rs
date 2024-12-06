@@ -105,10 +105,7 @@ pub fn test_block(number: Word, timestamp: Duration) -> (Block, Vec<Contract>, V
 
     (
         Block {
-            header: BlockHeader {
-                number,
-                timestamp,
-            },
+            header: BlockHeader { number, timestamp },
             solution_sets,
         },
         contracts,
@@ -166,10 +163,7 @@ pub fn test_invalid_block(number: Word, timestamp: Duration) -> (Block, Contract
 
     (
         Block {
-            header: BlockHeader {
-                number,
-                timestamp,
-            },
+            header: BlockHeader { number, timestamp },
             solution_sets: vec![solution_set],
         },
         contract,

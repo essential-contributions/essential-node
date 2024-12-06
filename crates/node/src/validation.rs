@@ -9,8 +9,8 @@ use crate::{
 };
 use essential_hash::content_addr;
 use essential_node_db::QueryError;
-use essential_node_types::block_notify::BlockRx;
-use essential_types::{Block, ContentAddress};
+use essential_node_types::{block_notify::BlockRx, Block};
+use essential_types::ContentAddress;
 use tokio::sync::watch;
 
 #[cfg(test)]
@@ -103,7 +103,7 @@ async fn validate_next_block(
     tracing::debug!(
         "Validating block {} with number {}",
         block_address,
-        block.number
+        block.header.number
     );
 
     let res = validate::validate(&conn_pool, contract_registry, program_registry, &block).await?;
@@ -124,13 +124,13 @@ async fn validate_next_block(
                         let hash = get_latest_finalized_block_address(&tx)?;
                         if let Some(hash) = hash {
                             let header = get_block_header(&tx, &hash)?;
-                            header.map(|(number, _ts)| number)
+                            header.map(|header| header.number)
                         } else {
                             None
                         }
                     };
                     if let Some(latest_block_number) = latest_finalized_block_number {
-                        if latest_block_number > block.number {
+                        if latest_block_number > block.header.number {
                             return Ok(true);
                         }
                     }

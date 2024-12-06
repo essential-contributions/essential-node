@@ -79,10 +79,7 @@ pub fn test_blocks(n: Word) -> Vec<Block> {
 pub fn test_block(number: Word, timestamp: Duration) -> Block {
     let seed = number * 79;
     Block {
-        header: BlockHeader {
-            number,
-            timestamp,
-        },
+        header: BlockHeader { number, timestamp },
         solution_sets: (0..3).map(|i| test_solution_set(seed * (1 + i))).collect(),
     }
 }

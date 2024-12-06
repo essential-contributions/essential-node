@@ -37,8 +37,8 @@ fn test_insert_block() {
         let timestamp_nanos: u32 = row.get(2).expect("timestamp_nanos");
         let timestamp = Duration::new(timestamp_secs, timestamp_nanos);
 
-        assert_eq!(id, block.number);
-        assert_eq!(timestamp, block.timestamp);
+        assert_eq!(id, block.header.number);
+        assert_eq!(timestamp, block.header.timestamp);
 
         // Verify that the solution sets were inserted correctly
         for solution_set in block.solution_sets.iter() {
@@ -241,14 +241,14 @@ fn test_failed_block() {
     // Check failed blocks.
     let failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
     assert_eq!(failed_blocks.len(), 1);
-    assert_eq!(failed_blocks[0].0, blocks[0].number);
+    assert_eq!(failed_blocks[0].0, blocks[0].header.number);
     assert_eq!(failed_blocks[0].1, solution_set_addr);
 
     // Same failed block should not be inserted again.
     node_db::insert_failed_block(&conn, &block_address, &solution_set_addr).unwrap();
     let failed_blocks = node_db::list_failed_blocks(&conn, 0..(NUM_BLOCKS + 10)).unwrap();
     assert_eq!(failed_blocks.len(), 1);
-    assert_eq!(failed_blocks[0].0, blocks[0].number);
+    assert_eq!(failed_blocks[0].0, blocks[0].header.number);
     assert_eq!(failed_blocks[0].1, solution_set_addr);
 
     // Insert another failed block.
@@ -266,7 +266,7 @@ fn test_failed_block() {
     .unwrap();
 
     assert_eq!(failed_blocks.len(), 2);
-    assert_eq!(failed_blocks[1].0, blocks[1].number);
+    assert_eq!(failed_blocks[1].0, blocks[1].header.number);
     assert_eq!(failed_blocks[1].1, solution_set_addr);
 }
 

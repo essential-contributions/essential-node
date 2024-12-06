@@ -76,10 +76,8 @@ pub fn insert_block(tx: &Transaction, block: &Block) -> rusqlite::Result<Content
     let nanos = block.header.timestamp.subsec_nanos() as u64;
     let solution_set_addrs: Vec<ContentAddress> =
         block.solution_sets.iter().map(content_addr).collect();
-    let block_address = block::addr::from_header_and_solution_set_addrs_slice(
-        &block.header,
-        &solution_set_addrs,
-    );
+    let block_address =
+        block::addr::from_header_and_solution_set_addrs_slice(&block.header, &solution_set_addrs);
 
     // TODO: Use real parent block address once blocks have parent addresses.
     let parent_block_address = ContentAddress([0; 32]);
