@@ -1,6 +1,6 @@
 [package]
 name = "essential-node"
-version = "0.8.0"
+version = "0.9.0"
 description = "Validation for Essential protocol"
 authors.workspace = true
 edition.workspace = true
