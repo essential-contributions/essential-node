@@ -186,10 +186,17 @@ pub(crate) async fn validate(
     block: &Block,
 ) -> Result<ValidateOutcome, ValidationError> {
     let db_type = Db::ConnectionPool(conn_pool.clone());
+    validate_block(db_type.clone(), block).await?;
     validate_inner(db_type, contract_registry, program_registry, block).await
 }
 
 /// Validates a block.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+async fn validate_block(_conn: Db, _block: &Block) -> Result<(), ValidationError> {
+    todo!()
+}
+
+/// Validates a block's solutions.
 ///
 /// Returns a `ValidationResult` if no `ValidationError` occurred that prevented the block from being validated.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
