@@ -14,6 +14,7 @@ use essential_types::{
 };
 use serde::{Deserialize, Serialize};
 
+pub mod action;
 pub mod block;
 
 /// Wrappers around tokio's `watch` channel for notifying of new blocks.
