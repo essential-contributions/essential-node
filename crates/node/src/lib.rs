@@ -20,6 +20,7 @@ use validation::validation_stream;
 
 mod error;
 mod handles;
+mod merkle;
 #[cfg(any(feature = "test-utils", test))]
 #[allow(missing_docs)]
 pub mod test_utils;
