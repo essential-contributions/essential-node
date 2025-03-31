@@ -9,6 +9,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+blake2b-rs = "0.2.0"
 essential-check = { workspace = true }
 essential-hash = { workspace = true }
 essential-node-db = { workspace = true }
@@ -16,6 +17,7 @@ essential-node-types = { workspace = true }
 essential-relayer = { workspace = true }
 essential-types = { workspace = true }
 futures = { workspace = true }
+sparse-merkle-tree = "0.6.1"
 rusqlite = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
